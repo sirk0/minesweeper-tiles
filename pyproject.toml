@@ -4,8 +4,12 @@ version = "0.1.0"
 description = "A minesweeper clone with a terminal interface"
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+gui = ["pygame-ce>=2.5"]
+
 [project.scripts]
 minesweeper = "minesweeper.cli:main"
+minesweeper-gui = "minesweeper.gui:main"
 
 [build-system]
 requires = ["setuptools>=61"]
