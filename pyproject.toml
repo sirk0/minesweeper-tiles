@@ -1,0 +1,19 @@
+[project]
+name = "minesweeper"
+version = "0.1.0"
+description = "A minesweeper clone with a terminal interface"
+requires-python = ">=3.10"
+
+[project.scripts]
+minesweeper = "minesweeper.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["minesweeper"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
