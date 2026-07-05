@@ -3,9 +3,13 @@ import pytest
 from minesweeper.boards import (
     DIFFICULTIES,
     MODE_LABELS,
+    MODES_3D,
     build_board,
     hex_board,
+    newell_normal,
+    sphere_board,
     square_board,
+    torus_board,
     triangle_board,
     triangle_grid_board,
 )
@@ -15,6 +19,8 @@ ALL_BOARDS = [
     triangle_board(6, 4),
     triangle_grid_board(5, 9, 4),
     hex_board(5, 6, 4),
+    sphere_board(7),
+    torus_board(12, 6, 9),
 ]
 
 
@@ -34,10 +40,15 @@ class TestInvariants:
             assert len(neighbors) == len(set(neighbors))
 
     def test_polygons_within_bounds(self, board):
-        for polygon in board.polygons.values():
-            for x, y in polygon:
-                assert -1e-9 <= x <= board.width + 1e-9
-                assert -1e-9 <= y <= board.height + 1e-9
+        if board.mode in MODES_3D:
+            for polygon in board.polygons.values():
+                for point in polygon:
+                    assert sum(c * c for c in point) <= board.radius**2 + 1e-9
+        else:
+            for polygon in board.polygons.values():
+                for x, y in polygon:
+                    assert -1e-9 <= x <= board.width + 1e-9
+                    assert -1e-9 <= y <= board.height + 1e-9
 
     def test_mine_count_leaves_safe_cells(self, board):
         assert 0 < board.mine_count < len(board.adjacency)
@@ -57,6 +68,12 @@ class TestCellCounts:
     def test_hex(self):
         assert len(hex_board(5, 6, 4).adjacency) == 30
 
+    def test_sphere_has_sixty_pentagons(self):
+        assert len(sphere_board(7).adjacency) == 60
+
+    def test_torus(self):
+        assert len(torus_board(12, 6, 9).adjacency) == 72
+
 
 class TestPolygonShapes:
     def test_vertex_counts(self):
@@ -64,6 +81,8 @@ class TestPolygonShapes:
         assert all(len(p) == 3 for p in triangle_board(4, 2).polygons.values())
         assert all(len(p) == 3 for p in triangle_grid_board(3, 5, 2).polygons.values())
         assert all(len(p) == 6 for p in hex_board(3, 3, 2).polygons.values())
+        assert all(len(p) == 5 for p in sphere_board(7).polygons.values())
+        assert all(len(p) == 4 for p in torus_board(8, 5, 4).polygons.values())
 
 
 class TestNeighborCounts:
@@ -92,6 +111,38 @@ class TestNeighborCounts:
         assert len(board.adjacency[(2, 2)]) == 6  # interior
         assert len(board.adjacency[(0, 0)]) == 2  # corner
 
+    def test_sphere_cells_all_have_seven_neighbors(self):
+        board = sphere_board(7)
+        assert {len(n) for n in board.adjacency.values()} == {7}
+
+    def test_torus_cells_all_have_eight_neighbors(self):
+        # the grid wraps in both directions, so there are no border cells
+        board = torus_board(12, 6, 9)
+        assert {len(n) for n in board.adjacency.values()} == {8}
+
+    def test_torus_wraps_around(self):
+        board = torus_board(12, 6, 9)
+        assert (0, 0) in board.adjacency[(11, 5)]
+
+    def test_polygons_face_outward(self):
+        for board in (sphere_board(7), torus_board(12, 6, 9)):
+            for cell, polygon in board.polygons.items():
+                normal = newell_normal(polygon)
+                centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+                if board.mode == "sphere":
+                    outward = centroid
+                else:
+                    import math
+
+                    ring_scale = math.hypot(centroid[0], centroid[1])
+                    outward = (
+                        centroid[0] - centroid[0] / ring_scale,
+                        centroid[1] - centroid[1] / ring_scale,
+                        centroid[2],
+                    )
+                dot = sum(n * o for n, o in zip(normal, outward))
+                assert dot > 0, (board.mode, cell)
+
     def test_hex_neighbors_match_offset_layout(self):
         board = hex_board(5, 6, 4)
         # odd row (1, 2) is shifted right: neighbors above/below are cols 2-3
@@ -106,7 +157,10 @@ class TestPresets:
     def test_all_presets_build(self, mode, difficulty):
         board = build_board(mode, difficulty)
         assert board.mode == mode
-        assert board.width > 0 and board.height > 0
+        if mode in MODES_3D:
+            assert board.radius > 0
+        else:
+            assert board.width > 0 and board.height > 0
         assert 0 < board.mine_count < len(board.adjacency)
 
     def test_unknown_mode_and_difficulty_rejected(self):

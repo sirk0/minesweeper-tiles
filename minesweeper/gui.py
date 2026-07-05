@@ -1,10 +1,11 @@
 """Pygame GUI for minesweeper.
 
 Run with ``python -m minesweeper``. A menu screen selects the board
-mode (squares, triangle of triangles, triangle grid, hexagons) and
+mode (squares, triangles, hexagons, or the 3D sphere/donut) and
 difficulty. In game: left-click reveals (on a revealed number: chords),
 right-click flags, the face button or ``n`` restarts, ``1``/``2``/``3``
-switch difficulty, ``Escape`` returns to the menu.
+switch difficulty, ``Escape`` returns to the menu. On 3D boards, drag
+with the left button (or use the arrow keys) to rotate the surface.
 """
 
 from __future__ import annotations
@@ -16,7 +17,13 @@ import time
 
 import pygame
 
-from minesweeper.boards import DIFFICULTIES, MODE_LABELS, build_board
+from minesweeper.boards import (
+    DIFFICULTIES,
+    MODE_LABELS,
+    MODES_3D,
+    build_board,
+    newell_normal,
+)
 from minesweeper.game import CellState, Game, GameState
 
 MARGIN = 8
@@ -52,6 +59,8 @@ NUMBER_COLORS = {
 FACES = {"playing": ":)", "won": "B)", "lost": "X("}
 
 DIFFICULTY_KEYS = {pygame.K_1: "easy", pygame.K_2: "medium", pygame.K_3: "hard"}
+
+DRAG_THRESHOLD = 5  # pixels of motion that turn a click into a rotation drag
 
 
 # -- geometry helpers -------------------------------------------------------
@@ -97,6 +106,33 @@ def point_in_polygon(point: tuple[float, float], vertices) -> bool:
             inside = not inside
         j = i
     return inside
+
+
+# -- 3D math -----------------------------------------------------------------
+
+
+IDENTITY = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+
+def rot_x(angle: float):
+    c, s = math.cos(angle), math.sin(angle)
+    return ((1.0, 0.0, 0.0), (0.0, c, -s), (0.0, s, c))
+
+
+def rot_y(angle: float):
+    c, s = math.cos(angle), math.sin(angle)
+    return ((c, 0.0, s), (0.0, 1.0, 0.0), (-s, 0.0, c))
+
+
+def mat_mul(a, b):
+    return tuple(
+        tuple(sum(a[i][k] * b[k][j] for k in range(3)) for j in range(3))
+        for i in range(3)
+    )
+
+
+def mat_apply(m, v):
+    return tuple(sum(m[i][k] * v[k] for k in range(3)) for i in range(3))
 
 
 class FontCache:
@@ -148,10 +184,13 @@ def _bevel_button(surface, rect) -> None:
     pygame.draw.line(surface, BEVEL_DARK, rect.topright, rect.bottomright, 2)
 
 
-# -- game screen -------------------------------------------------------------
+# -- game screens ------------------------------------------------------------
 
 
-class GameScreen:
+class BaseGameScreen:
+    """Shared game lifecycle, header and input handling; subclasses supply
+    geometry (cell polygons, hit testing and board drawing)."""
+
     def __init__(self, mode: str, difficulty: str = "easy") -> None:
         self.mode = mode
         self.difficulty = difficulty
@@ -160,23 +199,25 @@ class GameScreen:
     def new_game(self, difficulty: str | None = None) -> None:
         if difficulty is not None:
             self.difficulty = difficulty
-        board = build_board(self.mode, self.difficulty)
-        self.board = board
-        self.game = Game(board.adjacency, board.mine_count)
-        offset_x, offset_y = MARGIN, MARGIN + HEADER
-        self.polygons = {
-            cell: [(x + offset_x, y + offset_y) for x, y in vertices]
-            for cell, vertices in board.polygons.items()
-        }
-        self.centers = {
-            cell: centroid(vertices) for cell, vertices in self.polygons.items()
-        }
-        any_cell = next(iter(self.polygons))
-        self.glyph_radius = inradius(self.polygons[any_cell]) * 0.85
-        self.number_size = max(12, int(self.glyph_radius * 1.5))
+        self.board = build_board(self.mode, self.difficulty)
+        self.game = Game(self.board.adjacency, self.board.mine_count)
         self.exploded = None
         self.started_at: float | None = None
         self.finished_at: float | None = None
+        self._setup_geometry()
+
+    def _setup_geometry(self) -> None:
+        raise NotImplementedError
+
+    def cell_at(self, pos):
+        raise NotImplementedError
+
+    def draw_board(self, surface, fonts: FontCache) -> None:
+        raise NotImplementedError
+
+    @property
+    def size(self) -> tuple[int, int]:
+        raise NotImplementedError
 
     @property
     def elapsed(self) -> int:
@@ -184,22 +225,6 @@ class GameScreen:
             return 0
         end = self.finished_at if self.finished_at is not None else time.monotonic()
         return min(999, int(end - self.started_at))
-
-    # -- geometry ---------------------------------------------------------
-
-    @property
-    def size(self) -> tuple[int, int]:
-        return (
-            math.ceil(self.board.width) + 2 * MARGIN,
-            math.ceil(self.board.height) + HEADER + 2 * MARGIN,
-        )
-
-    def cell_at(self, pos: tuple[int, int]):
-        """Map a pixel position to a cell id, or None outside the board."""
-        for cell, vertices in self.polygons.items():
-            if point_in_polygon(pos, vertices):
-                return cell
-        return None
 
     @property
     def face_rect(self) -> pygame.Rect:
@@ -218,17 +243,31 @@ class GameScreen:
                 self.new_game()
             elif event.key in DIFFICULTY_KEYS:
                 self.new_game(DIFFICULTY_KEYS[event.key])
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if self.face_rect.collidepoint(event.pos):
-                self.new_game()
-                return None
-            cell = self.cell_at(event.pos)
-            if cell is not None:
-                if event.button == 1:
-                    self.click(cell)
-                elif event.button == 3:
-                    self.game.toggle_flag(cell)
+            else:
+                self._handle_key(event)
+        if event.type in (
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEBUTTONUP,
+            pygame.MOUSEMOTION,
+        ):
+            self._handle_mouse(event)
         return None
+
+    def _handle_key(self, event) -> None:
+        pass
+
+    def _handle_mouse(self, event) -> None:
+        if event.type != pygame.MOUSEBUTTONDOWN:
+            return
+        if self.face_rect.collidepoint(event.pos):
+            self.new_game()
+            return
+        cell = self.cell_at(event.pos)
+        if cell is not None:
+            if event.button == 1:
+                self.click(cell)
+            elif event.button == 3:
+                self.game.toggle_flag(cell)
 
     def click(self, cell) -> None:
         """Left-click: reveal a hidden cell, chord a revealed one."""
@@ -260,13 +299,10 @@ class GameScreen:
     def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
         surface.fill(BG)
         self.draw_header(surface, fonts)
-        for cell in self.polygons:
-            self.draw_cell(surface, fonts, cell)
+        self.draw_board(surface, fonts)
 
-    def draw_cell(self, surface, fonts: FontCache, cell) -> None:
+    def draw_cell(self, surface, fonts, cell, vertices, center, glyph_radius) -> None:
         game = self.game
-        vertices = self.polygons[cell]
-        center = self.centers[cell]
         state = game.cell_state(cell)
         lost = game.state is GameState.LOST
         show_mine = lost and game.is_mine(cell) and state is not CellState.FLAGGED
@@ -281,17 +317,18 @@ class GameScreen:
             pygame.draw.polygon(surface, GRID_LINE, vertices, 1)
 
         if show_mine:
-            draw_mine(surface, center, self.glyph_radius)
+            draw_mine(surface, center, glyph_radius)
         elif state is CellState.FLAGGED:
             wrong = lost and not game.is_mine(cell)
-            draw_flag(surface, center, self.glyph_radius, wrong=wrong)
+            draw_flag(surface, center, glyph_radius, wrong=wrong)
         elif game.state is GameState.WON and game.is_mine(cell):
-            draw_flag(surface, center, self.glyph_radius, wrong=False)
+            draw_flag(surface, center, glyph_radius, wrong=False)
         elif state is CellState.REVEALED:
             n = game.adjacent_mines(cell)
             if n:
                 color = NUMBER_COLORS.get(n, (0, 0, 0))
-                text = fonts.get(self.number_size).render(str(n), True, color)
+                size = max(10, int(glyph_radius * 1.5))
+                text = fonts.get(size).render(str(n), True, color)
                 surface.blit(text, text.get_rect(center=center))
 
     def draw_header(self, surface, fonts: FontCache) -> None:
@@ -315,6 +352,153 @@ class GameScreen:
         box = pygame.Rect(x, MARGIN + 6, text.get_width() + 12, 32)
         pygame.draw.rect(surface, COUNTER_BG, box)
         surface.blit(text, text.get_rect(center=box.center))
+
+
+class GameScreen(BaseGameScreen):
+    """Flat boards: static polygons straight from the board definition."""
+
+    def _setup_geometry(self) -> None:
+        offset_x, offset_y = MARGIN, MARGIN + HEADER
+        self.polygons = {
+            cell: [(x + offset_x, y + offset_y) for x, y in vertices]
+            for cell, vertices in self.board.polygons.items()
+        }
+        self.centers = {
+            cell: centroid(vertices) for cell, vertices in self.polygons.items()
+        }
+        any_cell = next(iter(self.polygons))
+        self.glyph_radius = inradius(self.polygons[any_cell]) * 0.85
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return (
+            math.ceil(self.board.width) + 2 * MARGIN,
+            math.ceil(self.board.height) + HEADER + 2 * MARGIN,
+        )
+
+    def cell_at(self, pos):
+        for cell, vertices in self.polygons.items():
+            if point_in_polygon(pos, vertices):
+                return cell
+        return None
+
+    def draw_board(self, surface, fonts: FontCache) -> None:
+        for cell in self.polygons:
+            self.draw_cell(
+                surface, fonts, cell, self.polygons[cell],
+                self.centers[cell], self.glyph_radius,
+            )
+
+
+class GameScreen3D(BaseGameScreen):
+    """Curved boards (sphere, torus) rendered with an orthographic
+    projection: back faces are culled, visible faces painted far to near.
+    Dragging rotates the surface; a short click reveals."""
+
+    VIEWPORT = 540
+    ROTATE_SPEED = 0.008  # radians per pixel of drag
+
+    def _setup_geometry(self) -> None:
+        self.rotation = IDENTITY
+        if self.mode == "torus":  # tilt so the tube is visible, not edge-on
+            self.rotation = rot_x(-1.0)
+        self.scale = (self.VIEWPORT / 2 - 24) / self.board.radius
+        self._drag_from = None
+        self._dragged = False
+        self._frame = None  # projected geometry, rebuilt after rotation
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return (
+            self.VIEWPORT + 2 * MARGIN,
+            self.VIEWPORT + HEADER + 2 * MARGIN,
+        )
+
+    def _project(self):
+        """Rotate, cull and depth-sort the cells. Returns a far-to-near
+        list of (depth, cell, screen polygon, center, glyph radius)."""
+        if self._frame is not None:
+            return self._frame
+        cx = self.size[0] / 2
+        cy = MARGIN + HEADER + self.VIEWPORT / 2
+        frame = []
+        for cell, points in self.board.polygons.items():
+            rotated = [mat_apply(self.rotation, p) for p in points]
+            if newell_normal(rotated)[2] <= 0:  # facing away from the viewer
+                continue
+            polygon = [
+                (cx + x * self.scale, cy - y * self.scale) for x, y, _ in rotated
+            ]
+            depth = sum(z for _, _, z in rotated) / len(rotated)
+            center = centroid(polygon)
+            frame.append((depth, cell, polygon, center, inradius(polygon) * 0.8))
+        frame.sort(key=lambda entry: entry[0])
+        self._frame = frame
+        return frame
+
+    def rotate(self, dx_pixels: float, dy_pixels: float) -> None:
+        turn = mat_mul(
+            rot_x(-dy_pixels * self.ROTATE_SPEED),
+            rot_y(dx_pixels * self.ROTATE_SPEED),
+        )
+        self.rotation = mat_mul(turn, self.rotation)
+        self._frame = None
+
+    def cell_at(self, pos):
+        for _, cell, polygon, _, _ in reversed(self._project()):  # near first
+            if point_in_polygon(pos, polygon):
+                return cell
+        return None
+
+    def _handle_key(self, event) -> None:
+        step = 40  # pixels-worth of rotation per key press
+        if event.key == pygame.K_LEFT:
+            self.rotate(-step, 0)
+        elif event.key == pygame.K_RIGHT:
+            self.rotate(step, 0)
+        elif event.key == pygame.K_UP:
+            self.rotate(0, -step)
+        elif event.key == pygame.K_DOWN:
+            self.rotate(0, step)
+
+    def _handle_mouse(self, event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                if self.face_rect.collidepoint(event.pos):
+                    self.new_game()
+                    return
+                self._drag_from = event.pos
+                self._dragged = False
+            elif event.button == 3:
+                cell = self.cell_at(event.pos)
+                if cell is not None:
+                    self.game.toggle_flag(cell)
+        elif event.type == pygame.MOUSEMOTION and self._drag_from is not None:
+            if not self._dragged:
+                moved = math.hypot(
+                    event.pos[0] - self._drag_from[0],
+                    event.pos[1] - self._drag_from[1],
+                )
+                if moved < DRAG_THRESHOLD:
+                    return
+                self._dragged = True
+            self.rotate(*event.rel)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._drag_from is not None and not self._dragged:
+                cell = self.cell_at(event.pos)
+                if cell is not None:
+                    self.click(cell)
+            self._drag_from = None
+            self._dragged = False
+
+    def draw_board(self, surface, fonts: FontCache) -> None:
+        for _, cell, polygon, center, glyph_radius in self._project():
+            self.draw_cell(surface, fonts, cell, polygon, center, glyph_radius)
+
+
+def make_screen(mode: str, difficulty: str) -> BaseGameScreen:
+    cls = GameScreen3D if mode in MODES_3D else GameScreen
+    return cls(mode, difficulty)
 
 
 # -- menu screen ---------------------------------------------------------------
@@ -416,6 +600,17 @@ class MenuScreen:
                 for k in range(6)
             ]
             pygame.draw.polygon(surface, color, points, width)
+        elif mode == "sphere":
+            pygame.draw.circle(surface, color, (cx, cy), 15, width)
+            points = [
+                (cx + 8 * math.cos(math.radians(72 * k - 90)),
+                 cy + 8 * math.sin(math.radians(72 * k - 90)))
+                for k in range(5)
+            ]
+            pygame.draw.polygon(surface, color, points, width)
+        elif mode == "torus":
+            pygame.draw.ellipse(surface, color, pygame.Rect(cx - 16, cy - 10, 32, 20), width)
+            pygame.draw.ellipse(surface, color, pygame.Rect(cx - 6, cy - 4, 12, 8), width)
 
 
 # -- application -------------------------------------------------------------
@@ -425,7 +620,7 @@ class App:
     def __init__(self, mode: str | None = None, difficulty: str = "easy") -> None:
         self.menu = MenuScreen(difficulty)
         self.screen = (
-            GameScreen(mode, difficulty) if mode is not None else self.menu
+            make_screen(mode, difficulty) if mode is not None else self.menu
         )
 
     def run(self) -> None:
@@ -445,7 +640,7 @@ class App:
                     self.menu.difficulty = self.screen.difficulty
                     self.screen = self.menu
                 elif isinstance(result, tuple) and result[0] == "start":
-                    self.screen = GameScreen(result[1], self.menu.difficulty)
+                    self.screen = make_screen(result[1], self.menu.difficulty)
             if not running:
                 break
             if window.get_size() != self.screen.size:

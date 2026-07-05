@@ -7,15 +7,20 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 pygame = pytest.importorskip("pygame")
 
-from minesweeper.boards import MODE_LABELS  # noqa: E402
+from minesweeper.boards import MODE_LABELS, MODES_3D  # noqa: E402
 from minesweeper.game import CellState, Game, GameState  # noqa: E402
 from minesweeper.gui import (  # noqa: E402
     EXPLODED_FACE,
+    IDENTITY,
     FontCache,
     GameScreen,
+    GameScreen3D,
     MenuScreen,
+    make_screen,
     point_in_polygon,
 )
+
+MODES_2D = sorted(set(MODE_LABELS) - MODES_3D)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -59,7 +64,7 @@ class TestGeometryHelpers:
 
 
 class TestGameScreenGeometry:
-    @pytest.mark.parametrize("mode", sorted(MODE_LABELS))
+    @pytest.mark.parametrize("mode", MODES_2D)
     def test_every_cell_center_maps_back_to_its_cell(self, mode):
         screen = GameScreen(mode, "easy")
         for cell, center in screen.centers.items():
@@ -127,7 +132,7 @@ class TestInteraction:
         gui.handle_event(mouse_event(gui.centers[hidden]))
         assert gui.game.cell_state(hidden) is CellState.HIDDEN
 
-    @pytest.mark.parametrize("mode", sorted(MODE_LABELS))
+    @pytest.mark.parametrize("mode", MODES_2D)
     def test_click_reveals_in_every_mode(self, mode):
         screen = GameScreen(mode, "easy")
         cell = next(iter(screen.centers))
@@ -160,7 +165,7 @@ class TestRendering:
         screen.draw(surface, fonts)
         return surface
 
-    @pytest.mark.parametrize("mode", sorted(MODE_LABELS))
+    @pytest.mark.parametrize("mode", MODES_2D)
     def test_draw_all_game_phases_in_every_mode(self, mode, fonts):
         screen = GameScreen(mode, "easy")
         self.draw(screen, fonts)  # fresh board
@@ -200,6 +205,105 @@ class TestRendering:
                 gui.game.reveal(cell)
         assert gui.game.state is GameState.WON
         self.draw(gui, fonts)
+
+
+class Test3DScreens:
+    def nearest_visible(self, screen):
+        """(cell, screen position) of the cell nearest the viewer."""
+        frame = screen._project()
+        _, cell, _, center, _ = frame[-1]
+        return cell, (int(center[0]), int(center[1]))
+
+    @pytest.mark.parametrize("mode", sorted(MODES_3D))
+    def test_make_screen_selects_3d(self, mode):
+        assert isinstance(make_screen(mode, "easy"), GameScreen3D)
+        assert isinstance(make_screen("square", "easy"), GameScreen)
+
+    @pytest.mark.parametrize("mode", sorted(MODES_3D))
+    def test_nearest_cell_center_picks_that_cell(self, mode):
+        screen = GameScreen3D(mode, "easy")
+        cell, pos = self.nearest_visible(screen)
+        assert screen.cell_at(pos) == cell
+
+    @pytest.mark.parametrize("mode", sorted(MODES_3D))
+    def test_short_click_reveals(self, mode):
+        screen = GameScreen3D(mode, "easy")
+        cell, pos = self.nearest_visible(screen)
+        screen.handle_event(mouse_event(pos))  # button down
+        screen.handle_event(
+            pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=1)
+        )
+        assert screen.game.cell_state(cell) is CellState.REVEALED
+        assert screen.game.state is not GameState.LOST  # first click safe
+
+    @pytest.mark.parametrize("mode", sorted(MODES_3D))
+    def test_drag_rotates_without_revealing(self, mode):
+        screen = GameScreen3D(mode, "easy")
+        cell, pos = self.nearest_visible(screen)
+        screen.handle_event(mouse_event(pos))
+        screen.handle_event(
+            pygame.event.Event(
+                pygame.MOUSEMOTION,
+                pos=(pos[0] + 40, pos[1]),
+                rel=(40, 0),
+                buttons=(1, 0, 0),
+            )
+        )
+        screen.handle_event(
+            pygame.event.Event(
+                pygame.MOUSEBUTTONUP, pos=(pos[0] + 40, pos[1]), button=1
+            )
+        )
+        assert screen.rotation != IDENTITY or mode == "torus"  # torus starts tilted
+        assert all(
+            screen.game.cell_state(c) is CellState.HIDDEN for c in screen.game.cells
+        )
+
+    def test_rotation_changes_visible_set(self):
+        screen = GameScreen3D("torus", "easy")
+        before = {cell for _, cell, *_ in screen._project()}
+        screen.rotate(200, 0)
+        after = {cell for _, cell, *_ in screen._project()}
+        assert before != after
+
+    def test_arrow_keys_rotate(self):
+        screen = GameScreen3D("sphere", "easy")
+        start = screen.rotation
+        screen.handle_event(key_event(pygame.K_LEFT))
+        assert screen.rotation != start
+
+    @pytest.mark.parametrize("mode", sorted(MODES_3D))
+    def test_right_click_flags(self, mode):
+        screen = GameScreen3D(mode, "easy")
+        cell, pos = self.nearest_visible(screen)
+        screen.handle_event(mouse_event(pos, button=3))
+        assert screen.game.cell_state(cell) is CellState.FLAGGED
+
+    def test_backface_culled(self):
+        screen = GameScreen3D("sphere", "easy")
+        visible = {cell for _, cell, *_ in screen._project()}
+        assert 0 < len(visible) < len(screen.game.cells)
+
+    @pytest.mark.parametrize("mode", sorted(MODES_3D))
+    def test_draw_all_game_phases(self, mode, fonts):
+        screen = GameScreen3D(mode, "easy")
+        surface = pygame.Surface(screen.size)
+        screen.draw(surface, fonts)  # fresh board
+        cell, pos = self.nearest_visible(screen)
+        screen.click(cell)
+        screen.draw(surface, fonts)  # mid-game
+        screen.click(find_mine(screen))
+        assert screen.game.state is GameState.LOST
+        screen.draw(surface, fonts)  # loss
+
+    def test_face_click_restarts_without_dragging(self):
+        screen = GameScreen3D("sphere", "easy")
+        cell, _ = self.nearest_visible(screen)
+        screen.click(cell)
+        old_game = screen.game
+        screen.handle_event(mouse_event(screen.face_rect.center))
+        assert screen.game is not old_game
+        assert screen._drag_from is None
 
 
 class TestMenu:
