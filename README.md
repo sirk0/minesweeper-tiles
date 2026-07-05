@@ -1,40 +1,31 @@
 # Minesweeper
 
-A minesweeper clone in Python with a pygame GUI and a dependency-free
-terminal mode.
+A minesweeper clone in Python (pygame) with four board geometries:
 
-## Play (GUI)
+- **Classic squares** — the traditional grid (8 neighbors)
+- **Triangle of triangles** — a big triangle subdivided into small
+  triangles (12 neighbors)
+- **Triangle grid** — a rectangular surface tiled with triangles
+  (12 neighbors)
+- **Hexagon grid** — a surface tiled with hexagons (6 neighbors)
+
+## Play
 
 ```sh
 pip install pygame-ce
-python3 -m minesweeper          # easy: 9x9, 10 mines
-python3 -m minesweeper medium   # 16x16, 40 mines
-python3 -m minesweeper hard     # 16x30, 99 mines
+python3 -m minesweeper
 ```
 
-Controls:
+A menu screen picks the board mode and difficulty. In game:
 
 - **Left-click** — reveal a cell (the first reveal is always safe);
   left-click a revealed number to chord
 - **Right-click** — toggle a flag
 - **Face button** or `n` — new game
 - `1` / `2` / `3` — switch to easy / medium / hard
-- `Escape` — quit
+- `Escape` — back to the menu
 
-## Play (terminal)
-
-Runs anywhere, no dependencies:
-
-```sh
-python3 -m minesweeper --cli [difficulty]
-```
-
-Commands at the prompt:
-
-- `r ROW COL` — reveal a cell (the first reveal is always safe)
-- `f ROW COL` — toggle a flag
-- `c ROW COL` — chord: reveal neighbors of a satisfied number
-- `q` — quit
+`python3 -m minesweeper --mode hex [difficulty]` skips the menu.
 
 ## Development
 
@@ -44,9 +35,9 @@ python3 -m venv .venv
 .venv/bin/pytest
 ```
 
-GUI tests run headless via SDL's dummy video driver and are skipped
-automatically if pygame is not installed.
+Tests run headless via SDL's dummy video driver.
 
-Game rules live in `minesweeper/game.py` (UI-independent); the terminal
-interface is in `minesweeper/cli.py` and the pygame GUI in
-`minesweeper/gui.py`.
+Code layout: `minesweeper/game.py` holds the rules over an arbitrary
+cell graph; `minesweeper/boards.py` generates the tilings (cells are
+polygons on an integer lattice — two cells are neighbors when they
+share a lattice vertex); `minesweeper/gui.py` is the pygame interface.

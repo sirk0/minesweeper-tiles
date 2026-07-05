@@ -1,35 +1,38 @@
 """Pygame GUI for minesweeper.
 
-Run with ``python -m minesweeper`` (or ``python -m minesweeper.gui``).
-Controls: left-click reveals (on a revealed number: chords), right-click
-flags, the face button or ``n`` restarts, ``1``/``2``/``3`` switch
-difficulty, ``Escape`` quits.
+Run with ``python -m minesweeper``. A menu screen selects the board
+mode (squares, triangle of triangles, triangle grid, hexagons) and
+difficulty. In game: left-click reveals (on a revealed number: chords),
+right-click flags, the face button or ``n`` restarts, ``1``/``2``/``3``
+switch difficulty, ``Escape`` returns to the menu.
 """
 
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import time
 
 import pygame
 
-from minesweeper.cli import DIFFICULTIES
+from minesweeper.boards import DIFFICULTIES, MODE_LABELS, build_board
 from minesweeper.game import CellState, Game, GameState
 
-CELL = 32
-HEADER = 52
 MARGIN = 8
+HEADER = 52
 
 BG = (192, 192, 192)
 BEVEL_LIGHT = (255, 255, 255)
-BEVEL_DARK = (128, 128, 128)
-HIDDEN_FACE = (189, 189, 189)
-REVEALED_FACE = (222, 222, 222)
+BEVEL_DARK = (110, 110, 110)
+HIDDEN_FACE = (172, 172, 172)
+REVEALED_FACE = (225, 225, 225)
 EXPLODED_FACE = (255, 80, 80)
-GRID_LINE = (160, 160, 160)
+GRID_LINE = (130, 130, 130)
 COUNTER_BG = (40, 0, 0)
 COUNTER_FG = (255, 40, 40)
+TEXT = (30, 30, 30)
+SELECTED = (120, 160, 220)
 
 NUMBER_COLORS = {
     1: (0, 0, 255),
@@ -39,30 +42,141 @@ NUMBER_COLORS = {
     5: (128, 0, 0),
     6: (0, 128, 128),
     7: (0, 0, 0),
-    8: (128, 128, 128),
+    8: (96, 96, 96),
+    9: (128, 0, 128),
+    10: (200, 100, 0),
+    11: (180, 0, 90),
+    12: (60, 60, 60),
 }
 
-FACES = {"playing": ":)", "won": "B)", "lost": "X(", "pressed": ":o"}
+FACES = {"playing": ":)", "won": "B)", "lost": "X("}
+
+DIFFICULTY_KEYS = {pygame.K_1: "easy", pygame.K_2: "medium", pygame.K_3: "hard"}
 
 
-class MinesweeperGUI:
-    def __init__(self, difficulty: str = "easy") -> None:
+# -- geometry helpers -------------------------------------------------------
+
+
+def centroid(vertices: list[tuple[float, float]]) -> tuple[float, float]:
+    n = len(vertices)
+    return (sum(x for x, _ in vertices) / n, sum(y for _, y in vertices) / n)
+
+
+def _dist_point_segment(p, a, b) -> float:
+    px, py = p
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    length_sq = dx * dx + dy * dy
+    t = 0.0 if length_sq == 0 else max(
+        0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_sq)
+    )
+    cx, cy = ax + t * dx, ay + t * dy
+    return math.hypot(px - cx, py - cy)
+
+
+def inradius(vertices: list[tuple[float, float]]) -> float:
+    """Distance from the centroid to the nearest edge — how big a glyph
+    fits inside the cell."""
+    center = centroid(vertices)
+    n = len(vertices)
+    return min(
+        _dist_point_segment(center, vertices[i], vertices[(i + 1) % n])
+        for i in range(n)
+    )
+
+
+def point_in_polygon(point: tuple[float, float], vertices) -> bool:
+    x, y = point
+    inside = False
+    j = len(vertices) - 1
+    for i in range(len(vertices)):
+        xi, yi = vertices[i]
+        xj, yj = vertices[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+class FontCache:
+    FAMILY = "menlo, couriernew, monospace"
+
+    def __init__(self) -> None:
+        pygame.font.init()
+        self._fonts: dict[int, pygame.font.Font] = {}
+
+    def get(self, size: int) -> pygame.font.Font:
+        if size not in self._fonts:
+            self._fonts[size] = pygame.font.SysFont(self.FAMILY, size, bold=True)
+        return self._fonts[size]
+
+
+# -- glyphs ------------------------------------------------------------------
+
+
+def draw_mine(surface, center, radius) -> None:
+    cx, cy = int(center[0]), int(center[1])
+    pygame.draw.circle(surface, (0, 0, 0), (cx, cy), max(3, int(radius * 0.5)))
+    spike = radius * 0.85
+    for dx, dy in ((1, 0), (0, 1), (0.7, 0.7), (0.7, -0.7)):
+        start = (cx - dx * spike, cy - dy * spike)
+        end = (cx + dx * spike, cy + dy * spike)
+        pygame.draw.line(surface, (0, 0, 0), start, end, 2)
+
+
+def draw_flag(surface, center, radius, *, wrong: bool) -> None:
+    cx, cy = center
+    top, bottom = cy - radius * 0.9, cy + radius * 0.9
+    pygame.draw.line(surface, (0, 0, 0), (cx, top), (cx, bottom), 2)
+    pygame.draw.polygon(
+        surface,
+        (255, 0, 0),
+        [(cx, top), (cx - radius * 0.9, top + radius * 0.45), (cx, top + radius * 0.9)],
+    )
+    if wrong:  # misplaced flag revealed at game end
+        r = radius * 0.95
+        pygame.draw.line(surface, (0, 0, 0), (cx - r, cy - r), (cx + r, cy + r), 2)
+        pygame.draw.line(surface, (0, 0, 0), (cx - r, cy + r), (cx + r, cy - r), 2)
+
+
+def _bevel_button(surface, rect) -> None:
+    pygame.draw.rect(surface, HIDDEN_FACE, rect)
+    pygame.draw.line(surface, BEVEL_LIGHT, rect.topleft, rect.topright, 2)
+    pygame.draw.line(surface, BEVEL_LIGHT, rect.topleft, rect.bottomleft, 2)
+    pygame.draw.line(surface, BEVEL_DARK, rect.bottomleft, rect.bottomright, 2)
+    pygame.draw.line(surface, BEVEL_DARK, rect.topright, rect.bottomright, 2)
+
+
+# -- game screen -------------------------------------------------------------
+
+
+class GameScreen:
+    def __init__(self, mode: str, difficulty: str = "easy") -> None:
+        self.mode = mode
         self.difficulty = difficulty
-        self.exploded: tuple[int, int] | None = None
-        self.started_at: float | None = None
-        self.finished_at: float | None = None
         self.new_game()
-
-    # -- game lifecycle ---------------------------------------------------
 
     def new_game(self, difficulty: str | None = None) -> None:
         if difficulty is not None:
             self.difficulty = difficulty
-        rows, cols, mines = DIFFICULTIES[self.difficulty]
-        self.game = Game(rows, cols, mines)
+        board = build_board(self.mode, self.difficulty)
+        self.board = board
+        self.game = Game(board.adjacency, board.mine_count)
+        offset_x, offset_y = MARGIN, MARGIN + HEADER
+        self.polygons = {
+            cell: [(x + offset_x, y + offset_y) for x, y in vertices]
+            for cell, vertices in board.polygons.items()
+        }
+        self.centers = {
+            cell: centroid(vertices) for cell, vertices in self.polygons.items()
+        }
+        any_cell = next(iter(self.polygons))
+        self.glyph_radius = inradius(self.polygons[any_cell]) * 0.85
+        self.number_size = max(12, int(self.glyph_radius * 1.5))
         self.exploded = None
-        self.started_at = None
-        self.finished_at = None
+        self.started_at: float | None = None
+        self.finished_at: float | None = None
 
     @property
     def elapsed(self) -> int:
@@ -76,215 +190,279 @@ class MinesweeperGUI:
     @property
     def size(self) -> tuple[int, int]:
         return (
-            self.game.cols * CELL + 2 * MARGIN,
-            self.game.rows * CELL + HEADER + 2 * MARGIN,
+            math.ceil(self.board.width) + 2 * MARGIN,
+            math.ceil(self.board.height) + HEADER + 2 * MARGIN,
         )
 
-    def cell_at(self, pos: tuple[int, int]) -> tuple[int, int] | None:
-        """Map a pixel position to (row, col), or None outside the board."""
-        x, y = pos
-        col = (x - MARGIN) // CELL
-        row = (y - MARGIN - HEADER) // CELL
-        if x < MARGIN or y < MARGIN + HEADER or not self.game.in_bounds(row, col):
-            return None
-        return row, col
+    def cell_at(self, pos: tuple[int, int]):
+        """Map a pixel position to a cell id, or None outside the board."""
+        for cell, vertices in self.polygons.items():
+            if point_in_polygon(pos, vertices):
+                return cell
+        return None
 
     @property
     def face_rect(self) -> pygame.Rect:
-        width = self.size[0]
-        return pygame.Rect(width // 2 - 18, MARGIN + 4, 36, 36)
+        return pygame.Rect(self.size[0] // 2 - 18, MARGIN + 4, 36, 36)
 
     # -- input ------------------------------------------------------------
 
-    def handle_event(self, event: pygame.event.Event) -> bool:
-        """Process one pygame event. Returns False when the app should quit."""
+    def handle_event(self, event: pygame.event.Event):
+        """Returns "quit", "menu", or None."""
         if event.type == pygame.QUIT:
-            return False
+            return "quit"
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                return False
+                return "menu"
             if event.key == pygame.K_n:
                 self.new_game()
-            elif event.key == pygame.K_1:
-                self.new_game("easy")
-            elif event.key == pygame.K_2:
-                self.new_game("medium")
-            elif event.key == pygame.K_3:
-                self.new_game("hard")
+            elif event.key in DIFFICULTY_KEYS:
+                self.new_game(DIFFICULTY_KEYS[event.key])
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.face_rect.collidepoint(event.pos):
                 self.new_game()
-                return True
+                return None
             cell = self.cell_at(event.pos)
             if cell is not None:
                 if event.button == 1:
-                    self.click(*cell)
+                    self.click(cell)
                 elif event.button == 3:
-                    self.game.toggle_flag(*cell)
-        return True
+                    self.game.toggle_flag(cell)
+        return None
 
-    def click(self, row: int, col: int) -> None:
+    def click(self, cell) -> None:
         """Left-click: reveal a hidden cell, chord a revealed one."""
         if self.game.state is not GameState.PLAYING:
             return
         if self.started_at is None:
             self.started_at = time.monotonic()
-        if self.game.cell_state(row, col) is CellState.REVEALED:
-            self.game.chord(row, col)
+        if self.game.cell_state(cell) is CellState.REVEALED:
+            self.game.chord(cell)
         else:
-            self.game.reveal(row, col)
+            self.game.reveal(cell)
         if self.game.state is GameState.LOST and self.exploded is None:
-            self.exploded = self.find_exploded(row, col)
+            self.exploded = self.find_exploded(cell)
         if self.game.state is not GameState.PLAYING:
             self.finished_at = time.monotonic()
 
-    def find_exploded(self, row: int, col: int) -> tuple[int, int]:
+    def find_exploded(self, cell):
         """The mine that ended the game: the clicked cell or, after a bad
         chord, whichever revealed neighbor is a mine."""
-        if self.game.is_mine(row, col):
-            return row, col
-        for r, c in self.game.neighbors(row, col):
-            if (
-                self.game.is_mine(r, c)
-                and self.game.cell_state(r, c) is CellState.REVEALED
-            ):
-                return r, c
-        return row, col
+        if self.game.is_mine(cell):
+            return cell
+        for n in self.game.neighbors(cell):
+            if self.game.is_mine(n) and self.game.cell_state(n) is CellState.REVEALED:
+                return n
+        return cell
 
     # -- drawing ----------------------------------------------------------
 
-    def draw(self, surface: pygame.Surface, fonts: dict[str, pygame.font.Font]) -> None:
+    def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
         surface.fill(BG)
         self.draw_header(surface, fonts)
-        for r in range(self.game.rows):
-            for c in range(self.game.cols):
-                self.draw_cell(surface, fonts, r, c)
+        for cell in self.polygons:
+            self.draw_cell(surface, fonts, cell)
 
-    def cell_rect(self, row: int, col: int) -> pygame.Rect:
-        return pygame.Rect(MARGIN + col * CELL, MARGIN + HEADER + row * CELL, CELL, CELL)
-
-    def draw_cell(
-        self, surface: pygame.Surface, fonts: dict[str, pygame.font.Font], row: int, col: int
-    ) -> None:
+    def draw_cell(self, surface, fonts: FontCache, cell) -> None:
         game = self.game
-        rect = self.cell_rect(row, col)
-        state = game.cell_state(row, col)
-        game_over = game.state is not GameState.PLAYING
-        show_mine = game_over and game.is_mine(row, col) and (
-            game.state is GameState.LOST or state is not CellState.FLAGGED
-        )
+        vertices = self.polygons[cell]
+        center = self.centers[cell]
+        state = game.cell_state(cell)
+        lost = game.state is GameState.LOST
+        show_mine = lost and game.is_mine(cell) and state is not CellState.FLAGGED
 
-        if state is CellState.REVEALED or (show_mine and game.state is GameState.LOST):
-            face = EXPLODED_FACE if (row, col) == self.exploded else REVEALED_FACE
-            pygame.draw.rect(surface, face, rect)
-            pygame.draw.rect(surface, GRID_LINE, rect, 1)
+        if state is CellState.REVEALED or show_mine:
+            face = EXPLODED_FACE if cell == self.exploded else REVEALED_FACE
+            pygame.draw.polygon(surface, face, vertices)
+            pygame.draw.polygon(surface, GRID_LINE, vertices, 1)
         else:
-            pygame.draw.rect(surface, HIDDEN_FACE, rect)
-            pygame.draw.line(surface, BEVEL_LIGHT, rect.topleft, rect.topright, 2)
-            pygame.draw.line(surface, BEVEL_LIGHT, rect.topleft, rect.bottomleft, 2)
-            pygame.draw.line(surface, BEVEL_DARK, rect.bottomleft, rect.bottomright, 2)
-            pygame.draw.line(surface, BEVEL_DARK, rect.topright, rect.bottomright, 2)
+            pygame.draw.polygon(surface, HIDDEN_FACE, vertices)
+            pygame.draw.polygon(surface, BEVEL_LIGHT, vertices, 2)
+            pygame.draw.polygon(surface, GRID_LINE, vertices, 1)
 
-        if show_mine and game.state is GameState.LOST:
-            self.draw_mine(surface, rect)
+        if show_mine:
+            draw_mine(surface, center, self.glyph_radius)
         elif state is CellState.FLAGGED:
-            wrong = game.state is GameState.LOST and not game.is_mine(row, col)
-            self.draw_flag(surface, rect, wrong=wrong)
-        elif game.state is GameState.WON and game.is_mine(row, col):
-            self.draw_flag(surface, rect, wrong=False)  # auto-flag mines on win
-        elif state is CellState.REVEALED and not game.is_mine(row, col):
-            n = game.adjacent_mines(row, col)
+            wrong = lost and not game.is_mine(cell)
+            draw_flag(surface, center, self.glyph_radius, wrong=wrong)
+        elif game.state is GameState.WON and game.is_mine(cell):
+            draw_flag(surface, center, self.glyph_radius, wrong=False)
+        elif state is CellState.REVEALED:
+            n = game.adjacent_mines(cell)
             if n:
-                text = fonts["cell"].render(str(n), True, NUMBER_COLORS[n])
-                surface.blit(text, text.get_rect(center=rect.center))
+                color = NUMBER_COLORS.get(n, (0, 0, 0))
+                text = fonts.get(self.number_size).render(str(n), True, color)
+                surface.blit(text, text.get_rect(center=center))
 
-    def draw_mine(self, surface: pygame.Surface, rect: pygame.Rect) -> None:
-        pygame.draw.circle(surface, (0, 0, 0), rect.center, CELL // 4)
-        for dx, dy in ((1, 0), (0, 1), (1, 1), (1, -1)):
-            length = CELL // 3
-            start = (rect.centerx - dx * length, rect.centery - dy * length)
-            end = (rect.centerx + dx * length, rect.centery + dy * length)
-            pygame.draw.line(surface, (0, 0, 0), start, end, 2)
-
-    def draw_flag(self, surface: pygame.Surface, rect: pygame.Rect, *, wrong: bool) -> None:
-        pole_x = rect.centerx
-        pygame.draw.line(
-            surface, (0, 0, 0), (pole_x, rect.top + 7), (pole_x, rect.bottom - 8), 2
-        )
-        pygame.draw.polygon(
-            surface,
-            (255, 0, 0),
-            [
-                (pole_x, rect.top + 7),
-                (pole_x - 10, rect.top + 12),
-                (pole_x, rect.top + 17),
-            ],
-        )
-        if wrong:  # misplaced flag revealed at game end
-            pygame.draw.line(surface, (0, 0, 0), rect.topleft, rect.bottomright, 2)
-            pygame.draw.line(surface, (0, 0, 0), rect.bottomleft, rect.topright, 2)
-
-    def draw_header(self, surface: pygame.Surface, fonts: dict[str, pygame.font.Font]) -> None:
+    def draw_header(self, surface, fonts: FontCache) -> None:
         width = self.size[0]
 
         counter = f"{max(-99, min(999, self.game.flags_remaining)):03d}"
         self.draw_counter(surface, fonts, counter, x=MARGIN + 4)
 
         timer = f"{self.elapsed:03d}"
-        timer_width = fonts["counter"].size(timer)[0] + 12
+        timer_width = fonts.get(24).size(timer)[0] + 12
         self.draw_counter(surface, fonts, timer, x=width - MARGIN - 4 - timer_width)
 
         rect = self.face_rect
-        pygame.draw.rect(surface, HIDDEN_FACE, rect)
-        pygame.draw.line(surface, BEVEL_LIGHT, rect.topleft, rect.topright, 2)
-        pygame.draw.line(surface, BEVEL_LIGHT, rect.topleft, rect.bottomleft, 2)
-        pygame.draw.line(surface, BEVEL_DARK, rect.bottomleft, rect.bottomright, 2)
-        pygame.draw.line(surface, BEVEL_DARK, rect.topright, rect.bottomright, 2)
+        _bevel_button(surface, rect)
         face = FACES[self.game.state.value]
-        text = fonts["face"].render(face, True, (0, 0, 0))
+        text = fonts.get(16).render(face, True, (0, 0, 0))
         surface.blit(text, text.get_rect(center=rect.center))
 
-    def draw_counter(
-        self, surface: pygame.Surface, fonts: dict[str, pygame.font.Font], value: str, *, x: int
-    ) -> None:
-        text = fonts["counter"].render(value, True, COUNTER_FG)
+    def draw_counter(self, surface, fonts: FontCache, value: str, *, x: int) -> None:
+        text = fonts.get(24).render(value, True, COUNTER_FG)
         box = pygame.Rect(x, MARGIN + 6, text.get_width() + 12, 32)
         pygame.draw.rect(surface, COUNTER_BG, box)
         surface.blit(text, text.get_rect(center=box.center))
 
-    # -- main loop --------------------------------------------------------
+
+# -- menu screen ---------------------------------------------------------------
+
+
+class MenuScreen:
+    WIDTH = 460
+
+    def __init__(self, difficulty: str = "easy") -> None:
+        self.difficulty = difficulty
+        self.mode_buttons: list[tuple[pygame.Rect, str]] = []
+        y = 96
+        for mode in MODE_LABELS:
+            self.mode_buttons.append((pygame.Rect(50, y, self.WIDTH - 100, 58), mode))
+            y += 72
+        y += 14
+        self.difficulty_buttons: list[tuple[pygame.Rect, str]] = []
+        button_width = 110
+        x = (self.WIDTH - 3 * button_width - 2 * 12) // 2
+        for difficulty_key in DIFFICULTIES:
+            self.difficulty_buttons.append(
+                (pygame.Rect(x, y, button_width, 40), difficulty_key)
+            )
+            x += button_width + 12
+        self.height = y + 40 + 32
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return (self.WIDTH, self.height)
+
+    def handle_event(self, event: pygame.event.Event):
+        """Returns "quit", ("start", mode), or None."""
+        if event.type == pygame.QUIT:
+            return "quit"
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                return "quit"
+            if event.key in DIFFICULTY_KEYS:
+                self.difficulty = DIFFICULTY_KEYS[event.key]
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for rect, difficulty_key in self.difficulty_buttons:
+                if rect.collidepoint(event.pos):
+                    self.difficulty = difficulty_key
+                    return None
+            for rect, mode in self.mode_buttons:
+                if rect.collidepoint(event.pos):
+                    return ("start", mode)
+        return None
+
+    def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
+        surface.fill(BG)
+        title = fonts.get(30).render("MINESWEEPER", True, TEXT)
+        surface.blit(title, title.get_rect(center=(self.WIDTH // 2, 42)))
+        subtitle = fonts.get(14).render("choose a board", True, GRID_LINE)
+        surface.blit(subtitle, subtitle.get_rect(center=(self.WIDTH // 2, 70)))
+
+        for rect, mode in self.mode_buttons:
+            _bevel_button(surface, rect)
+            self.draw_mode_icon(surface, mode, rect)
+            label = fonts.get(18).render(MODE_LABELS[mode], True, TEXT)
+            surface.blit(
+                label, label.get_rect(midleft=(rect.left + 64, rect.centery))
+            )
+
+        for rect, difficulty_key in self.difficulty_buttons:
+            if difficulty_key == self.difficulty:
+                pygame.draw.rect(surface, SELECTED, rect)
+                pygame.draw.rect(surface, TEXT, rect, 2)
+            else:
+                _bevel_button(surface, rect)
+            label = fonts.get(15).render(difficulty_key.capitalize(), True, TEXT)
+            surface.blit(label, label.get_rect(center=rect.center))
+
+    def draw_mode_icon(self, surface, mode: str, button: pygame.Rect) -> None:
+        cx, cy = button.left + 34, button.centery
+        color, width = TEXT, 2
+        if mode == "square":
+            rect = pygame.Rect(cx - 13, cy - 13, 26, 26)
+            pygame.draw.rect(surface, color, rect, width)
+            pygame.draw.line(surface, color, (cx, cy - 13), (cx, cy + 13), width)
+            pygame.draw.line(surface, color, (cx - 13, cy), (cx + 13, cy), width)
+        elif mode == "triangle":
+            outer = [(cx, cy - 15), (cx - 17, cy + 13), (cx + 17, cy + 13)]
+            inner = [(cx - 8.5, cy - 1), (cx + 8.5, cy - 1), (cx, cy + 13)]
+            pygame.draw.polygon(surface, color, outer, width)
+            pygame.draw.polygon(surface, color, inner, width)
+        elif mode == "trigrid":
+            for i, up in enumerate((True, False, True)):
+                x = cx - 18 + i * 12
+                if up:
+                    points = [(x, cy + 11), (x + 24, cy + 11), (x + 12, cy - 11)]
+                else:
+                    points = [(x, cy - 11), (x + 24, cy - 11), (x + 12, cy + 11)]
+                pygame.draw.polygon(surface, color, points, width)
+        elif mode == "hex":
+            points = [
+                (cx + 15 * math.cos(math.radians(60 * k + 30)),
+                 cy + 15 * math.sin(math.radians(60 * k + 30)))
+                for k in range(6)
+            ]
+            pygame.draw.polygon(surface, color, points, width)
+
+
+# -- application -------------------------------------------------------------
+
+
+class App:
+    def __init__(self, mode: str | None = None, difficulty: str = "easy") -> None:
+        self.menu = MenuScreen(difficulty)
+        self.screen = (
+            GameScreen(mode, difficulty) if mode is not None else self.menu
+        )
 
     def run(self) -> None:
         pygame.init()
         pygame.display.set_caption("Minesweeper")
-        screen = pygame.display.set_mode(self.size)
-        fonts = make_fonts()
+        window = pygame.display.set_mode(self.screen.size)
+        fonts = FontCache()
         clock = pygame.time.Clock()
         running = True
         while running:
             for event in pygame.event.get():
-                running = self.handle_event(event)
-                if not running:
+                result = self.screen.handle_event(event)
+                if result == "quit":
+                    running = False
                     break
-                if screen.get_size() != self.size:  # difficulty changed
-                    screen = pygame.display.set_mode(self.size)
-            self.draw(screen, fonts)
+                if result == "menu":
+                    self.menu.difficulty = self.screen.difficulty
+                    self.screen = self.menu
+                elif isinstance(result, tuple) and result[0] == "start":
+                    self.screen = GameScreen(result[1], self.menu.difficulty)
+            if not running:
+                break
+            if window.get_size() != self.screen.size:
+                window = pygame.display.set_mode(self.screen.size)
+            self.screen.draw(window, fonts)
             pygame.display.flip()
             clock.tick(30)
         pygame.quit()
 
 
-def make_fonts() -> dict[str, pygame.font.Font]:
-    pygame.font.init()
-    return {
-        "cell": pygame.font.SysFont("menlo, couriernew, monospace", 20, bold=True),
-        "counter": pygame.font.SysFont("menlo, couriernew, monospace", 24, bold=True),
-        "face": pygame.font.SysFont("menlo, couriernew, monospace", 16, bold=True),
-    }
-
-
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="minesweeper-gui", description=__doc__)
+    parser = argparse.ArgumentParser(prog="minesweeper", description=__doc__)
+    parser.add_argument(
+        "--mode",
+        choices=sorted(MODE_LABELS),
+        help="skip the menu and start this board mode",
+    )
     parser.add_argument(
         "difficulty",
         nargs="?",
@@ -293,7 +471,7 @@ def main(argv: list[str] | None = None) -> int:
         help="board preset (default: easy)",
     )
     args = parser.parse_args(argv)
-    MinesweeperGUI(args.difficulty).run()
+    App(args.mode, args.difficulty).run()
     return 0
 
 
