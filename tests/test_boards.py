@@ -6,10 +6,10 @@ from minesweeper.boards import (
     MODES_3D,
     TOPOLOGIES,
     build_board,
-    c60_board,
     c80_board,
     cylinder_board,
     hex_board,
+    hexhex_board,
     mobius_board,
     newell_normal,
     sphere_board,
@@ -24,8 +24,8 @@ ALL_BOARDS = [
     triangle_board(6, 4),
     triangle_grid_board(5, 9, 4),
     hex_board(5, 6, 4),
+    hexhex_board(3, 5),
     sphere_board(7),
-    c60_board(4),
     c80_board(5),
     torus_board(12, 6, 9),
     mobius_board(20, 4, 10),
@@ -80,11 +80,10 @@ class TestCellCounts:
     def test_sphere_has_sixty_pentagons(self):
         assert len(sphere_board(7).adjacency) == 60
 
-    def test_c60_is_a_buckyball(self):
-        board = c60_board(4)
-        sizes = sorted(len(p) for p in board.polygons.values())
-        assert len(board.adjacency) == 32
-        assert sizes.count(5) == 12 and sizes.count(6) == 20
+    def test_hexhex_is_a_centered_hexagonal_number(self):
+        # 3R^2 + 3R + 1 cells
+        assert len(hexhex_board(3, 5).adjacency) == 37
+        assert len(hexhex_board(5, 12).adjacency) == 91
 
     def test_c80_is_a_chamfered_dodecahedron(self):
         board = c80_board(5)
@@ -149,14 +148,11 @@ class TestNeighborCounts:
         board = torus_board(12, 6, 9)
         assert (0, 0) in board.adjacency[(11, 5)]
 
-    def test_c60_pentagons_touch_only_hexagons(self):
-        board = c60_board(4)
-        for cell, neighbors in board.adjacency.items():
-            if cell[0] == "p":  # pentagon: ringed by 5 hexagons
-                assert len(neighbors) == 5
-                assert all(n[0] == "h" for n in neighbors)
-            else:  # hexagon: 3 pentagons + 3 hexagons
-                assert len(neighbors) == 6
+    def test_hexhex_neighbor_counts(self):
+        board = hexhex_board(3, 5)
+        assert len(board.adjacency[(0, 0)]) == 6  # center
+        assert len(board.adjacency[(3, 0)]) == 3  # corner of the big hexagon
+        assert len(board.adjacency[(1, -3)]) == 4  # edge of the big hexagon
 
     def test_mobius_seam_glues_flipped(self):
         # column ring-1 meets column 0 upside down

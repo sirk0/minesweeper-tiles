@@ -4,8 +4,9 @@ Run with ``python -m minesweeper``. The menu picks a topology (flat,
 sphere, donut, Möbius strip, cylinder), then a tiling and difficulty.
 In game: left-click reveals (on a revealed number: chords), right-click
 flags, the face button or ``n`` restarts, ``1``/``2``/``3`` switch
-difficulty, ``Escape`` goes back. On 3D boards, drag with the left
-button (or use the arrow keys) to rotate the surface.
+difficulty, the ``<`` button or ``Escape`` goes back to the menu. On 3D
+boards, drag with the left button (or use the arrow keys) to rotate the
+surface.
 """
 
 from __future__ import annotations
@@ -31,35 +32,43 @@ from minesweeper.game import CellState, Game, GameState
 MARGIN = 10
 HEADER = 56
 
-# modern dark palette
-BG = (26, 28, 35)
-HIDDEN_FACE = (86, 98, 132)
-REVEALED_FACE = (44, 48, 59)
-EXPLODED_FACE = (226, 67, 67)
-PANEL = (17, 18, 23)
-COUNTER_FG = (255, 99, 99)
-TEXT = (232, 235, 242)
-MUTED = (138, 146, 164)
-BUTTON = (46, 51, 64)
-BUTTON_HOVER = (62, 69, 86)
-ACCENT = (91, 140, 255)
-FLAG_COLOR = (255, 107, 107)
-MINE_COLOR = (216, 221, 232)
+# classic minesweeper grays
+BG = (192, 192, 192)
+HIDDEN_FACE = (189, 189, 189)
+REVEALED_FACE = (205, 205, 205)
+EXPLODED_FACE = (252, 84, 72)
+BEVEL_LIGHT = (250, 250, 250)
+BEVEL_DARK = (122, 122, 122)
+GRID_LINE = (166, 166, 166)
+PANEL = (24, 24, 26)
+COUNTER_FG = (255, 70, 60)
+TEXT = (38, 40, 44)
+MUTED = (108, 112, 120)
+BUTTON = (202, 202, 202)
+BUTTON_HOVER = (216, 216, 216)
+SELECTED = (170, 182, 202)
+FLAG_COLOR = (216, 32, 32)
+MINE_COLOR = (34, 36, 40)
 FACE_YELLOW = (255, 202, 76)
 
+# shiny steel blue used by the menu icons and the app icon
+ICON_BLUE = (74, 120, 202)
+ICON_BLUE_LIGHT = (128, 166, 230)
+ICON_BLUE_DARK = (42, 76, 142)
+
 NUMBER_COLORS = {
-    1: (100, 181, 246),
-    2: (129, 199, 132),
-    3: (229, 115, 115),
-    4: (186, 104, 200),
-    5: (255, 183, 77),
-    6: (77, 208, 225),
-    7: (240, 98, 146),
-    8: (207, 216, 220),
-    9: (255, 138, 101),
-    10: (174, 213, 129),
-    11: (149, 117, 205),
-    12: (224, 224, 224),
+    1: (28, 60, 220),
+    2: (30, 130, 44),
+    3: (215, 34, 34),
+    4: (18, 20, 144),
+    5: (134, 28, 28),
+    6: (36, 138, 138),
+    7: (30, 30, 32),
+    8: (118, 118, 122),
+    9: (128, 24, 128),
+    10: (190, 98, 8),
+    11: (170, 20, 88),
+    12: (60, 60, 64),
 }
 
 DIFFICULTY_KEYS = {pygame.K_1: "easy", pygame.K_2: "medium", pygame.K_3: "hard"}
@@ -68,7 +77,7 @@ DRAG_THRESHOLD = 5  # pixels of motion that turn a click into a rotation drag
 
 LIGHT = (0.37, 0.46, 0.81)  # normalized light direction for 3D shading
 
-CELL_GAP = 0.92  # cells are drawn slightly shrunk so seams show the background
+TILE_LIGHT_DIR = (-0.55, -0.83)  # screen-space light for the tile bevels
 
 
 # -- geometry helpers -------------------------------------------------------
@@ -79,7 +88,7 @@ def centroid(vertices: list[tuple[float, float]]) -> tuple[float, float]:
     return (sum(x for x, _ in vertices) / n, sum(y for _, y in vertices) / n)
 
 
-def shrink_polygon(vertices, factor: float = CELL_GAP):
+def shrink_polygon(vertices, factor: float):
     cx, cy = centroid(vertices)
     return [(cx + (x - cx) * factor, cy + (y - cy) * factor) for x, y in vertices]
 
@@ -130,6 +139,27 @@ def fill_polygon(surface, vertices, color) -> None:
 
 def scale_color(color, factor: float):
     return tuple(min(255, int(c * factor)) for c in color)
+
+
+def draw_tile(surface, vertices, base, *, raised: bool, shade: float = 1.0) -> None:
+    """A classic minesweeper tile on an arbitrary convex polygon: raised
+    tiles get light bevels on the edges facing the light (up-left) and
+    dark bevels opposite; revealed tiles lie flat with a thin outline."""
+    fill_polygon(surface, vertices, scale_color(base, shade))
+    cx, cy = centroid(vertices)
+    if raised:
+        inset = shrink_polygon(vertices, 0.93)
+        n = len(inset)
+        for i in range(n):
+            a, b = inset[i], inset[(i + 1) % n]
+            mx, my = (a[0] + b[0]) / 2 - cx, (a[1] + b[1]) / 2 - cy
+            length = math.hypot(mx, my) or 1.0
+            facing = (mx * TILE_LIGHT_DIR[0] + my * TILE_LIGHT_DIR[1]) / length
+            bevel = BEVEL_LIGHT if facing > 0 else BEVEL_DARK
+            pygame.draw.line(surface, scale_color(bevel, shade), a, b, 2)
+    else:
+        points = [(int(x), int(y)) for x, y in vertices]
+        pygame.gfxdraw.aapolygon(surface, points, scale_color(GRID_LINE, shade))
 
 
 # -- 3D math -----------------------------------------------------------------
@@ -194,7 +224,7 @@ def draw_mine(surface, center, radius) -> None:
 def draw_flag(surface, center, radius, *, wrong: bool) -> None:
     cx, cy = center
     top, bottom = cy - radius * 0.9, cy + radius * 0.9
-    pygame.draw.line(surface, TEXT, (cx, top), (cx, bottom), 2)
+    pygame.draw.line(surface, MINE_COLOR, (cx, top), (cx, bottom), 2)
     fill_polygon(
         surface,
         [(cx, top), (cx - radius * 0.9, top + radius * 0.45), (cx, top + radius * 0.9)],
@@ -202,8 +232,8 @@ def draw_flag(surface, center, radius, *, wrong: bool) -> None:
     )
     if wrong:  # misplaced flag revealed at game end
         r = radius * 0.95
-        pygame.draw.line(surface, EXPLODED_FACE, (cx - r, cy - r), (cx + r, cy + r), 3)
-        pygame.draw.line(surface, EXPLODED_FACE, (cx - r, cy + r), (cx + r, cy - r), 3)
+        pygame.draw.line(surface, MINE_COLOR, (cx - r, cy - r), (cx + r, cy + r), 3)
+        pygame.draw.line(surface, MINE_COLOR, (cx - r, cy + r), (cx + r, cy - r), 3)
 
 
 def draw_smiley(surface, center, radius: int, state: GameState) -> None:
@@ -243,35 +273,233 @@ def draw_smiley(surface, center, radius: int, state: GameState) -> None:
         pygame.draw.arc(surface, dark, mouth, math.radians(215), math.radians(325), 2)
 
 
-def make_icon(size: int = 64) -> pygame.Surface:
-    """App icon: a mine inside a hexagon."""
+def _gloss(surface, rect: pygame.Rect, alpha: int = 55, radius: int = 0) -> None:
+    """Blend a soft white highlight over the top part of ``rect``."""
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    top = pygame.Rect(rect.left, rect.top, rect.width, rect.height // 2)
+    pygame.draw.rect(overlay, (255, 255, 255, alpha), top, border_radius=radius)
+    surface.blit(overlay, (0, 0))
+
+
+def make_icon(size: int = 512) -> pygame.Surface:
+    """App icon: a mine in a hexagon on a macOS-style rounded square."""
     icon = pygame.Surface((size, size), pygame.SRCALPHA)
+    margin = int(size * 0.05)
+    plate = pygame.Rect(margin, margin, size - 2 * margin, size - 2 * margin)
+    corner = int(size * 0.225)
+
+    # base plate with a subtle vertical gradient
+    steps = 48
+    for i in range(steps):
+        t = i / (steps - 1)
+        color = tuple(int(a + (b - a) * t) for a, b in zip((238, 240, 244), (198, 202, 210)))
+        band = pygame.Rect(
+            plate.left,
+            plate.top + plate.height * i // steps,
+            plate.width,
+            plate.height // steps + 2,
+        )
+        strip = pygame.Surface(icon.get_size(), pygame.SRCALPHA)
+        pygame.draw.rect(strip, (*color, 255), band)
+        mask = pygame.Surface(icon.get_size(), pygame.SRCALPHA)
+        pygame.draw.rect(mask, (255, 255, 255, 255), plate, border_radius=corner)
+        strip.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+        icon.blit(strip, (0, 0))
+    pygame.draw.rect(icon, (150, 154, 162), plate, 2, border_radius=corner)
+
+    # steel-blue hexagon
     cx = cy = size // 2
-    r = size * 0.47
+    r = size * 0.335
     hexagon = [
         (cx + r * math.cos(math.radians(60 * k - 90)),
          cy + r * math.sin(math.radians(60 * k - 90)))
         for k in range(6)
     ]
-    fill_polygon(icon, hexagon, ACCENT)
-    body = int(size * 0.2)
-    spike = size * 0.33
+    fill_polygon(icon, hexagon, ICON_BLUE)
+    inset = shrink_polygon(hexagon, 0.94)
+    for i in range(6):
+        a, b = inset[i], inset[(i + 1) % 6]
+        mx, my = (a[0] + b[0]) / 2 - cx, (a[1] + b[1]) / 2 - cy
+        length = math.hypot(mx, my) or 1.0
+        facing = (mx * TILE_LIGHT_DIR[0] + my * TILE_LIGHT_DIR[1]) / length
+        bevel = ICON_BLUE_LIGHT if facing > 0 else ICON_BLUE_DARK
+        pygame.draw.line(icon, bevel, a, b, max(3, size // 56))
+
+    # the mine
+    body = int(size * 0.13)
+    spike = size * 0.21
     for dx, dy in ((1, 0), (0, 1), (0.7, 0.7), (0.7, -0.7)):
         start = (cx - dx * spike, cy - dy * spike)
         end = (cx + dx * spike, cy + dy * spike)
-        pygame.draw.line(icon, PANEL, start, end, max(2, size // 20))
-    pygame.gfxdraw.filled_circle(icon, cx, cy, body, PANEL)
-    pygame.gfxdraw.aacircle(icon, cx, cy, body, PANEL)
+        pygame.draw.line(icon, MINE_COLOR, start, end, max(3, size // 36))
+    pygame.gfxdraw.filled_circle(icon, cx, cy, body, MINE_COLOR)
+    pygame.gfxdraw.aacircle(icon, cx, cy, body, MINE_COLOR)
     glint = max(2, body // 3)
     pygame.gfxdraw.filled_circle(
         icon, cx - body // 3, cy - body // 3, glint, (255, 255, 255)
     )
+
+    _gloss(icon, plate, alpha=36, radius=corner)
     return icon
 
 
-def _button(surface, rect, *, hover: bool = False, selected: bool = False) -> None:
-    color = ACCENT if selected else (BUTTON_HOVER if hover else BUTTON)
-    pygame.draw.rect(surface, color, rect, border_radius=10)
+def bevel_rect(
+    surface, rect, fill, *, pressed: bool = False, border: int = 2
+) -> None:
+    pygame.draw.rect(surface, fill, rect)
+    top_left, bottom_right = (
+        (BEVEL_DARK, BEVEL_LIGHT) if pressed else (BEVEL_LIGHT, BEVEL_DARK)
+    )
+    pygame.draw.line(surface, top_left, rect.topleft, rect.topright, border)
+    pygame.draw.line(surface, top_left, rect.topleft, rect.bottomleft, border)
+    pygame.draw.line(surface, bottom_right, rect.bottomleft, rect.bottomright, border)
+    pygame.draw.line(surface, bottom_right, rect.topright, rect.bottomright, border)
+
+
+# -- menu icons ---------------------------------------------------------------
+
+ICON_SIZE = 44
+_icon_cache: dict[str, pygame.Surface] = {}
+
+
+def _hexagon_points(cx, cy, r, rotation=30):
+    return [
+        (cx + r * math.cos(math.radians(60 * k + rotation)),
+         cy + r * math.sin(math.radians(60 * k + rotation)))
+        for k in range(6)
+    ]
+
+
+def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_BLUE_DARK, width=5):
+    fill_polygon(surface, points, fill)
+    pts = [(int(x), int(y)) for x, y in points]
+    pygame.draw.lines(surface, outline, True, pts, width)
+    pygame.gfxdraw.aapolygon(surface, pts, outline)
+
+
+def _icon_gloss(surface, bbox: pygame.Rect, alpha: int = 70) -> None:
+    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    highlight = pygame.Rect(
+        bbox.left, bbox.top, bbox.width, int(bbox.height * 0.45)
+    )
+    pygame.draw.ellipse(overlay, (255, 255, 255, alpha), highlight)
+    surface.blit(overlay, (0, 0))
+
+
+def _render_icon(key: str) -> pygame.Surface:
+    """Draw a menu icon supersampled at 4x, then smooth-scale down."""
+    d = ICON_SIZE * 4
+    s = pygame.Surface((d, d), pygame.SRCALPHA)
+    c = d / 2
+
+    if key in ("flat", "square", "torus_tile"):
+        gap, tile = d * 0.04, d * 0.42
+        for ix in (0, 1):
+            for iy in (0, 1):
+                x = c - tile - gap / 2 + ix * (tile + gap)
+                y = c - tile - gap / 2 + iy * (tile + gap)
+                rect = [(x, y), (x + tile, y), (x + tile, y + tile), (x, y + tile)]
+                _icon_shape(s, rect)
+        _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.08, d * 0.84, d * 0.84))
+    elif key == "triangle":
+        outer = [(c, d * 0.08), (d * 0.05, d * 0.9), (d * 0.95, d * 0.9)]
+        _icon_shape(s, outer)
+        inner = [(c - d * 0.22, d * 0.49), (c + d * 0.22, d * 0.49), (c, d * 0.9)]
+        fill_polygon(s, inner, (0, 0, 0, 0))
+        pygame.draw.lines(
+            s, ICON_BLUE_DARK, True, [(int(x), int(y)) for x, y in inner], 5
+        )
+        _icon_gloss(s, pygame.Rect(d * 0.15, d * 0.1, d * 0.7, d * 0.7))
+    elif key == "trigrid":
+        w = d * 0.46
+        for i in range(3):
+            x = d * 0.04 + i * w * 0.5
+            if i % 2 == 0:
+                points = [(x, d * 0.85), (x + w, d * 0.85), (x + w / 2, d * 0.18)]
+            else:
+                points = [(x, d * 0.18), (x + w, d * 0.18), (x + w / 2, d * 0.85)]
+            _icon_shape(s, points)
+        _icon_gloss(s, pygame.Rect(d * 0.05, d * 0.12, d * 0.9, d * 0.75))
+    elif key == "hex":
+        _icon_shape(s, _hexagon_points(c, c, d * 0.44))
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.85))
+    elif key == "hexhex":
+        r = d * 0.155
+        centers = [(c, c)] + [
+            (c + 2 * r * 0.95 * math.cos(math.radians(60 * k)),
+             c + 2 * r * 0.95 * math.sin(math.radians(60 * k)))
+            for k in range(6)
+        ]
+        for hx, hy in centers:
+            _icon_shape(s, _hexagon_points(hx, hy, r), width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.08, d * 0.84, d * 0.84))
+    elif key in ("sphere", "c80"):
+        pygame.gfxdraw.filled_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
+        pygame.gfxdraw.aacircle(s, int(c), int(c), int(d * 0.44), ICON_BLUE_DARK)
+        pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.44), 4)
+        sides = 5
+        pent = [
+            (c + d * 0.2 * math.cos(math.radians(360 / sides * k - 90)),
+             c + d * 0.2 * math.sin(math.radians(360 / sides * k - 90)))
+            for k in range(sides)
+        ]
+        _icon_shape(s, pent, fill=ICON_BLUE_LIGHT, width=4)
+        if key == "c80":  # bond lines out of the pentagon, fullerene style
+            for k in range(sides):
+                angle = math.radians(360 / sides * k - 90)
+                x1 = c + d * 0.2 * math.cos(angle)
+                y1 = c + d * 0.2 * math.sin(angle)
+                x2 = c + d * 0.41 * math.cos(angle)
+                y2 = c + d * 0.41 * math.sin(angle)
+                pygame.draw.line(s, ICON_BLUE_DARK, (x1, y1), (x2, y2), 4)
+        _icon_gloss(s, pygame.Rect(d * 0.13, d * 0.06, d * 0.62, d * 0.62), 90)
+    elif key == "torus":
+        band = pygame.Rect(d * 0.04, d * 0.22, d * 0.92, d * 0.56)
+        pygame.draw.ellipse(s, ICON_BLUE, band)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, band, 4)
+        hole = pygame.Rect(0, 0, d * 0.34, d * 0.18)
+        hole.center = (int(c), int(c))
+        pygame.draw.ellipse(s, (0, 0, 0, 0), hole)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, hole, 4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.24, d * 0.8, d * 0.34), 80)
+    elif key == "mobius":
+        band = pygame.Rect(d * 0.05, d * 0.16, d * 0.9, d * 0.68)
+        pygame.draw.ellipse(s, ICON_BLUE, band)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, band, 4)
+        hole = pygame.Rect(0, 0, d * 0.42, d * 0.26)
+        hole.center = (int(c), int(c))
+        pygame.draw.ellipse(s, (0, 0, 0, 0), hole)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, hole, 4)
+        # the twist at the front
+        pygame.draw.line(s, ICON_BLUE_DARK, (c - d * 0.09, d * 0.84), (c + d * 0.09, d * 0.63), 6)
+        pygame.draw.line(s, ICON_BLUE_LIGHT, (c - d * 0.09, d * 0.63), (c + d * 0.09, d * 0.84), 6)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.18, d * 0.8, d * 0.3), 80)
+    elif key == "cylinder":
+        top = pygame.Rect(d * 0.18, d * 0.08, d * 0.64, d * 0.24)
+        body = [
+            (d * 0.18, d * 0.2), (d * 0.82, d * 0.2),
+            (d * 0.82, d * 0.8), (d * 0.18, d * 0.8),
+        ]
+        fill_polygon(s, body, ICON_BLUE)
+        bottom = pygame.Rect(d * 0.18, d * 0.68, d * 0.64, d * 0.24)
+        pygame.draw.ellipse(s, ICON_BLUE, bottom)
+        pygame.draw.arc(s, ICON_BLUE_DARK, bottom, math.radians(180), math.radians(360), 4)
+        pygame.draw.line(s, ICON_BLUE_DARK, (d * 0.18, d * 0.2), (d * 0.18, d * 0.8), 4)
+        pygame.draw.line(s, ICON_BLUE_DARK, (d * 0.82, d * 0.2), (d * 0.82, d * 0.8), 4)
+        pygame.draw.ellipse(s, ICON_BLUE_LIGHT, top)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, top, 4)
+        _icon_gloss(s, pygame.Rect(d * 0.2, d * 0.26, d * 0.6, d * 0.5), 60)
+    else:
+        pygame.gfxdraw.filled_circle(s, int(c), int(c), int(d * 0.4), ICON_BLUE)
+        pygame.gfxdraw.aacircle(s, int(c), int(c), int(d * 0.4), ICON_BLUE_DARK)
+
+    return pygame.transform.smoothscale(s, (ICON_SIZE, ICON_SIZE))
+
+
+def menu_icon(key: str) -> pygame.Surface:
+    if key not in _icon_cache:
+        _icon_cache[key] = _render_icon(key)
+    return _icon_cache[key]
 
 
 # -- game screens ------------------------------------------------------------
@@ -320,6 +548,11 @@ class BaseGameScreen:
     def face_rect(self) -> pygame.Rect:
         return pygame.Rect(self.size[0] // 2 - 20, MARGIN + 2, 40, 40)
 
+    @property
+    def menu_rect(self) -> pygame.Rect:
+        """The back-to-menu button in the header."""
+        return pygame.Rect(MARGIN, MARGIN + 4, 40, 36)
+
     # -- input ------------------------------------------------------------
 
     def handle_event(self, event: pygame.event.Event):
@@ -340,6 +573,12 @@ class BaseGameScreen:
             pygame.MOUSEBUTTONUP,
             pygame.MOUSEMOTION,
         ):
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and self.menu_rect.collidepoint(event.pos)
+            ):
+                return "menu"
             self._handle_mouse(event)
         return None
 
@@ -401,9 +640,9 @@ class BaseGameScreen:
 
         if state is CellState.REVEALED or show_mine:
             face = EXPLODED_FACE if cell == self.exploded else REVEALED_FACE
+            draw_tile(surface, vertices, face, raised=False, shade=shade)
         else:
-            face = HIDDEN_FACE
-        fill_polygon(surface, vertices, scale_color(face, shade))
+            draw_tile(surface, vertices, HIDDEN_FACE, raised=True, shade=shade)
 
         if show_mine:
             draw_mine(surface, center, glyph_radius)
@@ -420,23 +659,32 @@ class BaseGameScreen:
 
     def draw_header(self, surface, fonts: FontCache) -> None:
         width = self.size[0]
+        mouse = pygame.mouse.get_pos()
+
+        rect = self.menu_rect
+        bevel_rect(surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON)
+        arrow = [
+            (rect.centerx + 5, rect.centery - 8),
+            (rect.centerx - 5, rect.centery),
+            (rect.centerx + 5, rect.centery + 8),
+        ]
+        pygame.draw.lines(surface, TEXT, False, arrow, 3)
 
         counter = f"{max(-99, min(999, self.game.flags_remaining)):03d}"
-        self.draw_counter(surface, fonts, counter, x=MARGIN)
+        self.draw_counter(surface, fonts, counter, x=rect.right + 8)
 
         timer = f"{self.elapsed:03d}"
         timer_width = fonts.get(24).size(timer)[0] + 20
         self.draw_counter(surface, fonts, timer, x=width - MARGIN - timer_width)
 
-        rect = self.face_rect
-        hover = rect.collidepoint(pygame.mouse.get_pos())
-        _button(surface, rect, hover=hover)
-        draw_smiley(surface, rect.center, 14, self.game.state)
+        face = self.face_rect
+        bevel_rect(surface, face, BUTTON_HOVER if face.collidepoint(mouse) else BUTTON)
+        draw_smiley(surface, face.center, 14, self.game.state)
 
     def draw_counter(self, surface, fonts: FontCache, value: str, *, x: int) -> None:
         text = fonts.get(24).render(value, True, COUNTER_FG)
         box = pygame.Rect(x, MARGIN + 4, text.get_width() + 20, 36)
-        pygame.draw.rect(surface, PANEL, box, border_radius=10)
+        pygame.draw.rect(surface, PANEL, box, border_radius=6)
         surface.blit(text, text.get_rect(center=box.center))
 
 
@@ -448,10 +696,6 @@ class GameScreen(BaseGameScreen):
         self.polygons = {
             cell: [(x + offset_x, y + offset_y) for x, y in vertices]
             for cell, vertices in self.board.polygons.items()
-        }
-        self.display_polygons = {
-            cell: shrink_polygon(vertices)
-            for cell, vertices in self.polygons.items()
         }
         self.centers = {
             cell: centroid(vertices) for cell, vertices in self.polygons.items()
@@ -475,7 +719,7 @@ class GameScreen(BaseGameScreen):
     def draw_board(self, surface, fonts: FontCache) -> None:
         for cell in self.polygons:
             self.draw_cell(
-                surface, fonts, cell, self.display_polygons[cell],
+                surface, fonts, cell, self.polygons[cell],
                 self.centers[cell], self.glyph_radius,
             )
 
@@ -523,11 +767,11 @@ class GameScreen3D(BaseGameScreen):
                 continue
             light = n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]
             if two_sided:
-                shade = 0.62 + 0.38 * abs(light)
+                shade = 0.72 + 0.28 * abs(light)
                 if n[2] < 0:
-                    shade *= 0.78  # inside/back of the surface: dimmer
+                    shade *= 0.82  # inside/back of the surface: dimmer
             else:
-                shade = 0.72 + 0.28 * max(0.0, light)
+                shade = 0.78 + 0.22 * max(0.0, light)
             polygon = [
                 (cx + x * self.scale, cy - y * self.scale) for x, y, _ in rotated
             ]
@@ -586,7 +830,8 @@ class GameScreen3D(BaseGameScreen):
                 if moved < DRAG_THRESHOLD:
                     return
                 self._dragged = True
-            self.rotate(*event.rel)
+            # vertical drag is inverted: dragging up tilts the top toward you
+            self.rotate(event.rel[0], -event.rel[1])
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._drag_from is not None and not self._dragged:
                 cell = self.cell_at(event.pos)
@@ -597,10 +842,7 @@ class GameScreen3D(BaseGameScreen):
 
     def draw_board(self, surface, fonts: FontCache) -> None:
         for _, cell, polygon, center, glyph_radius, shade in self._project():
-            self.draw_cell(
-                surface, fonts, cell, shrink_polygon(polygon),
-                center, glyph_radius, shade,
-            )
+            self.draw_cell(surface, fonts, cell, polygon, center, glyph_radius, shade)
 
 
 def make_screen(mode: str, difficulty: str) -> BaseGameScreen:
@@ -703,84 +945,29 @@ class MenuScreen:
 
         if layout["back"] is not None:
             rect = layout["back"]
-            _button(surface, rect, hover=rect.collidepoint(mouse))
+            bevel_rect(
+                surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
+            )
             label = fonts.get(14).render("< back", True, TEXT)
             surface.blit(label, label.get_rect(center=rect.center))
 
         for rect, key, label_text in layout["items"]:
-            _button(surface, rect, hover=rect.collidepoint(mouse))
-            draw_menu_icon(surface, key, rect)
+            bevel_rect(
+                surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
+            )
+            icon = menu_icon(key)
+            surface.blit(icon, icon.get_rect(midleft=(rect.left + 10, rect.centery)))
             label = fonts.get(18).render(label_text, True, TEXT)
-            surface.blit(label, label.get_rect(midleft=(rect.left + 64, rect.centery)))
+            surface.blit(label, label.get_rect(midleft=(rect.left + 66, rect.centery)))
 
         for rect, difficulty_key in layout["difficulty"]:
             selected = difficulty_key == self.difficulty
-            _button(surface, rect, hover=rect.collidepoint(mouse), selected=selected)
-            color = PANEL if selected else TEXT
-            label = fonts.get(15).render(difficulty_key.capitalize(), True, color)
+            fill = SELECTED if selected else (
+                BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
+            )
+            bevel_rect(surface, rect, fill, pressed=selected)
+            label = fonts.get(15).render(difficulty_key.capitalize(), True, TEXT)
             surface.blit(label, label.get_rect(center=rect.center))
-
-
-def draw_menu_icon(surface, key: str, button: pygame.Rect) -> None:
-    cx, cy = button.left + 34, button.centery
-    color, width = TEXT, 2
-    if key in ("flat", "square", "torus_tile"):
-        rect = pygame.Rect(cx - 13, cy - 13, 26, 26)
-        pygame.draw.rect(surface, color, rect, width, border_radius=3)
-        pygame.draw.line(surface, color, (cx, cy - 13), (cx, cy + 13), width)
-        pygame.draw.line(surface, color, (cx - 13, cy), (cx + 13, cy), width)
-    elif key == "triangle":
-        outer = [(cx, cy - 15), (cx - 17, cy + 13), (cx + 17, cy + 13)]
-        inner = [(cx - 8.5, cy - 1), (cx + 8.5, cy - 1), (cx, cy + 13)]
-        pygame.draw.polygon(surface, color, outer, width)
-        pygame.draw.polygon(surface, color, inner, width)
-    elif key == "trigrid":
-        for i, up in enumerate((True, False, True)):
-            x = cx - 18 + i * 12
-            if up:
-                points = [(x, cy + 11), (x + 24, cy + 11), (x + 12, cy - 11)]
-            else:
-                points = [(x, cy - 11), (x + 24, cy - 11), (x + 12, cy + 11)]
-            pygame.draw.polygon(surface, color, points, width)
-    elif key == "hex":
-        points = [
-            (cx + 15 * math.cos(math.radians(60 * k + 30)),
-             cy + 15 * math.sin(math.radians(60 * k + 30)))
-            for k in range(6)
-        ]
-        pygame.draw.polygon(surface, color, points, width)
-    elif key == "sphere":
-        pygame.draw.circle(surface, color, (cx, cy), 15, width)
-        points = [
-            (cx + 8 * math.cos(math.radians(72 * k - 90)),
-             cy + 8 * math.sin(math.radians(72 * k - 90)))
-            for k in range(5)
-        ]
-        pygame.draw.polygon(surface, color, points, width)
-    elif key in ("c60", "c80"):
-        pygame.draw.circle(surface, color, (cx, cy), 15, width)
-        sides = 5 if key == "c60" else 6
-        points = [
-            (cx - 5 + 7 * math.cos(math.radians(360 / sides * k - 90)),
-             cy + 7 * math.sin(math.radians(360 / sides * k - 90)))
-            for k in range(sides)
-        ]
-        pygame.draw.polygon(surface, color, points, width)
-    elif key == "torus":
-        pygame.draw.ellipse(surface, color, pygame.Rect(cx - 16, cy - 10, 32, 20), width)
-        pygame.draw.ellipse(surface, color, pygame.Rect(cx - 6, cy - 4, 12, 8), width)
-    elif key == "mobius":
-        pygame.draw.ellipse(surface, color, pygame.Rect(cx - 16, cy - 12, 32, 24), width)
-        pygame.draw.line(surface, color, (cx - 5, cy + 11), (cx + 5, cy - 11), width)
-        pygame.draw.line(surface, color, (cx - 5, cy - 11), (cx + 5, cy + 11), width)
-    elif key == "cylinder":
-        pygame.draw.ellipse(surface, color, pygame.Rect(cx - 12, cy - 15, 24, 9), width)
-        pygame.draw.line(surface, color, (cx - 12, cy - 11), (cx - 12, cy + 11), width)
-        pygame.draw.line(surface, color, (cx + 12, cy - 11), (cx + 12, cy + 11), width)
-        pygame.draw.arc(surface, color, pygame.Rect(cx - 12, cy + 7, 24, 9),
-                        math.radians(180), math.radians(360), width)
-    else:
-        pygame.draw.circle(surface, color, (cx, cy), 13, width)
 
 
 # -- application -------------------------------------------------------------

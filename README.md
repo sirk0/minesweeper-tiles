@@ -3,11 +3,10 @@
 A minesweeper clone in Python (pygame). Pick a surface, then a tiling:
 
 - **Flat surface** — classic squares (8 neighbors), a big triangle
-  subdivided into small triangles (12), a triangle grid (12), or
-  hexagons (6)
+  subdivided into small triangles (12), a triangle grid (12), hexagons
+  (6), or a big hexagon composed of small hexagons (6)
 - **Sphere (3D)** — 60 pentagons (a pentagonal hexecontahedron, 7
-  neighbors), a C60 fullerene / buckyball (12 pentagons + 20 hexagons),
-  or a C80 fullerene (12 pentagons + 30 hexagons)
+  neighbors) or a C80 fullerene (12 pentagons + 30 hexagons)
 - **Donut (3D)** — quadrilaterals wrapping in both directions: every
   cell has 8 neighbors, there are no border cells
 - **Möbius strip (3D)** — quadrilaterals on a one-sided surface; the
@@ -29,7 +28,7 @@ In game:
 - **Right-click** — toggle a flag
 - **Face button** or `n` — new game
 - `1` / `2` / `3` — switch to easy / medium / hard
-- `Escape` — back to the menu
+- **`<` button** or `Escape` — back to the menu
 
 On 3D boards, **drag** with the left button (or use the arrow keys) to
 rotate the surface; a short click reveals.

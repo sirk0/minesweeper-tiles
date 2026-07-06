@@ -27,8 +27,8 @@ MODE_LABELS = {
     "triangle": "Triangle of triangles",
     "trigrid": "Triangle grid",
     "hex": "Hexagons",
+    "hexhex": "Hexagon of hexagons",
     "sphere": "60 pentagons",
-    "c60": "C60 fullerene",
     "c80": "C80 fullerene",
     "torus": "Squares",
     "mobius": "Squares",
@@ -37,14 +37,14 @@ MODE_LABELS = {
 
 # The menu picks a topology first, then one of its tilings.
 TOPOLOGIES = {
-    "flat": ("Flat surface", ("square", "triangle", "trigrid", "hex")),
-    "sphere": ("Sphere", ("sphere", "c60", "c80")),
+    "flat": ("Flat surface", ("square", "triangle", "trigrid", "hex", "hexhex")),
+    "sphere": ("Sphere", ("sphere", "c80")),
     "torus": ("Donut", ("torus",)),
     "mobius": ("Möbius strip", ("mobius",)),
     "cylinder": ("Cylinder", ("cylinder",)),
 }
 
-MODES_3D = frozenset({"sphere", "c60", "c80", "torus", "mobius", "cylinder"})
+MODES_3D = frozenset({"sphere", "c80", "torus", "mobius", "cylinder"})
 
 
 @dataclass(frozen=True)
@@ -144,17 +144,31 @@ def triangle_grid_board(
     return _build("trigrid", cells, (scale / 2, scale * ROOT3 / 2), mine_count)
 
 
+_HEX_VERTEX_OFFSETS = [(0, -2), (1, -1), (1, 1), (0, 2), (-1, 1), (-1, -1)]
+
+
 def hex_board(rows: int, cols: int, mine_count: int, scale: float = 20) -> Board:
     """Pointy-top hexagons in odd-r offset layout; ``scale`` is the hexagon
     circumradius. Lattice units: x = sqrt(3)/2 * scale, y = scale / 2."""
-    offsets = [(0, -2), (1, -1), (1, 1), (0, 2), (-1, 1), (-1, -1)]
     cells = {}
     for r in range(rows):
         for c in range(cols):
             kx = 2 * c + (r % 2) + 1
             ky = 3 * r + 2
-            cells[(r, c)] = [(kx + ox, ky + oy) for ox, oy in offsets]
+            cells[(r, c)] = [(kx + ox, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS]
     return _build("hex", cells, (scale * ROOT3 / 2, scale / 2), mine_count)
+
+
+def hexhex_board(radius: int, mine_count: int, scale: float = 20) -> Board:
+    """A big hexagon composed of small hexagons: all axial coordinates
+    (q, r) within ``radius`` of the center, 3r^2 + 3r + 1 cells."""
+    cells = {}
+    for q in range(-radius, radius + 1):
+        for r in range(max(-radius, -q - radius), min(radius, -q + radius) + 1):
+            kx = 2 * q + r + 2 * radius + 1
+            ky = 3 * r + 3 * radius + 2
+            cells[(q, r)] = [(kx + ox, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS]
+    return _build("hexhex", cells, (scale * ROOT3 / 2, scale / 2), mine_count)
 
 
 # -- 3D helpers --------------------------------------------------------------
@@ -295,43 +309,6 @@ def sphere_board(mine_count: int) -> Board3D:
                 edge_key(v, w, 2),
             ]
     return _sphere_board3d("sphere", cells, positions, mine_count)
-
-
-def c60_board(mine_count: int) -> Board3D:
-    """A C60 fullerene (buckyball / truncated icosahedron): 12 pentagons
-    and 20 hexagons, projected onto the unit sphere.
-
-    Truncate each icosahedron vertex a third of the way along its edges:
-    faces become hexagons, vertices become pentagons.
-    """
-    vertices, faces = _icosahedron()
-    positions: dict[Hashable, Vec3] = {}
-    neighbors: dict[int, set[int]] = defaultdict(set)
-    for a, b, c in faces:
-        neighbors[a].update((b, c))
-        neighbors[b].update((a, c))
-        neighbors[c].update((a, b))
-
-    def cut_key(u: int, v: int):
-        """The truncation point on edge (u, v) closer to u."""
-        key = ("t", u, v)
-        a, b = vertices[u], vertices[v]
-        positions[key] = _normalize(
-            tuple(pa + (pb - pa) / 3 for pa, pb in zip(a, b))
-        )
-        return key
-
-    cells: dict[Cell, list] = {}
-    for face_index, (a, b, c) in enumerate(faces):
-        cells[("h", face_index)] = [
-            cut_key(a, b), cut_key(b, a),
-            cut_key(b, c), cut_key(c, b),
-            cut_key(c, a), cut_key(a, c),
-        ]
-    for v in range(12):
-        ring = [(cut_key(v, w), positions[cut_key(v, w)]) for w in neighbors[v]]
-        cells[("p", v)] = _tangent_order(vertices[v], ring)
-    return _sphere_board3d("c60", cells, positions, mine_count)
 
 
 def c80_board(mine_count: int) -> Board3D:
@@ -537,15 +514,15 @@ _PRESETS = {
         "medium": lambda: hex_board(15, 13, 30, scale=20),
         "hard": lambda: hex_board(20, 17, 68, scale=17),
     },
+    "hexhex": {
+        "easy": lambda: hexhex_board(5, 12, scale=25),
+        "medium": lambda: hexhex_board(7, 28, scale=21),
+        "hard": lambda: hexhex_board(9, 58, scale=18),
+    },
     "sphere": {
         "easy": lambda: sphere_board(7),
         "medium": lambda: sphere_board(10),
         "hard": lambda: sphere_board(14),
-    },
-    "c60": {
-        "easy": lambda: c60_board(4),
-        "medium": lambda: c60_board(6),
-        "hard": lambda: c60_board(8),
     },
     "c80": {
         "easy": lambda: c80_board(5),

@@ -334,7 +334,7 @@ class TestMenu:
     def test_choosing_tiling_starts_the_game(self):
         menu = MenuScreen()
         self.click_item(menu, "sphere")
-        assert self.click_item(menu, "c60") == ("start", "c60")
+        assert self.click_item(menu, "c80") == ("start", "c80")
 
     def test_every_tiling_is_reachable(self):
         for topology, (_, modes) in TOPOLOGIES.items():
@@ -383,9 +383,55 @@ class TestMenu:
 
 
 class TestIcon:
-    def test_icon_is_drawn(self):
+    def test_app_icon_is_high_resolution(self):
         icon = make_icon()
-        assert icon.get_size() == (64, 64)
+        assert icon.get_size() == (512, 512)
         # opaque in the middle (the mine), transparent at the corners
-        assert icon.get_at((32, 32))[3] == 255
-        assert icon.get_at((1, 1))[3] == 0
+        # (macOS-style rounded plate with a margin)
+        assert icon.get_at((256, 256))[3] == 255
+        assert icon.get_at((2, 2))[3] == 0
+
+    def test_menu_icons_render_for_every_key(self):
+        from minesweeper.gui import ICON_SIZE, menu_icon
+
+        for key in list(TOPOLOGIES) + list(MODE_LABELS):
+            icon = menu_icon(key)
+            assert icon.get_size() == (ICON_SIZE, ICON_SIZE)
+            opaque = any(
+                icon.get_at((x, y))[3] > 0
+                for x in range(0, ICON_SIZE, 6)
+                for y in range(0, ICON_SIZE, 6)
+            )
+            assert opaque, key
+
+
+class TestHeaderMenuButton:
+    def test_menu_button_returns_menu_2d(self):
+        screen = GameScreen("square", "easy")
+        event = mouse_event(screen.menu_rect.center)
+        assert screen.handle_event(event) == "menu"
+
+    def test_menu_button_returns_menu_3d(self):
+        screen = GameScreen3D("sphere", "easy")
+        event = mouse_event(screen.menu_rect.center)
+        assert screen.handle_event(event) == "menu"
+        assert screen._drag_from is None  # click did not start a drag
+
+
+class TestDragDirection:
+    def test_vertical_drag_is_inverted(self):
+        dragged = GameScreen3D("sphere", "easy")
+        reference = GameScreen3D("sphere", "easy")
+        pos = (200, 300)
+        dragged.handle_event(mouse_event(pos))
+        dragged.handle_event(
+            pygame.event.Event(
+                pygame.MOUSEMOTION,
+                pos=(pos[0], pos[1] + 40),
+                rel=(0, 40),
+                buttons=(1, 0, 0),
+            )
+        )
+        # dragging down by 40 px must equal rotate(0, -40)
+        reference.rotate(0, -40)
+        assert dragged.rotation == reference.rotation
