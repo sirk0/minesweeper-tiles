@@ -386,11 +386,35 @@ def _icon_gloss(surface, bbox: pygame.Rect, alpha: int = 70) -> None:
     surface.blit(overlay, (0, 0))
 
 
+def _icon_badge(s, cx, cy, r, shape: str) -> None:
+    """A small light shape marking which tiling a surface uses."""
+    if shape == "tri":
+        points = [(cx, cy - r), (cx - r * 0.95, cy + r * 0.8), (cx + r * 0.95, cy + r * 0.8)]
+    elif shape == "hex":
+        points = _hexagon_points(cx, cy, r)
+    else:  # square
+        points = [(cx - r, cy - r), (cx + r, cy - r), (cx + r, cy + r), (cx - r, cy + r)]
+    _icon_shape(s, points, fill=ICON_BLUE_LIGHT, width=4)
+
+
+# which badge each 3D tiling variant gets on its family's base icon
+_ICON_FAMILIES = {
+    "torustri": ("torus", "tri"),
+    "torushex": ("torus", "hex"),
+    "mobiustri": ("mobius", "tri"),
+    "mobiushex": ("mobius", "hex"),
+    "cyltri": ("cylinder", "tri"),
+    "cylhex": ("cylinder", "hex"),
+}
+
+
 def _render_icon(key: str) -> pygame.Surface:
     """Draw a menu icon supersampled at 4x, then smooth-scale down."""
     d = ICON_SIZE * 4
     s = pygame.Surface((d, d), pygame.SRCALPHA)
     c = d / 2
+
+    key, badge = _ICON_FAMILIES.get(key, (key, None))
 
     if key in ("flat", "square", "torus_tile"):
         gap, tile = d * 0.04, d * 0.42
@@ -433,25 +457,29 @@ def _render_icon(key: str) -> pygame.Surface:
         for hx, hy in centers:
             _icon_shape(s, _hexagon_points(hx, hy, r), width=4)
         _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.08, d * 0.84, d * 0.84))
-    elif key in ("sphere", "c80"):
+    elif key in ("sphere", "c80", "c180", "spheretri"):
         pygame.gfxdraw.filled_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
         pygame.gfxdraw.aacircle(s, int(c), int(c), int(d * 0.44), ICON_BLUE_DARK)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.44), 4)
-        sides = 5
-        pent = [
-            (c + d * 0.2 * math.cos(math.radians(360 / sides * k - 90)),
-             c + d * 0.2 * math.sin(math.radians(360 / sides * k - 90)))
-            for k in range(sides)
-        ]
-        _icon_shape(s, pent, fill=ICON_BLUE_LIGHT, width=4)
-        if key == "c80":  # bond lines out of the pentagon, fullerene style
-            for k in range(sides):
-                angle = math.radians(360 / sides * k - 90)
-                x1 = c + d * 0.2 * math.cos(angle)
-                y1 = c + d * 0.2 * math.sin(angle)
-                x2 = c + d * 0.41 * math.cos(angle)
-                y2 = c + d * 0.41 * math.sin(angle)
-                pygame.draw.line(s, ICON_BLUE_DARK, (x1, y1), (x2, y2), 4)
+        if key == "spheretri":
+            _icon_badge(s, c, c, d * 0.2, "tri")
+        else:
+            # pentagon center for the pentagonal solids, hexagon for C180
+            sides = 6 if key == "c180" else 5
+            inner = [
+                (c + d * 0.2 * math.cos(math.radians(360 / sides * k - 90)),
+                 c + d * 0.2 * math.sin(math.radians(360 / sides * k - 90)))
+                for k in range(sides)
+            ]
+            _icon_shape(s, inner, fill=ICON_BLUE_LIGHT, width=4)
+            if key in ("c80", "c180"):  # bond lines, fullerene style
+                for k in range(sides):
+                    angle = math.radians(360 / sides * k - 90)
+                    x1 = c + d * 0.2 * math.cos(angle)
+                    y1 = c + d * 0.2 * math.sin(angle)
+                    x2 = c + d * 0.41 * math.cos(angle)
+                    y2 = c + d * 0.41 * math.sin(angle)
+                    pygame.draw.line(s, ICON_BLUE_DARK, (x1, y1), (x2, y2), 4)
         _icon_gloss(s, pygame.Rect(d * 0.13, d * 0.06, d * 0.62, d * 0.62), 90)
     elif key == "torus":
         band = pygame.Rect(d * 0.04, d * 0.22, d * 0.92, d * 0.56)
@@ -492,6 +520,14 @@ def _render_icon(key: str) -> pygame.Surface:
     else:
         pygame.gfxdraw.filled_circle(s, int(c), int(c), int(d * 0.4), ICON_BLUE)
         pygame.gfxdraw.aacircle(s, int(c), int(c), int(d * 0.4), ICON_BLUE_DARK)
+
+    if badge is not None:
+        badge_pos = {
+            "torus": (c, d * 0.31, d * 0.085),
+            "mobius": (c, d * 0.27, d * 0.085),
+            "cylinder": (c, d * 0.5, d * 0.11),
+        }[key]
+        _icon_badge(s, badge_pos[0], badge_pos[1], badge_pos[2], badge)
 
     return pygame.transform.smoothscale(s, (ICON_SIZE, ICON_SIZE))
 
@@ -733,10 +769,16 @@ class GameScreen3D(BaseGameScreen):
 
     VIEWPORT = 540
     ROTATE_SPEED = 0.008  # radians per pixel of drag
-    TILT = {"torus": -1.0, "mobius": -0.8, "cylinder": -0.35}
+    TILT = {"torus": -1.0, "mobius": -0.8, "cyl": -0.35}  # by mode prefix
+
+    def _initial_rotation(self):
+        for prefix, angle in self.TILT.items():
+            if self.mode.startswith(prefix):
+                return rot_x(angle)
+        return IDENTITY
 
     def _setup_geometry(self) -> None:
-        self.rotation = rot_x(self.TILT[self.mode]) if self.mode in self.TILT else IDENTITY
+        self.rotation = self._initial_rotation()
         self.scale = (self.VIEWPORT / 2 - 24) / self.board.radius
         self._drag_from = None
         self._dragged = False

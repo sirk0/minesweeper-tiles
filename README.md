@@ -6,12 +6,17 @@ A minesweeper clone in Python (pygame). Pick a surface, then a tiling:
   subdivided into small triangles (12), a triangle grid (12), hexagons
   (6), or a big hexagon composed of small hexagons (6)
 - **Sphere (3D)** — 60 pentagons (a pentagonal hexecontahedron, 7
-  neighbors) or a C80 fullerene (12 pentagons + 30 hexagons)
-- **Donut (3D)** — quadrilaterals wrapping in both directions: every
-  cell has 8 neighbors, there are no border cells
-- **Möbius strip (3D)** — quadrilaterals on a one-sided surface; the
-  strip glues to itself with a flip
-- **Cylinder (3D)** — quadrilaterals around an open tube
+  neighbors), a C80 fullerene (12 pentagons + 30 hexagons), a C180
+  fullerene (12 pentagons + 80 hexagons), or 80 geodesic triangles.
+  (A sphere cannot be tiled with hexagons alone — Euler's formula
+  forces 12 pentagons in.)
+- **Donut (3D)** — squares, triangles, or pure hexagons (possible
+  because the torus has Euler characteristic 0); the grid wraps in
+  both directions, so there are no border cells
+- **Möbius strip (3D)** — squares, triangles, or hexagons on a
+  one-sided surface; the strip glues to itself with a flip
+- **Cylinder (3D)** — squares, triangles, or hexagons around an open
+  tube
 
 ## Play
 

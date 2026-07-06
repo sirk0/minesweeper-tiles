@@ -7,14 +7,22 @@ from minesweeper.boards import (
     TOPOLOGIES,
     build_board,
     c80_board,
+    c180_board,
     cylinder_board,
+    cylinder_hex_board,
+    cylinder_triangle_board,
     hex_board,
     hexhex_board,
     mobius_board,
+    mobius_hex_board,
+    mobius_triangle_board,
     newell_normal,
     sphere_board,
+    sphere_triangle_board,
     square_board,
     torus_board,
+    torus_hex_board,
+    torus_triangle_board,
     triangle_board,
     triangle_grid_board,
 )
@@ -27,9 +35,17 @@ ALL_BOARDS = [
     hexhex_board(3, 5),
     sphere_board(7),
     c80_board(5),
+    c180_board(10),
+    sphere_triangle_board(10),
     torus_board(12, 6, 9),
+    torus_triangle_board(10, 5, 12),
+    torus_hex_board(6, 12, 9),
     mobius_board(20, 4, 10),
+    mobius_triangle_board(14, 4, 13),
+    mobius_hex_board(14, 3, 6),
     cylinder_board(12, 7, 10),
+    cylinder_triangle_board(16, 6, 11),
+    cylinder_hex_board(12, 6, 9),
 ]
 
 
@@ -97,6 +113,25 @@ class TestCellCounts:
     def test_mobius_and_cylinder(self):
         assert len(mobius_board(20, 4, 10).adjacency) == 80
         assert len(cylinder_board(12, 7, 10).adjacency) == 84
+
+    def test_c180_is_goldberg_gp30(self):
+        board = c180_board(10)
+        sizes = sorted(len(p) for p in board.polygons.values())
+        assert len(board.adjacency) == 92
+        assert sizes.count(5) == 12 and sizes.count(6) == 80
+
+    def test_geodesic_sphere_has_80_triangles(self):
+        board = sphere_triangle_board(10)
+        assert len(board.adjacency) == 80
+        assert all(len(p) == 3 for p in board.polygons.values())
+
+    def test_triangle_and_hex_surface_counts(self):
+        assert len(torus_triangle_board(10, 5, 12).adjacency) == 100
+        assert len(torus_hex_board(6, 12, 9).adjacency) == 72
+        assert len(mobius_triangle_board(14, 4, 13).adjacency) == 112
+        assert len(mobius_hex_board(14, 3, 6).adjacency) == 42
+        assert len(cylinder_triangle_board(16, 6, 11).adjacency) == 96
+        assert len(cylinder_hex_board(12, 6, 9).adjacency) == 72
 
 
 class TestPolygonShapes:
@@ -166,6 +201,30 @@ class TestNeighborCounts:
         assert len(board.adjacency[(3, 3)]) == 8  # interior
         assert len(board.adjacency[(3, 0)]) == 5  # open bottom edge
 
+    def test_hex_torus_is_borderless(self):
+        # pure hexagonal tiling: only possible because the torus has
+        # Euler characteristic 0
+        board = torus_hex_board(6, 12, 9)
+        assert {len(n) for n in board.adjacency.values()} == {6}
+
+    def test_triangle_torus_is_borderless(self):
+        board = torus_triangle_board(10, 5, 12)
+        assert {len(n) for n in board.adjacency.values()} == {12}
+
+    def test_hex_mobius_seam_glues_flipped(self):
+        board = mobius_hex_board(14, 3, 6)
+        # column ring-1 meets column 0 with rows flipped (row 0 -> row 2)
+        assert (0, 0) in board.adjacency[(2, 13)]
+        assert (2, 0) in board.adjacency[(0, 13)]
+
+    def test_hex_mobius_requires_odd_rows(self):
+        with pytest.raises(ValueError):
+            mobius_hex_board(14, 4, 6)
+
+    def test_triangle_cylinder_requires_even_ring(self):
+        with pytest.raises(ValueError):
+            cylinder_triangle_board(15, 6, 11)
+
     @pytest.mark.parametrize("mode", ["hex", "trigrid"])
     @pytest.mark.parametrize("difficulty", DIFFICULTIES)
     def test_flat_grids_are_roughly_square(self, mode, difficulty):
@@ -173,11 +232,18 @@ class TestNeighborCounts:
         assert 0.85 < board.width / board.height < 1.18
 
     def test_polygons_face_outward(self):
-        for board in (sphere_board(7), torus_board(12, 6, 9)):
+        for board in (
+            sphere_board(7),
+            c180_board(10),
+            sphere_triangle_board(10),
+            torus_board(12, 6, 9),
+            torus_triangle_board(10, 5, 12),
+            torus_hex_board(6, 12, 9),
+        ):
             for cell, polygon in board.polygons.items():
                 normal = newell_normal(polygon)
                 centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
-                if board.mode == "sphere":
+                if board.mode in ("sphere", "c180", "spheretri"):
                     outward = centroid
                 else:
                     import math

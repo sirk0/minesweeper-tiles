@@ -30,21 +30,38 @@ MODE_LABELS = {
     "hexhex": "Hexagon of hexagons",
     "sphere": "60 pentagons",
     "c80": "C80 fullerene",
+    "c180": "C180 fullerene",
+    "spheretri": "Triangles",
     "torus": "Squares",
+    "torustri": "Triangles",
+    "torushex": "Hexagons",
     "mobius": "Squares",
+    "mobiustri": "Triangles",
+    "mobiushex": "Hexagons",
     "cylinder": "Squares",
+    "cyltri": "Triangles",
+    "cylhex": "Hexagons",
 }
 
-# The menu picks a topology first, then one of its tilings.
+# The menu picks a topology first, then one of its tilings. A sphere
+# cannot be tiled with hexagons alone (Euler's formula forces 12
+# pentagons in), so the sphere offers fullerenes instead.
 TOPOLOGIES = {
     "flat": ("Flat surface", ("square", "triangle", "trigrid", "hex", "hexhex")),
-    "sphere": ("Sphere", ("sphere", "c80")),
-    "torus": ("Donut", ("torus",)),
-    "mobius": ("Möbius strip", ("mobius",)),
-    "cylinder": ("Cylinder", ("cylinder",)),
+    "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri")),
+    "torus": ("Donut", ("torus", "torustri", "torushex")),
+    "mobius": ("Möbius strip", ("mobius", "mobiustri", "mobiushex")),
+    "cylinder": ("Cylinder", ("cylinder", "cyltri", "cylhex")),
 }
 
-MODES_3D = frozenset({"sphere", "c80", "torus", "mobius", "cylinder"})
+MODES_3D = frozenset(
+    {
+        "sphere", "c80", "c180", "spheretri",
+        "torus", "torustri", "torushex",
+        "mobius", "mobiustri", "mobiushex",
+        "cylinder", "cyltri", "cylhex",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -311,36 +328,47 @@ def sphere_board(mine_count: int) -> Board3D:
     return _sphere_board3d("sphere", cells, positions, mine_count)
 
 
-def c80_board(mine_count: int) -> Board3D:
-    """A C80 fullerene (chamfered dodecahedron): 12 pentagons and 30
-    hexagons, projected onto the unit sphere.
+def _geodesic(frequency: int) -> tuple[dict, list[tuple]]:
+    """A geodesic icosahedron: every face subdivided into ``frequency**2``
+    triangles, all vertices projected onto the unit sphere.
 
-    Built as the dual of a frequency-2 geodesic icosahedron: subdivide
-    each face into 4 triangles, then make one cell per geodesic vertex
-    out of its surrounding triangle centers.
+    Returns (positions, triangles). Vertex keys are gcd-normalized
+    barycentric weights over the icosahedron corners, so vertices on
+    shared edges match exactly across faces.
     """
     vertices, faces = _icosahedron()
     positions: dict[Hashable, Vec3] = {}
-
-    def original_key(i: int):
-        key = ("v", i)
-        positions[key] = _normalize(vertices[i])
-        return key
-
-    def mid_key(u: int, v: int):
-        key = ("m", min(u, v), max(u, v))
-        a, b = vertices[u], vertices[v]
-        positions[key] = _normalize(
-            tuple((pa + pb) / 2 for pa, pb in zip(a, b))
-        )
-        return key
-
     triangles: list[tuple] = []
-    for a, b, c in faces:
-        ab, bc, ca = mid_key(a, b), mid_key(b, c), mid_key(c, a)
-        va, vb, vc = original_key(a), original_key(b), original_key(c)
-        triangles += [(va, ab, ca), (vb, bc, ab), (vc, ca, bc), (ab, bc, ca)]
+    for face in faces:
+        corners = [vertices[v] for v in face]
 
+        def key(i: int, j: int):
+            weights = (frequency - i - j, i, j)
+            items = [(v, w) for v, w in zip(face, weights) if w > 0]
+            g = math.gcd(*(w for _, w in items))
+            vertex_key = tuple(sorted((v, w // g) for v, w in items))
+            if vertex_key not in positions:
+                positions[vertex_key] = _normalize(
+                    tuple(
+                        sum(w * c[axis] for w, c in zip(weights, corners))
+                        for axis in range(3)
+                    )
+                )
+            return vertex_key
+
+        for i in range(frequency):
+            for j in range(frequency - i):
+                triangles.append((key(i, j), key(i + 1, j), key(i, j + 1)))
+                if i + j < frequency - 1:
+                    triangles.append((key(i + 1, j), key(i + 1, j + 1), key(i, j + 1)))
+    return positions, triangles
+
+
+def _goldberg_board(mode: str, frequency: int, mine_count: int) -> Board3D:
+    """The dual of a geodesic icosahedron: one cell per geodesic vertex,
+    made of the surrounding triangle centers. Always 12 pentagons plus
+    ``10 * frequency**2 - 10`` hexagons."""
+    positions, triangles = _geodesic(frequency)
     centers: dict[tuple, Vec3] = {}
     around: dict[Hashable, list[tuple]] = defaultdict(list)
     for triangle in triangles:
@@ -357,7 +385,38 @@ def c80_board(mine_count: int) -> Board3D:
     for key, triangle_ids in around.items():
         ring = [(tid, centers[tid]) for tid in triangle_ids]
         cells[key] = _tangent_order(positions[key], ring)
-    return _sphere_board3d("c80", cells, positions | centers, mine_count)
+    return _sphere_board3d(mode, cells, centers, mine_count)
+
+
+def c80_board(mine_count: int) -> Board3D:
+    """A C80 fullerene (chamfered dodecahedron): 12 pentagons and 30
+    hexagons, projected onto the unit sphere."""
+    return _goldberg_board("c80", 2, mine_count)
+
+
+def c180_board(mine_count: int) -> Board3D:
+    """A C180 fullerene (Goldberg GP(3,0)): 12 pentagons and 80
+    hexagons, projected onto the unit sphere."""
+    return _goldberg_board("c180", 3, mine_count)
+
+
+def sphere_triangle_board(mine_count: int, frequency: int = 2) -> Board3D:
+    """A sphere tiled with triangles: a geodesic icosahedron with
+    ``20 * frequency**2`` triangular cells."""
+    positions, triangles = _geodesic(frequency)
+    cells = {("t", n): list(triangle) for n, triangle in enumerate(triangles)}
+    return _sphere_board3d("spheretri", cells, positions, mine_count)
+
+
+def _torus_position(i: float, j: float, ring: int, tube: int, tube_radius: float) -> Vec3:
+    theta = 2 * math.pi * i / ring
+    phi = 2 * math.pi * j / tube
+    radial = 1.0 + tube_radius * math.cos(phi)
+    return (
+        radial * math.cos(theta),
+        radial * math.sin(theta),
+        tube_radius * math.sin(phi),
+    )
 
 
 def torus_board(
@@ -365,18 +424,10 @@ def torus_board(
 ) -> Board3D:
     """A donut tiled with ``ring * tube`` quadrilaterals. The grid wraps
     in both directions, so every cell has exactly 8 neighbors."""
-    def position(i: int, j: int) -> Vec3:
-        theta = 2 * math.pi * i / ring
-        phi = 2 * math.pi * j / tube
-        radial = 1.0 + tube_radius * math.cos(phi)
-        return (
-            radial * math.cos(theta),
-            radial * math.sin(theta),
-            tube_radius * math.sin(phi),
-        )
-
     positions = {
-        (i, j): position(i, j) for i in range(ring) for j in range(tube)
+        (i, j): _torus_position(i, j, ring, tube, tube_radius)
+        for i in range(ring)
+        for j in range(tube)
     }
     cells = {
         (i, j): [
@@ -388,18 +439,87 @@ def torus_board(
         for i in range(ring)
         for j in range(tube)
     }
+    return _torus_oriented(
+        "torus", positions, cells, mine_count, radius=1.0 + tube_radius
+    )
+
+
+def _torus_oriented(mode, positions, cells, mine_count, radius) -> Board3D:
+    """Assemble a torus board, orienting each polygon outward (away from
+    the ring circle through the tube center)."""
     adjacency = _shared_vertex_adjacency(cells)
     polygons = {}
     for cell, keys in cells.items():
         polygon = [positions[key] for key in keys]
         centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
-        # outward = away from the ring circle through the tube center
         ring_scale = math.hypot(centroid[0], centroid[1])
         ring_point = (centroid[0] / ring_scale, centroid[1] / ring_scale, 0.0)
         outward = tuple(c - p for c, p in zip(centroid, ring_point))
         polygons[cell] = _orient_outward(polygon, outward)
-    return Board3D(
-        "torus", polygons, adjacency, mine_count, radius=1.0 + tube_radius
+    return Board3D(mode, polygons, adjacency, mine_count, radius=radius)
+
+
+def torus_triangle_board(
+    ring: int, tube: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """A donut tiled with triangles: each quad of the torus grid is
+    split along a diagonal, giving ``2 * ring * tube`` cells."""
+    positions = {
+        (i, j): _torus_position(i, j, ring, tube, tube_radius)
+        for i in range(ring)
+        for j in range(tube)
+    }
+    cells = {}
+    for i in range(ring):
+        for j in range(tube):
+            a = (i, j)
+            b = ((i + 1) % ring, j)
+            c = ((i + 1) % ring, (j + 1) % tube)
+            d = (i, (j + 1) % tube)
+            cells[(i, j, 0)] = [a, b, c]
+            cells[(i, j, 1)] = [a, c, d]
+    return _torus_oriented(
+        "torustri", positions, cells, mine_count, radius=1.0 + tube_radius
+    )
+
+
+def torus_hex_board(
+    rows: int, cols: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """A donut tiled entirely with hexagons (possible because the torus
+    has Euler characteristic 0). The hex lattice wraps around the tube
+    (``rows``, must be even) and around the ring (``cols``); every cell
+    has exactly 6 neighbors."""
+    if rows % 2:
+        raise ValueError("rows must be even so the offset lattice wraps")
+    kx_period, ky_period = 2 * cols, 3 * rows
+
+    def position(kx: int, ky: int) -> Vec3:
+        theta = 2 * math.pi * kx / kx_period  # around the ring
+        phi = 2 * math.pi * ky / ky_period  # around the tube
+        radial = 1.0 + tube_radius * math.cos(phi)
+        return (
+            radial * math.cos(theta),
+            radial * math.sin(theta),
+            tube_radius * math.sin(phi),
+        )
+
+    cells = {}
+    positions = {}
+    for r in range(rows):
+        for c in range(cols):
+            kx = 2 * c + (r % 2) + 1
+            ky = 3 * r + 2
+            keys = [
+                ((kx + ox) % kx_period, (ky + oy) % ky_period)
+                for ox, oy in _HEX_VERTEX_OFFSETS
+            ]
+            cells[(r, c)] = keys
+            for key in keys:
+                if key not in positions:
+                    positions[key] = position(*key)
+    return _torus_oriented(
+        "torushex", positions, cells, mine_count, radius=1.0 + tube_radius
     )
 
 
@@ -453,6 +573,88 @@ def mobius_board(ring: int, width_cells: int, mine_count: int) -> Board3D:
     )
 
 
+def mobius_triangle_board(ring: int, width_cells: int, mine_count: int) -> Board3D:
+    """A Möbius strip tiled with triangles: each quad of the strip is
+    split along a diagonal, giving ``2 * ring * width_cells`` cells."""
+    half_width = min(0.7, math.pi * width_cells / ring / 2)
+
+    def vertex_key(i: int, j: int):
+        if i >= ring:
+            return (i - ring, width_cells - j)
+        return (i, j)
+
+    def position(i: int, j: int) -> Vec3:
+        u = 2 * math.pi * i / ring
+        v = half_width * (2 * j / width_cells - 1)
+        radial = 1.0 + v * math.cos(u / 2)
+        return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
+
+    positions = {
+        (i, j): position(i, j)
+        for i in range(ring)
+        for j in range(width_cells + 1)
+    }
+    cells = {}
+    for i in range(ring):
+        for j in range(width_cells):
+            a = vertex_key(i, j)
+            b = vertex_key(i + 1, j)
+            c = vertex_key(i + 1, j + 1)
+            d = vertex_key(i, j + 1)
+            cells[(i, j, 0)] = [a, b, c]
+            cells[(i, j, 1)] = [a, c, d]
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(
+        "mobiustri", polygons, adjacency, mine_count,
+        radius=1.0 + half_width, two_sided=True,
+    )
+
+
+def mobius_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
+    """A Möbius strip tiled with hexagons: ``ring`` columns of ``rows``
+    hexagons glued end-to-start with a vertical flip. ``rows`` must be
+    odd so the offset lattice maps onto itself under the flip."""
+    if rows % 2 == 0:
+        raise ValueError("rows must be odd so the lattice survives the flip")
+    kx_period = 2 * ring
+    ky_top = 3 * rows + 1  # the flip mirrors ky about the strip center
+    half_width = min(0.7, math.pi * rows / ring)
+
+    def canonical(kx: int, ky: int):
+        if kx >= kx_period:
+            return (kx - kx_period, ky_top - ky)
+        return (kx, ky)
+
+    def position(kx: int, ky: int) -> Vec3:
+        u = 2 * math.pi * kx / kx_period
+        v = half_width * (2 * ky / ky_top - 1)
+        radial = 1.0 + v * math.cos(u / 2)
+        return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
+
+    cells = {}
+    positions = {}
+    for c in range(ring):
+        for r in range(rows):
+            kx = 2 * c + (r % 2) + 1
+            ky = 3 * r + 2
+            keys = [canonical(kx + ox, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS]
+            cells[(r, c)] = keys
+            for key in keys:
+                if key not in positions:
+                    positions[key] = position(*key)
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(
+        "mobiushex", polygons, adjacency, mine_count,
+        radius=1.0 + half_width, two_sided=True,
+    )
+
+
 def cylinder_board(ring: int, rows: int, mine_count: int) -> Board3D:
     """The side surface of a cylinder tiled with quadrilaterals: ``ring``
     segments around, ``rows`` up the axis. Wraps around the ring only;
@@ -488,6 +690,78 @@ def cylinder_board(ring: int, rows: int, mine_count: int) -> Board3D:
         mine_count,
         radius=math.hypot(1.0, height / 2),
         two_sided=True,  # open ends: the inner surface is visible
+    )
+
+
+def cylinder_triangle_board(ring: int, rows: int, mine_count: int) -> Board3D:
+    """The side of a cylinder tiled with triangles: ``ring`` triangles
+    around (must be even so up/down triangles alternate cleanly across
+    the seam), ``rows`` up the axis."""
+    if ring % 2:
+        raise ValueError("ring must be even for the triangle strip to wrap")
+    # lattice x unit is half a triangle side; make triangles near-equilateral
+    row_height = 2 * math.pi / ring * ROOT3 * 0.9
+    height = rows * row_height
+
+    def position(kx: int, ky: int) -> Vec3:
+        theta = 2 * math.pi * kx / ring
+        return (math.cos(theta), ky * row_height - height / 2, math.sin(theta))
+
+    cells = {}
+    positions = {}
+    for r in range(rows):
+        for i in range(ring):
+            keys = [
+                (kx % ring, ky)
+                for kx, ky in _triangle_vertices(i, r, up=(r + i) % 2 == 0)
+            ]
+            cells[(r, i)] = keys
+            for key in keys:
+                if key not in positions:
+                    positions[key] = position(*key)
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(
+        "cyltri", polygons, adjacency, mine_count,
+        radius=math.hypot(1.0, height / 2), two_sided=True,
+    )
+
+
+def cylinder_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
+    """The side of a cylinder tiled with hexagons: ``ring`` columns
+    around, ``rows`` up the axis."""
+    kx_period = 2 * ring
+    # lattice units for regular hexagons: x = sqrt(3)/2 * s, y = s / 2,
+    # with the x unit pinned to the arc length around the cylinder
+    ky_unit = 2 * math.pi / kx_period / ROOT3
+    height = (3 * rows + 1) * ky_unit
+
+    def position(kx: int, ky: int) -> Vec3:
+        theta = 2 * math.pi * kx / kx_period
+        return (math.cos(theta), ky * ky_unit - height / 2, math.sin(theta))
+
+    cells = {}
+    positions = {}
+    for r in range(rows):
+        for c in range(ring):
+            kx = 2 * c + (r % 2) + 1
+            ky = 3 * r + 2
+            keys = [
+                ((kx + ox) % kx_period, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS
+            ]
+            cells[(r, c)] = keys
+            for key in keys:
+                if key not in positions:
+                    positions[key] = position(*key)
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(
+        "cylhex", polygons, adjacency, mine_count,
+        radius=math.hypot(1.0, height / 2), two_sided=True,
     )
 
 
@@ -529,20 +803,60 @@ _PRESETS = {
         "medium": lambda: c80_board(8),
         "hard": lambda: c80_board(11),
     },
+    "c180": {
+        "easy": lambda: c180_board(10),
+        "medium": lambda: c180_board(14),
+        "hard": lambda: c180_board(19),
+    },
+    "spheretri": {
+        "easy": lambda: sphere_triangle_board(10),
+        "medium": lambda: sphere_triangle_board(14),
+        "hard": lambda: sphere_triangle_board(18),
+    },
     "torus": {
         "easy": lambda: torus_board(12, 6, 9),
         "medium": lambda: torus_board(16, 8, 20),
         "hard": lambda: torus_board(24, 10, 48),
+    },
+    "torustri": {
+        "easy": lambda: torus_triangle_board(10, 5, 12),
+        "medium": lambda: torus_triangle_board(14, 7, 30),
+        "hard": lambda: torus_triangle_board(18, 9, 60),
+    },
+    "torushex": {
+        "easy": lambda: torus_hex_board(6, 12, 9),
+        "medium": lambda: torus_hex_board(8, 16, 20),
+        "hard": lambda: torus_hex_board(10, 24, 44),
     },
     "mobius": {
         "easy": lambda: mobius_board(20, 4, 10),
         "medium": lambda: mobius_board(28, 5, 22),
         "hard": lambda: mobius_board(36, 6, 40),
     },
+    "mobiustri": {
+        "easy": lambda: mobius_triangle_board(14, 4, 13),
+        "medium": lambda: mobius_triangle_board(20, 5, 30),
+        "hard": lambda: mobius_triangle_board(28, 6, 62),
+    },
+    "mobiushex": {
+        "easy": lambda: mobius_hex_board(14, 3, 6),
+        "medium": lambda: mobius_hex_board(20, 5, 16),
+        "hard": lambda: mobius_hex_board(26, 7, 34),
+    },
     "cylinder": {
         "easy": lambda: cylinder_board(12, 7, 10),
         "medium": lambda: cylinder_board(16, 10, 26),
         "hard": lambda: cylinder_board(22, 13, 60),
+    },
+    "cyltri": {
+        "easy": lambda: cylinder_triangle_board(16, 6, 11),
+        "medium": lambda: cylinder_triangle_board(22, 9, 32),
+        "hard": lambda: cylinder_triangle_board(28, 12, 64),
+    },
+    "cylhex": {
+        "easy": lambda: cylinder_hex_board(12, 6, 9),
+        "medium": lambda: cylinder_hex_board(16, 9, 24),
+        "hard": lambda: cylinder_hex_board(20, 12, 46),
     },
 }
 
