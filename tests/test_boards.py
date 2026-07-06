@@ -4,8 +4,13 @@ from minesweeper.boards import (
     DIFFICULTIES,
     MODE_LABELS,
     MODES_3D,
+    TOPOLOGIES,
     build_board,
+    c60_board,
+    c80_board,
+    cylinder_board,
     hex_board,
+    mobius_board,
     newell_normal,
     sphere_board,
     square_board,
@@ -20,7 +25,11 @@ ALL_BOARDS = [
     triangle_grid_board(5, 9, 4),
     hex_board(5, 6, 4),
     sphere_board(7),
+    c60_board(4),
+    c80_board(5),
     torus_board(12, 6, 9),
+    mobius_board(20, 4, 10),
+    cylinder_board(12, 7, 10),
 ]
 
 
@@ -71,8 +80,24 @@ class TestCellCounts:
     def test_sphere_has_sixty_pentagons(self):
         assert len(sphere_board(7).adjacency) == 60
 
+    def test_c60_is_a_buckyball(self):
+        board = c60_board(4)
+        sizes = sorted(len(p) for p in board.polygons.values())
+        assert len(board.adjacency) == 32
+        assert sizes.count(5) == 12 and sizes.count(6) == 20
+
+    def test_c80_is_a_chamfered_dodecahedron(self):
+        board = c80_board(5)
+        sizes = sorted(len(p) for p in board.polygons.values())
+        assert len(board.adjacency) == 42
+        assert sizes.count(5) == 12 and sizes.count(6) == 30
+
     def test_torus(self):
         assert len(torus_board(12, 6, 9).adjacency) == 72
+
+    def test_mobius_and_cylinder(self):
+        assert len(mobius_board(20, 4, 10).adjacency) == 80
+        assert len(cylinder_board(12, 7, 10).adjacency) == 84
 
 
 class TestPolygonShapes:
@@ -124,6 +149,33 @@ class TestNeighborCounts:
         board = torus_board(12, 6, 9)
         assert (0, 0) in board.adjacency[(11, 5)]
 
+    def test_c60_pentagons_touch_only_hexagons(self):
+        board = c60_board(4)
+        for cell, neighbors in board.adjacency.items():
+            if cell[0] == "p":  # pentagon: ringed by 5 hexagons
+                assert len(neighbors) == 5
+                assert all(n[0] == "h" for n in neighbors)
+            else:  # hexagon: 3 pentagons + 3 hexagons
+                assert len(neighbors) == 6
+
+    def test_mobius_seam_glues_flipped(self):
+        # column ring-1 meets column 0 upside down
+        board = mobius_board(20, 4, 10)
+        assert (0, 3) in board.adjacency[(19, 0)]
+        assert (0, 0) in board.adjacency[(19, 3)]
+
+    def test_cylinder_wraps_ring_but_not_ends(self):
+        board = cylinder_board(12, 7, 10)
+        assert (11, 0) in board.adjacency[(0, 0)]  # wraps around the ring
+        assert len(board.adjacency[(3, 3)]) == 8  # interior
+        assert len(board.adjacency[(3, 0)]) == 5  # open bottom edge
+
+    @pytest.mark.parametrize("mode", ["hex", "trigrid"])
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_flat_grids_are_roughly_square(self, mode, difficulty):
+        board = build_board(mode, difficulty)
+        assert 0.85 < board.width / board.height < 1.18
+
     def test_polygons_face_outward(self):
         for board in (sphere_board(7), torus_board(12, 6, 9)):
             for cell, polygon in board.polygons.items():
@@ -168,3 +220,8 @@ class TestPresets:
             build_board("nope", "easy")
         with pytest.raises(ValueError):
             build_board("square", "nope")
+
+    def test_every_mode_belongs_to_exactly_one_topology(self):
+        modes = [m for _, tilings in TOPOLOGIES.values() for m in tilings]
+        assert sorted(modes) == sorted(MODE_LABELS)
+        assert len(modes) == len(set(modes))

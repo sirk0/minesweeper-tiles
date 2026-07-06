@@ -7,15 +7,15 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 pygame = pytest.importorskip("pygame")
 
-from minesweeper.boards import MODE_LABELS, MODES_3D  # noqa: E402
+from minesweeper.boards import MODE_LABELS, MODES_3D, TOPOLOGIES  # noqa: E402
 from minesweeper.game import CellState, Game, GameState  # noqa: E402
 from minesweeper.gui import (  # noqa: E402
     EXPLODED_FACE,
-    IDENTITY,
     FontCache,
     GameScreen,
     GameScreen3D,
     MenuScreen,
+    make_icon,
     make_screen,
     point_in_polygon,
 )
@@ -211,7 +211,7 @@ class Test3DScreens:
     def nearest_visible(self, screen):
         """(cell, screen position) of the cell nearest the viewer."""
         frame = screen._project()
-        _, cell, _, center, _ = frame[-1]
+        _, cell, _, center, _, _ = frame[-1]
         return cell, (int(center[0]), int(center[1]))
 
     @pytest.mark.parametrize("mode", sorted(MODES_3D))
@@ -239,6 +239,7 @@ class Test3DScreens:
     @pytest.mark.parametrize("mode", sorted(MODES_3D))
     def test_drag_rotates_without_revealing(self, mode):
         screen = GameScreen3D(mode, "easy")
+        initial_rotation = screen.rotation
         cell, pos = self.nearest_visible(screen)
         screen.handle_event(mouse_event(pos))
         screen.handle_event(
@@ -254,7 +255,7 @@ class Test3DScreens:
                 pygame.MOUSEBUTTONUP, pos=(pos[0] + 40, pos[1]), button=1
             )
         )
-        assert screen.rotation != IDENTITY or mode == "torus"  # torus starts tilted
+        assert screen.rotation != initial_rotation
         assert all(
             screen.game.cell_state(c) is CellState.HIDDEN for c in screen.game.cells
         )
@@ -289,10 +290,12 @@ class Test3DScreens:
         screen = GameScreen3D(mode, "easy")
         surface = pygame.Surface(screen.size)
         screen.draw(surface, fonts)  # fresh board
-        cell, pos = self.nearest_visible(screen)
-        screen.click(cell)
-        screen.draw(surface, fonts)  # mid-game
-        screen.click(find_mine(screen))
+        mine, flagged = list(screen.game.cells)[:2]
+        screen.game = Game(screen.board.adjacency, mine_positions={mine})
+        screen.game.toggle_flag(flagged)
+        screen.draw(surface, fonts)  # mid-game with a flag
+        screen.game.toggle_flag(flagged)
+        screen.click(mine)
         assert screen.game.state is GameState.LOST
         screen.draw(surface, fonts)  # loss
 
@@ -307,18 +310,57 @@ class Test3DScreens:
 
 
 class TestMenu:
-    def test_menu_lists_all_modes(self):
-        menu = MenuScreen()
-        assert {mode for _, mode in menu.mode_buttons} == set(MODE_LABELS)
+    def items(self, menu):
+        return {key for _, key, _ in menu.layout()["items"]}
 
-    def test_clicking_a_mode_starts_it(self):
+    def click_item(self, menu, wanted):
+        for rect, key, _ in menu.layout()["items"]:
+            if key == wanted:
+                return menu.handle_event(mouse_event(rect.center))
+        raise AssertionError(f"{wanted} not on the current page")
+
+    def test_first_page_lists_topologies(self):
         menu = MenuScreen()
-        for rect, mode in menu.mode_buttons:
-            assert menu.handle_event(mouse_event(rect.center)) == ("start", mode)
+        assert menu.topology is None
+        assert self.items(menu) == set(TOPOLOGIES)
+        assert menu.layout()["back"] is None
+
+    def test_choosing_topology_shows_its_tilings(self):
+        menu = MenuScreen()
+        assert self.click_item(menu, "sphere") is None
+        assert menu.topology == "sphere"
+        assert self.items(menu) == set(TOPOLOGIES["sphere"][1])
+
+    def test_choosing_tiling_starts_the_game(self):
+        menu = MenuScreen()
+        self.click_item(menu, "sphere")
+        assert self.click_item(menu, "c60") == ("start", "c60")
+
+    def test_every_tiling_is_reachable(self):
+        for topology, (_, modes) in TOPOLOGIES.items():
+            for mode in modes:
+                menu = MenuScreen()
+                self.click_item(menu, topology)
+                assert self.click_item(menu, mode) == ("start", mode)
+
+    def test_back_button_returns_to_topologies(self):
+        menu = MenuScreen()
+        self.click_item(menu, "flat")
+        back = menu.layout()["back"]
+        assert menu.handle_event(mouse_event(back.center)) is None
+        assert menu.topology is None
+
+    def test_escape_goes_back_then_quits(self):
+        menu = MenuScreen()
+        self.click_item(menu, "torus")
+        assert menu.handle_event(key_event(pygame.K_ESCAPE)) is None
+        assert menu.topology is None
+        assert menu.handle_event(key_event(pygame.K_ESCAPE)) == "quit"
+        assert menu.handle_event(pygame.event.Event(pygame.QUIT)) == "quit"
 
     def test_clicking_difficulty_selects_it(self):
         menu = MenuScreen()
-        for rect, difficulty in menu.difficulty_buttons:
+        for rect, difficulty in menu.layout()["difficulty"]:
             assert menu.handle_event(mouse_event(rect.center)) is None
             assert menu.difficulty == difficulty
 
@@ -327,16 +369,23 @@ class TestMenu:
         menu.handle_event(key_event(pygame.K_3))
         assert menu.difficulty == "hard"
 
-    def test_escape_quits_from_menu(self):
-        menu = MenuScreen()
-        assert menu.handle_event(key_event(pygame.K_ESCAPE)) == "quit"
-        assert menu.handle_event(pygame.event.Event(pygame.QUIT)) == "quit"
-
     def test_empty_click_does_nothing(self):
         menu = MenuScreen()
         assert menu.handle_event(mouse_event((2, 2))) is None
 
-    def test_menu_draws(self, fonts):
+    def test_both_pages_draw(self, fonts):
         menu = MenuScreen()
         surface = pygame.Surface(menu.size)
         menu.draw(surface, fonts)
+        self.click_item(menu, "sphere")
+        surface = pygame.Surface(menu.size)
+        menu.draw(surface, fonts)
+
+
+class TestIcon:
+    def test_icon_is_drawn(self):
+        icon = make_icon()
+        assert icon.get_size() == (64, 64)
+        # opaque in the middle (the mine), transparent at the corners
+        assert icon.get_at((32, 32))[3] == 255
+        assert icon.get_at((1, 1))[3] == 0

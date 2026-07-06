@@ -1,17 +1,18 @@
 # Minesweeper
 
-A minesweeper clone in Python (pygame) with six board geometries:
+A minesweeper clone in Python (pygame). Pick a surface, then a tiling:
 
-- **Classic squares** — the traditional grid (8 neighbors)
-- **Triangle of triangles** — a big triangle subdivided into small
-  triangles (12 neighbors)
-- **Triangle grid** — a rectangular surface tiled with triangles
-  (12 neighbors)
-- **Hexagon grid** — a surface tiled with hexagons (6 neighbors)
-- **Pentagon sphere (3D)** — a sphere tiled with 60 pentagons, a
-  pentagonal hexecontahedron (7 neighbors)
-- **Square donut (3D)** — a torus tiled with quadrilaterals; the grid
-  wraps around, so every cell has 8 neighbors and there are no edges
+- **Flat surface** — classic squares (8 neighbors), a big triangle
+  subdivided into small triangles (12), a triangle grid (12), or
+  hexagons (6)
+- **Sphere (3D)** — 60 pentagons (a pentagonal hexecontahedron, 7
+  neighbors), a C60 fullerene / buckyball (12 pentagons + 20 hexagons),
+  or a C80 fullerene (12 pentagons + 30 hexagons)
+- **Donut (3D)** — quadrilaterals wrapping in both directions: every
+  cell has 8 neighbors, there are no border cells
+- **Möbius strip (3D)** — quadrilaterals on a one-sided surface; the
+  strip glues to itself with a flip
+- **Cylinder (3D)** — quadrilaterals around an open tube
 
 ## Play
 
@@ -20,7 +21,8 @@ pip install pygame-ce
 python3 -m minesweeper
 ```
 
-A menu screen picks the board mode and difficulty. In game:
+The menu picks a topology, then one of its tilings and a difficulty.
+In game:
 
 - **Left-click** — reveal a cell (the first reveal is always safe);
   left-click a revealed number to chord

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "minesweeper",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "minesweeper"],
+      "port": null
+    }
+  ]
+}

@@ -118,6 +118,10 @@ class Game:
         self._flood_reveal(cell)
         if self._revealed_count == len(self._adjacency) - self.mine_count:
             self.state = GameState.WON
+            # flag the remaining mines so the flag counter reads zero
+            for mine in self._mines:
+                if self._cell_states[mine] is CellState.HIDDEN:
+                    self._cell_states[mine] = CellState.FLAGGED
 
     def toggle_flag(self, cell: Cell) -> None:
         if self.state is not GameState.PLAYING or cell not in self._adjacency:

@@ -179,6 +179,17 @@ class TestWin:
         game.reveal((0, 1))
         assert game.state is GameState.PLAYING
 
+    def test_win_auto_flags_mines_and_zeroes_counter(self):
+        game = make_game(mines={(0, 0), (2, 2)})
+        assert game.flags_remaining == 2
+        for cell in game.cells:
+            if cell not in {(0, 0), (2, 2)}:
+                game.reveal(cell)
+        assert game.state is GameState.WON
+        assert game.cell_state((0, 0)) is CellState.FLAGGED
+        assert game.cell_state((2, 2)) is CellState.FLAGGED
+        assert game.flags_remaining == 0
+
 
 class TestChord:
     def test_chord_reveals_unflagged_neighbors(self):

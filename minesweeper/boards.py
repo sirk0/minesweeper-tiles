@@ -1,12 +1,10 @@
-"""Board geometry: tilings of squares, triangles, hexagons — and 3D
-surfaces (a pentagon-tiled sphere and a quad-tiled torus).
+"""Board geometry: flat tilings (squares, triangles, hexagons) and 3D
+surfaces (spheres, fullerenes, a donut, a Möbius strip, a cylinder).
 
 Every board is a set of polygonal cells. Cell vertices are generated
 with exact, hashable ids (integer lattice points in 2D, symbolic keys
 in 3D), so cells that touch can be matched exactly: two cells are
-neighbors when they share at least one vertex. That rule yields the
-classic 8-neighborhood for squares, 6 for hexagons, 12 for triangles,
-8 for torus quads and 7 for the sphere pentagons.
+neighbors when they share at least one vertex.
 """
 
 from __future__ import annotations
@@ -25,15 +23,28 @@ ROOT3 = 3**0.5
 DIFFICULTIES = ("easy", "medium", "hard")
 
 MODE_LABELS = {
-    "square": "Classic squares",
+    "square": "Squares",
     "triangle": "Triangle of triangles",
     "trigrid": "Triangle grid",
-    "hex": "Hexagon grid",
-    "sphere": "Pentagon sphere (3D)",
-    "torus": "Square donut (3D)",
+    "hex": "Hexagons",
+    "sphere": "60 pentagons",
+    "c60": "C60 fullerene",
+    "c80": "C80 fullerene",
+    "torus": "Squares",
+    "mobius": "Squares",
+    "cylinder": "Squares",
 }
 
-MODES_3D = frozenset({"sphere", "torus"})
+# The menu picks a topology first, then one of its tilings.
+TOPOLOGIES = {
+    "flat": ("Flat surface", ("square", "triangle", "trigrid", "hex")),
+    "sphere": ("Sphere", ("sphere", "c60", "c80")),
+    "torus": ("Donut", ("torus",)),
+    "mobius": ("Möbius strip", ("mobius",)),
+    "cylinder": ("Cylinder", ("cylinder",)),
+}
+
+MODES_3D = frozenset({"sphere", "c60", "c80", "torus", "mobius", "cylinder"})
 
 
 @dataclass(frozen=True)
@@ -53,6 +64,7 @@ class Board3D:
     adjacency: dict[Cell, tuple[Cell, ...]]
     mine_count: int
     radius: float  # max vertex distance from the origin
+    two_sided: bool = False  # open/non-orientable surfaces show both sides
 
 
 def _shared_vertex_adjacency(cells: dict[Cell, list]) -> dict[Cell, tuple[Cell, ...]]:
@@ -153,6 +165,18 @@ def _normalize(v: Vec3) -> Vec3:
     return (v[0] / length, v[1] / length, v[2] / length)
 
 
+def _cross(a: Vec3, b: Vec3) -> Vec3:
+    return (
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    )
+
+
+def _dot(a: Vec3, b: Vec3) -> float:
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
 def newell_normal(points: list[Vec3]) -> Vec3:
     """Normal of a (near-)planar 3D polygon, right-hand rule."""
     nx = ny = nz = 0.0
@@ -167,8 +191,22 @@ def newell_normal(points: list[Vec3]) -> Vec3:
 def _orient_outward(polygon: list[Vec3], outward: Vec3) -> list[Vec3]:
     """Order vertices counterclockwise as seen from outside the surface."""
     normal = newell_normal(polygon)
-    dot = sum(n * o for n, o in zip(normal, outward))
-    return polygon if dot > 0 else list(reversed(polygon))
+    return polygon if _dot(normal, outward) > 0 else list(reversed(polygon))
+
+
+def _tangent_order(center: Vec3, items: list[tuple[Hashable, Vec3]]) -> list:
+    """Order (key, position) pairs by angle around ``center`` (for points
+    lying roughly on a circle around it, e.g. on a sphere)."""
+    n = _normalize(center)
+    reference = (0.0, 0.0, 1.0) if abs(n[2]) < 0.9 else (1.0, 0.0, 0.0)
+    a = _normalize(_cross(n, reference))
+    b = _cross(n, a)
+
+    def angle(position: Vec3) -> float:
+        d = tuple(p - c for p, c in zip(position, center))
+        return math.atan2(_dot(d, b), _dot(d, a))
+
+    return [key for key, _ in sorted(items, key=lambda item: angle(item[1]))]
 
 
 def _icosahedron() -> tuple[list[Vec3], list[tuple[int, int, int]]]:
@@ -191,14 +229,24 @@ def _icosahedron() -> tuple[list[Vec3], list[tuple[int, int, int]]]:
                 continue
             for k in range(j + 1, 12):
                 if touching(i, k) and touching(j, k):
-                    # gyro needs consistent winding: orient every face
-                    # counterclockwise as seen from outside
+                    # consistent winding: orient every face counterclockwise
+                    # as seen from outside
                     a, b, c = (vertices[n] for n in (i, j, k))
                     normal = newell_normal([a, b, c])
                     outward = sum(n * (pa + pb + pc) for n, pa, pb, pc in zip(normal, a, b, c))
                     faces.append((i, j, k) if outward > 0 else (i, k, j))
     assert len(faces) == 20
     return vertices, faces
+
+
+def _sphere_board3d(mode: str, cells, positions, mine_count: int) -> Board3D:
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {}
+    for cell, keys in cells.items():
+        polygon = [positions[key] for key in keys]
+        centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+        polygons[cell] = _orient_outward(polygon, centroid)
+    return Board3D(mode, polygons, adjacency, mine_count, radius=1.0)
 
 
 # -- 3D builders --------------------------------------------------------------
@@ -210,8 +258,7 @@ def sphere_board(mine_count: int) -> Board3D:
 
     Built with the Conway "gyro" operation on an icosahedron: each
     triangular face gains a center vertex, each edge two division
-    points, and every (face, corner) pair becomes one pentagon. Vertex
-    ids are symbolic, so shared-vertex adjacency is exact: every
+    points, and every (face, corner) pair becomes one pentagon. Every
     pentagon has exactly 7 neighbors.
     """
     vertices, faces = _icosahedron()
@@ -247,14 +294,93 @@ def sphere_board(mine_count: int) -> Board3D:
                 edge_key(v, w, 1),
                 edge_key(v, w, 2),
             ]
+    return _sphere_board3d("sphere", cells, positions, mine_count)
 
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {}
-    for cell, keys in cells.items():
-        polygon = [positions[key] for key in keys]
-        centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
-        polygons[cell] = _orient_outward(polygon, centroid)
-    return Board3D("sphere", polygons, adjacency, mine_count, radius=1.0)
+
+def c60_board(mine_count: int) -> Board3D:
+    """A C60 fullerene (buckyball / truncated icosahedron): 12 pentagons
+    and 20 hexagons, projected onto the unit sphere.
+
+    Truncate each icosahedron vertex a third of the way along its edges:
+    faces become hexagons, vertices become pentagons.
+    """
+    vertices, faces = _icosahedron()
+    positions: dict[Hashable, Vec3] = {}
+    neighbors: dict[int, set[int]] = defaultdict(set)
+    for a, b, c in faces:
+        neighbors[a].update((b, c))
+        neighbors[b].update((a, c))
+        neighbors[c].update((a, b))
+
+    def cut_key(u: int, v: int):
+        """The truncation point on edge (u, v) closer to u."""
+        key = ("t", u, v)
+        a, b = vertices[u], vertices[v]
+        positions[key] = _normalize(
+            tuple(pa + (pb - pa) / 3 for pa, pb in zip(a, b))
+        )
+        return key
+
+    cells: dict[Cell, list] = {}
+    for face_index, (a, b, c) in enumerate(faces):
+        cells[("h", face_index)] = [
+            cut_key(a, b), cut_key(b, a),
+            cut_key(b, c), cut_key(c, b),
+            cut_key(c, a), cut_key(a, c),
+        ]
+    for v in range(12):
+        ring = [(cut_key(v, w), positions[cut_key(v, w)]) for w in neighbors[v]]
+        cells[("p", v)] = _tangent_order(vertices[v], ring)
+    return _sphere_board3d("c60", cells, positions, mine_count)
+
+
+def c80_board(mine_count: int) -> Board3D:
+    """A C80 fullerene (chamfered dodecahedron): 12 pentagons and 30
+    hexagons, projected onto the unit sphere.
+
+    Built as the dual of a frequency-2 geodesic icosahedron: subdivide
+    each face into 4 triangles, then make one cell per geodesic vertex
+    out of its surrounding triangle centers.
+    """
+    vertices, faces = _icosahedron()
+    positions: dict[Hashable, Vec3] = {}
+
+    def original_key(i: int):
+        key = ("v", i)
+        positions[key] = _normalize(vertices[i])
+        return key
+
+    def mid_key(u: int, v: int):
+        key = ("m", min(u, v), max(u, v))
+        a, b = vertices[u], vertices[v]
+        positions[key] = _normalize(
+            tuple((pa + pb) / 2 for pa, pb in zip(a, b))
+        )
+        return key
+
+    triangles: list[tuple] = []
+    for a, b, c in faces:
+        ab, bc, ca = mid_key(a, b), mid_key(b, c), mid_key(c, a)
+        va, vb, vc = original_key(a), original_key(b), original_key(c)
+        triangles += [(va, ab, ca), (vb, bc, ab), (vc, ca, bc), (ab, bc, ca)]
+
+    centers: dict[tuple, Vec3] = {}
+    around: dict[Hashable, list[tuple]] = defaultdict(list)
+    for triangle in triangles:
+        triangle_id = tuple(sorted(triangle))
+        centers[triangle_id] = _normalize(
+            tuple(
+                sum(positions[k][axis] for k in triangle) / 3 for axis in range(3)
+            )
+        )
+        for key in triangle:
+            around[key].append(triangle_id)
+
+    cells: dict[Cell, list] = {}
+    for key, triangle_ids in around.items():
+        ring = [(tid, centers[tid]) for tid in triangle_ids]
+        cells[key] = _tangent_order(positions[key], ring)
+    return _sphere_board3d("c80", cells, positions | centers, mine_count)
 
 
 def torus_board(
@@ -300,6 +426,94 @@ def torus_board(
     )
 
 
+def mobius_board(ring: int, width_cells: int, mine_count: int) -> Board3D:
+    """A Möbius strip tiled with quadrilaterals: ``ring`` segments
+    around, ``width_cells`` across. After a full loop the strip flips,
+    so column ``ring`` glues to column 0 upside down."""
+    half_width = min(0.7, math.pi * width_cells / ring / 2)
+
+    def vertex_key(i: int, j: int) -> LatticePoint:
+        if i >= ring:  # the seam: glue to the start, flipped
+            return (i - ring, width_cells - j)
+        return (i, j)
+
+    def position(i: int, j: int) -> Vec3:
+        u = 2 * math.pi * i / ring
+        v = half_width * (2 * j / width_cells - 1)
+        radial = 1.0 + v * math.cos(u / 2)
+        return (
+            radial * math.cos(u),
+            radial * math.sin(u),
+            v * math.sin(u / 2),
+        )
+
+    positions = {
+        (i, j): position(i, j)
+        for i in range(ring)
+        for j in range(width_cells + 1)
+    }
+    cells = {
+        (i, j): [
+            vertex_key(i, j),
+            vertex_key(i + 1, j),
+            vertex_key(i + 1, j + 1),
+            vertex_key(i, j + 1),
+        ]
+        for i in range(ring)
+        for j in range(width_cells)
+    }
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(
+        "mobius",
+        polygons,
+        adjacency,
+        mine_count,
+        radius=1.0 + half_width,
+        two_sided=True,  # non-orientable: no consistent outside
+    )
+
+
+def cylinder_board(ring: int, rows: int, mine_count: int) -> Board3D:
+    """The side surface of a cylinder tiled with quadrilaterals: ``ring``
+    segments around, ``rows`` up the axis. Wraps around the ring only;
+    the ends are open, so the inside is visible."""
+    row_height = 2 * math.pi / ring * 0.9  # near-square tiles
+    height = rows * row_height
+
+    def position(i: int, j: int) -> Vec3:
+        theta = 2 * math.pi * i / ring
+        return (math.cos(theta), j * row_height - height / 2, math.sin(theta))
+
+    positions = {
+        (i, j): position(i, j) for i in range(ring) for j in range(rows + 1)
+    }
+    cells = {
+        (i, j): [
+            (i, j),
+            ((i + 1) % ring, j),
+            ((i + 1) % ring, j + 1),
+            (i, j + 1),
+        ]
+        for i in range(ring)
+        for j in range(rows)
+    }
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(
+        "cylinder",
+        polygons,
+        adjacency,
+        mine_count,
+        radius=math.hypot(1.0, height / 2),
+        two_sided=True,  # open ends: the inner surface is visible
+    )
+
+
 # -- presets ---------------------------------------------------------------
 
 _PRESETS = {
@@ -314,24 +528,44 @@ _PRESETS = {
         "hard": lambda: triangle_board(16, 48, scale=44),
     },
     "trigrid": {
-        "easy": lambda: triangle_grid_board(6, 13, 11, scale=60),
-        "medium": lambda: triangle_grid_board(9, 21, 32, scale=50),
-        "hard": lambda: triangle_grid_board(12, 29, 68, scale=44),
+        "easy": lambda: triangle_grid_board(7, 11, 11, scale=52),
+        "medium": lambda: triangle_grid_board(10, 16, 26, scale=44),
+        "hard": lambda: triangle_grid_board(14, 23, 62, scale=36),
     },
     "hex": {
-        "easy": lambda: hex_board(9, 9, 10, scale=24),
-        "medium": lambda: hex_board(14, 14, 30, scale=21),
-        "hard": lambda: hex_board(16, 24, 75, scale=19),
+        "easy": lambda: hex_board(11, 9, 12, scale=24),
+        "medium": lambda: hex_board(15, 13, 30, scale=20),
+        "hard": lambda: hex_board(20, 17, 68, scale=17),
     },
     "sphere": {
         "easy": lambda: sphere_board(7),
         "medium": lambda: sphere_board(10),
         "hard": lambda: sphere_board(14),
     },
+    "c60": {
+        "easy": lambda: c60_board(4),
+        "medium": lambda: c60_board(6),
+        "hard": lambda: c60_board(8),
+    },
+    "c80": {
+        "easy": lambda: c80_board(5),
+        "medium": lambda: c80_board(8),
+        "hard": lambda: c80_board(11),
+    },
     "torus": {
         "easy": lambda: torus_board(12, 6, 9),
         "medium": lambda: torus_board(16, 8, 20),
         "hard": lambda: torus_board(24, 10, 48),
+    },
+    "mobius": {
+        "easy": lambda: mobius_board(20, 4, 10),
+        "medium": lambda: mobius_board(28, 5, 22),
+        "hard": lambda: mobius_board(36, 6, 40),
+    },
+    "cylinder": {
+        "easy": lambda: cylinder_board(12, 7, 10),
+        "medium": lambda: cylinder_board(16, 10, 26),
+        "hard": lambda: cylinder_board(22, 13, 60),
     },
 }
 
