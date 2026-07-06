@@ -7,6 +7,12 @@ flags, the face button or ``n`` restarts, ``1``/``2``/``3`` switch
 difficulty, the ``<`` button or ``Escape`` goes back to the menu. On 3D
 boards, drag with the left button (or use the arrow keys) to rotate the
 surface.
+
+Rendering: the whole UI is drawn on an internal canvas at ``UI_SCALE``
+times the window size and smooth-downscaled every frame (full-scene
+supersampling), which antialiases polygon edges, text and glyphs.
+Screens work entirely in canvas coordinates; the App scales mouse
+input up to match.
 """
 
 from __future__ import annotations
@@ -29,8 +35,11 @@ from minesweeper.boards import (
 )
 from minesweeper.game import CellState, Game, GameState
 
-MARGIN = 10
-HEADER = 56
+UI_SCALE = 2  # supersampling factor: canvas pixels per window pixel
+S = UI_SCALE
+
+MARGIN = 10 * S
+HEADER = 56 * S
 
 # classic minesweeper grays
 BG = (192, 192, 192)
@@ -73,11 +82,17 @@ NUMBER_COLORS = {
 
 DIFFICULTY_KEYS = {pygame.K_1: "easy", pygame.K_2: "medium", pygame.K_3: "hard"}
 
-DRAG_THRESHOLD = 5  # pixels of motion that turn a click into a rotation drag
+DRAG_THRESHOLD = 5 * S  # canvas pixels of motion that make a click a drag
 
 LIGHT = (0.37, 0.46, 0.81)  # normalized light direction for 3D shading
 
 TILE_LIGHT_DIR = (-0.55, -0.83)  # screen-space light for the tile bevels
+
+
+def canvas_mouse() -> tuple[int, int]:
+    """Mouse position in canvas coordinates."""
+    x, y = pygame.mouse.get_pos()
+    return (x * S, y * S)
 
 
 # -- geometry helpers -------------------------------------------------------
@@ -156,7 +171,7 @@ def draw_tile(surface, vertices, base, *, raised: bool, shade: float = 1.0) -> N
             length = math.hypot(mx, my) or 1.0
             facing = (mx * TILE_LIGHT_DIR[0] + my * TILE_LIGHT_DIR[1]) / length
             bevel = BEVEL_LIGHT if facing > 0 else BEVEL_DARK
-            pygame.draw.line(surface, scale_color(bevel, shade), a, b, 2)
+            pygame.draw.line(surface, scale_color(bevel, shade), a, b, 2 * S)
     else:
         points = [(int(x), int(y)) for x, y in vertices]
         pygame.gfxdraw.aapolygon(surface, points, scale_color(GRID_LINE, shade))
@@ -209,10 +224,11 @@ def draw_mine(surface, center, radius) -> None:
     cx, cy = int(center[0]), int(center[1])
     r = max(3, int(radius * 0.5))
     spike = radius * 0.85
+    width = max(2, int(radius * 0.14))
     for dx, dy in ((1, 0), (0, 1), (0.7, 0.7), (0.7, -0.7)):
         start = (cx - dx * spike, cy - dy * spike)
         end = (cx + dx * spike, cy + dy * spike)
-        pygame.draw.line(surface, MINE_COLOR, start, end, 2)
+        pygame.draw.line(surface, MINE_COLOR, start, end, width)
     pygame.gfxdraw.filled_circle(surface, cx, cy, r, MINE_COLOR)
     pygame.gfxdraw.aacircle(surface, cx, cy, r, MINE_COLOR)
     glint = max(1, r // 3)
@@ -224,7 +240,8 @@ def draw_mine(surface, center, radius) -> None:
 def draw_flag(surface, center, radius, *, wrong: bool) -> None:
     cx, cy = center
     top, bottom = cy - radius * 0.9, cy + radius * 0.9
-    pygame.draw.line(surface, MINE_COLOR, (cx, top), (cx, bottom), 2)
+    width = max(2, int(radius * 0.12))
+    pygame.draw.line(surface, MINE_COLOR, (cx, top), (cx, bottom), width)
     fill_polygon(
         surface,
         [(cx, top), (cx - radius * 0.9, top + radius * 0.45), (cx, top + radius * 0.9)],
@@ -232,45 +249,64 @@ def draw_flag(surface, center, radius, *, wrong: bool) -> None:
     )
     if wrong:  # misplaced flag revealed at game end
         r = radius * 0.95
-        pygame.draw.line(surface, MINE_COLOR, (cx - r, cy - r), (cx + r, cy + r), 3)
-        pygame.draw.line(surface, MINE_COLOR, (cx - r, cy + r), (cx + r, cy - r), 3)
+        pygame.draw.line(surface, MINE_COLOR, (cx - r, cy - r), (cx + r, cy + r), width + 1)
+        pygame.draw.line(surface, MINE_COLOR, (cx - r, cy + r), (cx + r, cy - r), width + 1)
 
 
-def draw_smiley(surface, center, radius: int, state: GameState) -> None:
+def _draw_smiley_raw(surface, center, radius: int, state: GameState) -> None:
+    """Smiley geometry at an arbitrary radius (drawn supersampled and
+    cached by :func:`smiley_sprite`)."""
     cx, cy = int(center[0]), int(center[1])
     pygame.gfxdraw.filled_circle(surface, cx, cy, radius, FACE_YELLOW)
     pygame.gfxdraw.aacircle(surface, cx, cy, radius, FACE_YELLOW)
     dark = (60, 46, 12)
+    stroke = max(2, radius // 7)
     eye_dx, eye_y = int(radius * 0.38), cy - int(radius * 0.25)
     if state is GameState.LOST:
         for ex in (cx - eye_dx, cx + eye_dx):
             e = max(2, radius // 5)
-            pygame.draw.line(surface, dark, (ex - e, eye_y - e), (ex + e, eye_y + e), 2)
-            pygame.draw.line(surface, dark, (ex - e, eye_y + e), (ex + e, eye_y - e), 2)
+            pygame.draw.line(surface, dark, (ex - e, eye_y - e), (ex + e, eye_y + e), stroke)
+            pygame.draw.line(surface, dark, (ex - e, eye_y + e), (ex + e, eye_y - e), stroke)
         mouth = pygame.Rect(0, 0, radius, int(radius * 0.7))
         mouth.center = (cx, cy + int(radius * 0.62))
-        pygame.draw.arc(surface, dark, mouth, math.radians(35), math.radians(145), 2)
+        pygame.draw.arc(surface, dark, mouth, math.radians(35), math.radians(145), stroke)
     else:
         if state is GameState.WON:  # sunglasses
             glass = max(3, radius // 3)
             for ex in (cx - eye_dx, cx + eye_dx):
                 pygame.draw.rect(
                     surface, dark,
-                    pygame.Rect(ex - glass // 2 - 1, eye_y - 2, glass + 2, glass),
-                    border_radius=2,
+                    pygame.Rect(ex - glass // 2 - 1, eye_y - glass // 2, glass + 2, glass),
+                    border_radius=max(2, glass // 3),
                 )
             pygame.draw.line(
                 surface, dark,
-                (cx - eye_dx - glass, eye_y - 1), (cx + eye_dx + glass, eye_y - 1), 2,
+                (cx - eye_dx - glass, eye_y - 1), (cx + eye_dx + glass, eye_y - 1),
+                stroke,
             )
         else:
             for ex in (cx - eye_dx, cx + eye_dx):
-                pygame.gfxdraw.filled_circle(
-                    surface, ex, eye_y, max(2, radius // 6), dark
-                )
+                pygame.gfxdraw.filled_circle(surface, ex, eye_y, max(2, radius // 6), dark)
+                pygame.gfxdraw.aacircle(surface, ex, eye_y, max(2, radius // 6), dark)
         mouth = pygame.Rect(0, 0, radius, int(radius * 0.8))
         mouth.center = (cx, cy + int(radius * 0.1))
-        pygame.draw.arc(surface, dark, mouth, math.radians(215), math.radians(325), 2)
+        pygame.draw.arc(surface, dark, mouth, math.radians(215), math.radians(325), stroke)
+
+
+_smiley_cache: dict[tuple[int, str], pygame.Surface] = {}
+
+
+def smiley_sprite(radius: int, state: GameState) -> pygame.Surface:
+    """The face button smiley, supersampled at 4x and cached."""
+    key = (radius, state.value)
+    if key not in _smiley_cache:
+        big = radius * 4
+        sprite = pygame.Surface((big * 2 + 4, big * 2 + 4), pygame.SRCALPHA)
+        _draw_smiley_raw(sprite, (big + 2, big + 2), big, state)
+        _smiley_cache[key] = pygame.transform.smoothscale(
+            sprite, (radius * 2 + 1, radius * 2 + 1)
+        )
+    return _smiley_cache[key]
 
 
 def _gloss(surface, rect: pygame.Rect, alpha: int = 55, radius: int = 0) -> None:
@@ -344,7 +380,7 @@ def make_icon(size: int = 512) -> pygame.Surface:
 
 
 def bevel_rect(
-    surface, rect, fill, *, pressed: bool = False, border: int = 2
+    surface, rect, fill, *, pressed: bool = False, border: int = 2 * S
 ) -> None:
     pygame.draw.rect(surface, fill, rect)
     top_left, bottom_right = (
@@ -358,7 +394,7 @@ def bevel_rect(
 
 # -- menu icons ---------------------------------------------------------------
 
-ICON_SIZE = 44
+ICON_SIZE = 44 * S
 _icon_cache: dict[str, pygame.Surface] = {}
 
 
@@ -582,12 +618,12 @@ class BaseGameScreen:
 
     @property
     def face_rect(self) -> pygame.Rect:
-        return pygame.Rect(self.size[0] // 2 - 20, MARGIN + 2, 40, 40)
+        return pygame.Rect(self.size[0] // 2 - 20 * S, MARGIN + 2 * S, 40 * S, 40 * S)
 
     @property
     def menu_rect(self) -> pygame.Rect:
         """The back-to-menu button in the header."""
-        return pygame.Rect(MARGIN, MARGIN + 4, 40, 36)
+        return pygame.Rect(MARGIN, MARGIN + 4 * S, 40 * S, 36 * S)
 
     # -- input ------------------------------------------------------------
 
@@ -689,38 +725,39 @@ class BaseGameScreen:
             n = game.adjacent_mines(cell)
             if n:
                 color = NUMBER_COLORS.get(n, TEXT)
-                size = max(10, int(glyph_radius * 1.5))
+                size = max(10 * S, int(glyph_radius * 1.5))
                 text = fonts.get(size).render(str(n), True, color)
                 surface.blit(text, text.get_rect(center=center))
 
     def draw_header(self, surface, fonts: FontCache) -> None:
         width = self.size[0]
-        mouse = pygame.mouse.get_pos()
+        mouse = canvas_mouse()
 
         rect = self.menu_rect
         bevel_rect(surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON)
         arrow = [
-            (rect.centerx + 5, rect.centery - 8),
-            (rect.centerx - 5, rect.centery),
-            (rect.centerx + 5, rect.centery + 8),
+            (rect.centerx + 5 * S, rect.centery - 8 * S),
+            (rect.centerx - 5 * S, rect.centery),
+            (rect.centerx + 5 * S, rect.centery + 8 * S),
         ]
-        pygame.draw.lines(surface, TEXT, False, arrow, 3)
+        pygame.draw.lines(surface, TEXT, False, arrow, 3 * S)
 
         counter = f"{max(-99, min(999, self.game.flags_remaining)):03d}"
-        self.draw_counter(surface, fonts, counter, x=rect.right + 8)
+        self.draw_counter(surface, fonts, counter, x=rect.right + 8 * S)
 
         timer = f"{self.elapsed:03d}"
-        timer_width = fonts.get(24).size(timer)[0] + 20
+        timer_width = fonts.get(24 * S).size(timer)[0] + 20 * S
         self.draw_counter(surface, fonts, timer, x=width - MARGIN - timer_width)
 
         face = self.face_rect
         bevel_rect(surface, face, BUTTON_HOVER if face.collidepoint(mouse) else BUTTON)
-        draw_smiley(surface, face.center, 14, self.game.state)
+        sprite = smiley_sprite(14 * S, self.game.state)
+        surface.blit(sprite, sprite.get_rect(center=face.center))
 
     def draw_counter(self, surface, fonts: FontCache, value: str, *, x: int) -> None:
-        text = fonts.get(24).render(value, True, COUNTER_FG)
-        box = pygame.Rect(x, MARGIN + 4, text.get_width() + 20, 36)
-        pygame.draw.rect(surface, PANEL, box, border_radius=6)
+        text = fonts.get(24 * S).render(value, True, COUNTER_FG)
+        box = pygame.Rect(x, MARGIN + 4 * S, text.get_width() + 20 * S, 36 * S)
+        pygame.draw.rect(surface, PANEL, box, border_radius=6 * S)
         surface.blit(text, text.get_rect(center=box.center))
 
 
@@ -730,7 +767,7 @@ class GameScreen(BaseGameScreen):
     def _setup_geometry(self) -> None:
         offset_x, offset_y = MARGIN, MARGIN + HEADER
         self.polygons = {
-            cell: [(x + offset_x, y + offset_y) for x, y in vertices]
+            cell: [(x * S + offset_x, y * S + offset_y) for x, y in vertices]
             for cell, vertices in self.board.polygons.items()
         }
         self.centers = {
@@ -742,8 +779,8 @@ class GameScreen(BaseGameScreen):
     @property
     def size(self) -> tuple[int, int]:
         return (
-            math.ceil(self.board.width) + 2 * MARGIN,
-            math.ceil(self.board.height) + HEADER + 2 * MARGIN,
+            math.ceil(self.board.width * S) + 2 * MARGIN,
+            math.ceil(self.board.height * S) + HEADER + 2 * MARGIN,
         )
 
     def cell_at(self, pos):
@@ -767,8 +804,8 @@ class GameScreen3D(BaseGameScreen):
     Möbius strip) draw both sides. Dragging rotates; a short click
     reveals."""
 
-    VIEWPORT = 540
-    ROTATE_SPEED = 0.008  # radians per pixel of drag
+    VIEWPORT = 540 * S
+    ROTATE_SPEED = 0.008 / S  # radians per canvas pixel of drag
     TILT = {"torus": -1.0, "mobius": -0.8, "cyl": -0.35}  # by mode prefix
 
     def _initial_rotation(self):
@@ -779,7 +816,7 @@ class GameScreen3D(BaseGameScreen):
 
     def _setup_geometry(self) -> None:
         self.rotation = self._initial_rotation()
-        self.scale = (self.VIEWPORT / 2 - 24) / self.board.radius
+        self.scale = (self.VIEWPORT / 2 - 24 * S) / self.board.radius
         self._drag_from = None
         self._dragged = False
         self._frame = None  # projected geometry, rebuilt after rotation
@@ -841,7 +878,7 @@ class GameScreen3D(BaseGameScreen):
         return None
 
     def _handle_key(self, event) -> None:
-        step = 40  # pixels-worth of rotation per key press
+        step = 40 * S  # canvas-pixels-worth of rotation per key press
         if event.key == pygame.K_LEFT:
             self.rotate(-step, 0)
         elif event.key == pygame.K_RIGHT:
@@ -898,9 +935,9 @@ def make_screen(mode: str, difficulty: str) -> BaseGameScreen:
 class MenuScreen:
     """Two pages: pick a topology, then one of its tilings."""
 
-    WIDTH = 460
-    ITEM_HEIGHT = 58
-    ITEM_STEP = 70
+    WIDTH = 460 * S
+    ITEM_HEIGHT = 58 * S
+    ITEM_STEP = 70 * S
 
     def __init__(self, difficulty: str = "easy") -> None:
         self.difficulty = difficulty
@@ -915,27 +952,31 @@ class MenuScreen:
     def layout(self):
         items = self._items()
         rects = []
-        y = 96
+        y = 96 * S
         for key, label in items:
-            rects.append((pygame.Rect(50, y, self.WIDTH - 100, self.ITEM_HEIGHT), key, label))
+            rects.append(
+                (pygame.Rect(50 * S, y, self.WIDTH - 100 * S, self.ITEM_HEIGHT), key, label)
+            )
             y += self.ITEM_STEP
-        y += 14
+        y += 14 * S
         difficulty_buttons = []
-        button_width = 110
-        x = (self.WIDTH - 3 * button_width - 2 * 12) // 2
+        button_width = 110 * S
+        x = (self.WIDTH - 3 * button_width - 2 * 12 * S) // 2
         for difficulty_key in DIFFICULTIES:
             difficulty_buttons.append(
-                (pygame.Rect(x, y, button_width, 40), difficulty_key)
+                (pygame.Rect(x, y, button_width, 40 * S), difficulty_key)
             )
-            x += button_width + 12
+            x += button_width + 12 * S
         back = (
-            pygame.Rect(16, 26, 84, 34) if self.topology is not None else None
+            pygame.Rect(16 * S, 26 * S, 84 * S, 34 * S)
+            if self.topology is not None
+            else None
         )
         return {
             "items": rects,
             "difficulty": difficulty_buttons,
             "back": back,
-            "height": y + 40 + 30,
+            "height": y + 40 * S + 30 * S,
         }
 
     @property
@@ -973,24 +1014,24 @@ class MenuScreen:
 
     def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
         surface.fill(BG)
-        mouse = pygame.mouse.get_pos()
+        mouse = canvas_mouse()
         layout = self.layout()
 
-        title = fonts.get(30).render("MINESWEEPER", True, TEXT)
-        surface.blit(title, title.get_rect(center=(self.WIDTH // 2, 44)))
+        title = fonts.get(30 * S).render("MINESWEEPER", True, TEXT)
+        surface.blit(title, title.get_rect(center=(self.WIDTH // 2, 44 * S)))
         if self.topology is None:
             subtitle_text = "choose a surface"
         else:
             subtitle_text = TOPOLOGIES[self.topology][0] + " — choose a tiling"
-        subtitle = fonts.get(14).render(subtitle_text, True, MUTED)
-        surface.blit(subtitle, subtitle.get_rect(center=(self.WIDTH // 2, 72)))
+        subtitle = fonts.get(14 * S).render(subtitle_text, True, MUTED)
+        surface.blit(subtitle, subtitle.get_rect(center=(self.WIDTH // 2, 72 * S)))
 
         if layout["back"] is not None:
             rect = layout["back"]
             bevel_rect(
                 surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
             )
-            label = fonts.get(14).render("< back", True, TEXT)
+            label = fonts.get(14 * S).render("< back", True, TEXT)
             surface.blit(label, label.get_rect(center=rect.center))
 
         for rect, key, label_text in layout["items"]:
@@ -998,9 +1039,11 @@ class MenuScreen:
                 surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
             )
             icon = menu_icon(key)
-            surface.blit(icon, icon.get_rect(midleft=(rect.left + 10, rect.centery)))
-            label = fonts.get(18).render(label_text, True, TEXT)
-            surface.blit(label, label.get_rect(midleft=(rect.left + 66, rect.centery)))
+            surface.blit(icon, icon.get_rect(midleft=(rect.left + 10 * S, rect.centery)))
+            label = fonts.get(18 * S).render(label_text, True, TEXT)
+            surface.blit(
+                label, label.get_rect(midleft=(rect.left + 66 * S, rect.centery))
+            )
 
         for rect, difficulty_key in layout["difficulty"]:
             selected = difficulty_key == self.difficulty
@@ -1008,11 +1051,29 @@ class MenuScreen:
                 BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
             )
             bevel_rect(surface, rect, fill, pressed=selected)
-            label = fonts.get(15).render(difficulty_key.capitalize(), True, TEXT)
+            label = fonts.get(15 * S).render(difficulty_key.capitalize(), True, TEXT)
             surface.blit(label, label.get_rect(center=rect.center))
 
 
 # -- application -------------------------------------------------------------
+
+
+def _scale_mouse_event(event: pygame.event.Event) -> pygame.event.Event:
+    """Translate a window-space mouse event into canvas coordinates."""
+    if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+        return pygame.event.Event(
+            event.type,
+            pos=(event.pos[0] * S, event.pos[1] * S),
+            button=event.button,
+        )
+    if event.type == pygame.MOUSEMOTION:
+        return pygame.event.Event(
+            event.type,
+            pos=(event.pos[0] * S, event.pos[1] * S),
+            rel=(event.rel[0] * S, event.rel[1] * S),
+            buttons=event.buttons,
+        )
+    return event
 
 
 class App:
@@ -1026,13 +1087,15 @@ class App:
         pygame.init()
         pygame.display.set_caption("Minesweeper")
         pygame.display.set_icon(make_icon())
-        window = pygame.display.set_mode(self.screen.size)
+        window_size = (self.screen.size[0] // S, self.screen.size[1] // S)
+        window = pygame.display.set_mode(window_size)
+        canvas = pygame.Surface(self.screen.size)
         fonts = FontCache()
         clock = pygame.time.Clock()
         running = True
         while running:
             for event in pygame.event.get():
-                result = self.screen.handle_event(event)
+                result = self.screen.handle_event(_scale_mouse_event(event))
                 if result == "quit":
                     running = False
                     break
@@ -1043,9 +1106,13 @@ class App:
                     self.screen = make_screen(result[1], self.menu.difficulty)
             if not running:
                 break
-            if window.get_size() != self.screen.size:
-                window = pygame.display.set_mode(self.screen.size)
-            self.screen.draw(window, fonts)
+            wanted = (self.screen.size[0] // S, self.screen.size[1] // S)
+            if window.get_size() != wanted:
+                window = pygame.display.set_mode(wanted)
+            if canvas.get_size() != self.screen.size:
+                canvas = pygame.Surface(self.screen.size)
+            self.screen.draw(canvas, fonts)
+            pygame.transform.smoothscale(canvas, window.get_size(), window)
             pygame.display.flip()
             clock.tick(30)
         pygame.quit()
