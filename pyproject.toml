@@ -2,8 +2,11 @@
 name = "minesweeper"
 version = "0.1.0"
 description = "A minesweeper clone with square, triangle and hexagon boards"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = ["pygame-ce>=2.5"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
 
 [project.scripts]
 minesweeper = "minesweeper.gui:main"
