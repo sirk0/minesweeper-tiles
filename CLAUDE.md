@@ -1,7 +1,7 @@
 # Minesweeper (pygame)
 
 A minesweeper clone with flat and 3D boards (sphere, fullerenes, donut,
-Möbius strip, cylinder). Python 3.10+, only dependency: `pygame-ce`.
+Möbius strip, cylinder). Python 3.14 (see `.python-version`), only dependency: `pygame-ce`.
 
 ## Architecture
 
@@ -28,7 +28,9 @@ Möbius strip, cylinder). Python 3.10+, only dependency: `pygame-ce`.
 ```
 
 The venv already has pygame-ce and pytest; recreate with
-`python3 -m venv .venv && .venv/bin/pip install pygame-ce pytest`.
+`python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`.
+Locked requirements files are generated from pyproject.toml with
+`uv pip compile pyproject.toml [--extra dev] -o <file> --universal`.
 
 ## Tests
 

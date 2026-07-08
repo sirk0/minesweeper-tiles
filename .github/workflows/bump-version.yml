@@ -1,0 +1,40 @@
+name: Bump version
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    # skip the commit this workflow itself pushes
+    if: "!startsWith(github.event.head_commit.message, 'Bump version to')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Increase patch version in pyproject.toml
+        id: bump
+        run: |
+          new_version=$(python3 - <<'EOF'
+          import re
+          from pathlib import Path
+
+          path = Path("pyproject.toml")
+          text = path.read_text()
+          match = re.search(r'^version = "(\d+)\.(\d+)\.(\d+)"$', text, re.M)
+          major, minor, patch = map(int, match.groups())
+          new = f"{major}.{minor}.{patch + 1}"
+          path.write_text(text[: match.start()] + f'version = "{new}"' + text[match.end():])
+          print(new)
+          EOF
+          )
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
+          git push

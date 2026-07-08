@@ -21,7 +21,7 @@ A minesweeper clone in Python (pygame). Pick a surface, then a tiling:
 ## Play
 
 ```sh
-pip install pygame-ce
+pip install -r requirements.txt
 python3 -m minesweeper
 ```
 
@@ -44,7 +44,7 @@ rotate the surface; a short click reveals.
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install pytest pygame-ce
+.venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest
 ```
 
