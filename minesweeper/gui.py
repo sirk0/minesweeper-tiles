@@ -18,12 +18,14 @@ input up to match.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import math
 import sys
 import time
 
+import importlib
+
 import pygame
-import pygame.gfxdraw
 
 from minesweeper.boards import (
     DIFFICULTIES,
@@ -34,6 +36,15 @@ from minesweeper.boards import (
     newell_normal,
 )
 from minesweeper.game import CellState, Game, GameState
+
+# pygame.gfxdraw gives antialiased primitives on the desktop but does not
+# exist in the pygame wasm build (pygbag); there the browser build falls
+# back to pygame.draw and relies on the full-scene supersampling for
+# smoothing. importlib (not a plain import statement) keeps pygbag's
+# dependency scanner from searching PyPI for "pygame.gfxdraw".
+if sys.platform != "emscripten":
+    importlib.import_module("pygame.gfxdraw")
+_GFX = getattr(pygame, "gfxdraw", None)
 
 UI_SCALE = 2  # supersampling factor: canvas pixels per window pixel
 S = UI_SCALE
@@ -80,7 +91,13 @@ NUMBER_COLORS = {
     12: (60, 60, 64),
 }
 
-DIFFICULTY_KEYS = {pygame.K_1: "easy", pygame.K_2: "medium", pygame.K_3: "hard"}
+# pygame's key constants are not populated yet at import time in the wasm
+# build (pygbag), so fall back to the stable SDL keycodes for 1/2/3
+DIFFICULTY_KEYS = {
+    getattr(pygame, "K_1", 49): "easy",
+    getattr(pygame, "K_2", 50): "medium",
+    getattr(pygame, "K_3", 51): "hard",
+}
 
 DRAG_THRESHOLD = 5 * S  # canvas pixels of motion that make a click a drag
 
@@ -146,10 +163,28 @@ def point_in_polygon(point: tuple[float, float], vertices) -> bool:
 
 
 def fill_polygon(surface, vertices, color) -> None:
-    """Filled polygon with antialiased edges."""
+    """Filled polygon, antialiased where gfxdraw is available."""
     points = [(int(x), int(y)) for x, y in vertices]
-    pygame.gfxdraw.filled_polygon(surface, points, color)
-    pygame.gfxdraw.aapolygon(surface, points, color)
+    if _GFX is None:
+        pygame.draw.polygon(surface, color, points)
+    else:
+        _GFX.filled_polygon(surface, points, color)
+        _GFX.aapolygon(surface, points, color)
+
+
+def outline_polygon(surface, points, color) -> None:
+    if _GFX is None:
+        pygame.draw.polygon(surface, color, points, 1)
+    else:
+        _GFX.aapolygon(surface, points, color)
+
+
+def fill_circle(surface, cx, cy, radius, color) -> None:
+    if _GFX is None:
+        pygame.draw.circle(surface, color, (cx, cy), radius)
+    else:
+        _GFX.filled_circle(surface, cx, cy, radius, color)
+        _GFX.aacircle(surface, cx, cy, radius, color)
 
 
 def scale_color(color, factor: float):
@@ -174,7 +209,7 @@ def draw_tile(surface, vertices, base, *, raised: bool, shade: float = 1.0) -> N
             pygame.draw.line(surface, scale_color(bevel, shade), a, b, 2 * S)
     else:
         points = [(int(x), int(y)) for x, y in vertices]
-        pygame.gfxdraw.aapolygon(surface, points, scale_color(GRID_LINE, shade))
+        outline_polygon(surface, points, scale_color(GRID_LINE, shade))
 
 
 # -- 3D math -----------------------------------------------------------------
@@ -213,7 +248,12 @@ class FontCache:
 
     def get(self, size: int) -> pygame.font.Font:
         if size not in self._fonts:
-            self._fonts[size] = pygame.font.SysFont(self.FAMILY, size, bold=True)
+            try:
+                font = pygame.font.SysFont(self.FAMILY, size, bold=True)
+            except Exception:  # no system fonts in the browser (pygbag)
+                font = pygame.font.Font(None, size)
+                font.set_bold(True)
+            self._fonts[size] = font
         return self._fonts[size]
 
 
@@ -229,12 +269,9 @@ def draw_mine(surface, center, radius) -> None:
         start = (cx - dx * spike, cy - dy * spike)
         end = (cx + dx * spike, cy + dy * spike)
         pygame.draw.line(surface, MINE_COLOR, start, end, width)
-    pygame.gfxdraw.filled_circle(surface, cx, cy, r, MINE_COLOR)
-    pygame.gfxdraw.aacircle(surface, cx, cy, r, MINE_COLOR)
+    fill_circle(surface, cx, cy, r, MINE_COLOR)
     glint = max(1, r // 3)
-    pygame.gfxdraw.filled_circle(
-        surface, cx - r // 3, cy - r // 3, glint, (255, 255, 255)
-    )
+    fill_circle(surface, cx - r // 3, cy - r // 3, glint, (255, 255, 255))
 
 
 def draw_flag(surface, center, radius, *, wrong: bool) -> None:
@@ -257,8 +294,7 @@ def _draw_smiley_raw(surface, center, radius: int, state: GameState) -> None:
     """Smiley geometry at an arbitrary radius (drawn supersampled and
     cached by :func:`smiley_sprite`)."""
     cx, cy = int(center[0]), int(center[1])
-    pygame.gfxdraw.filled_circle(surface, cx, cy, radius, FACE_YELLOW)
-    pygame.gfxdraw.aacircle(surface, cx, cy, radius, FACE_YELLOW)
+    fill_circle(surface, cx, cy, radius, FACE_YELLOW)
     dark = (60, 46, 12)
     stroke = max(2, radius // 7)
     eye_dx, eye_y = int(radius * 0.38), cy - int(radius * 0.25)
@@ -286,8 +322,7 @@ def _draw_smiley_raw(surface, center, radius: int, state: GameState) -> None:
             )
         else:
             for ex in (cx - eye_dx, cx + eye_dx):
-                pygame.gfxdraw.filled_circle(surface, ex, eye_y, max(2, radius // 6), dark)
-                pygame.gfxdraw.aacircle(surface, ex, eye_y, max(2, radius // 6), dark)
+                fill_circle(surface, ex, eye_y, max(2, radius // 6), dark)
         mouth = pygame.Rect(0, 0, radius, int(radius * 0.8))
         mouth.center = (cx, cy + int(radius * 0.1))
         pygame.draw.arc(surface, dark, mouth, math.radians(215), math.radians(325), stroke)
@@ -368,12 +403,9 @@ def make_icon(size: int = 512) -> pygame.Surface:
         start = (cx - dx * spike, cy - dy * spike)
         end = (cx + dx * spike, cy + dy * spike)
         pygame.draw.line(icon, MINE_COLOR, start, end, max(3, size // 36))
-    pygame.gfxdraw.filled_circle(icon, cx, cy, body, MINE_COLOR)
-    pygame.gfxdraw.aacircle(icon, cx, cy, body, MINE_COLOR)
+    fill_circle(icon, cx, cy, body, MINE_COLOR)
     glint = max(2, body // 3)
-    pygame.gfxdraw.filled_circle(
-        icon, cx - body // 3, cy - body // 3, glint, (255, 255, 255)
-    )
+    fill_circle(icon, cx - body // 3, cy - body // 3, glint, (255, 255, 255))
 
     _gloss(icon, plate, alpha=36, radius=corner)
     return icon
@@ -410,7 +442,7 @@ def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_BLUE_DARK, width=5
     fill_polygon(surface, points, fill)
     pts = [(int(x), int(y)) for x, y in points]
     pygame.draw.lines(surface, outline, True, pts, width)
-    pygame.gfxdraw.aapolygon(surface, pts, outline)
+    outline_polygon(surface, pts, outline)
 
 
 def _icon_gloss(surface, bbox: pygame.Rect, alpha: int = 70) -> None:
@@ -509,8 +541,7 @@ def _render_icon(key: str) -> pygame.Surface:
             _icon_shape(s, points, width=4)
         _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.06, d * 0.84, d * 0.6))
     elif key in ("sphere", "c80", "c180", "spheretri"):
-        pygame.gfxdraw.filled_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
-        pygame.gfxdraw.aacircle(s, int(c), int(c), int(d * 0.44), ICON_BLUE_DARK)
+        fill_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.44), 4)
         if key == "spheretri":
             _icon_badge(s, c, c, d * 0.2, "tri")
@@ -569,8 +600,8 @@ def _render_icon(key: str) -> pygame.Surface:
         pygame.draw.ellipse(s, ICON_BLUE_DARK, top, 4)
         _icon_gloss(s, pygame.Rect(d * 0.2, d * 0.26, d * 0.6, d * 0.5), 60)
     else:
-        pygame.gfxdraw.filled_circle(s, int(c), int(c), int(d * 0.4), ICON_BLUE)
-        pygame.gfxdraw.aacircle(s, int(c), int(c), int(d * 0.4), ICON_BLUE_DARK)
+        fill_circle(s, int(c), int(c), int(d * 0.4), ICON_BLUE)
+        pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.4), 2)
 
     if badge is not None:
         badge_pos = {
@@ -1101,7 +1132,9 @@ class App:
             make_screen(mode, difficulty) if mode is not None else self.menu
         )
 
-    def run(self) -> None:
+    async def run_async(self) -> None:
+        """Main loop. Async so the browser build (pygbag) can yield to the
+        event loop every frame; on the desktop it runs under asyncio.run."""
         pygame.init()
         pygame.display.set_caption("Minesweeper")
         pygame.display.set_icon(make_icon())
@@ -1132,8 +1165,12 @@ class App:
             self.screen.draw(canvas, fonts)
             pygame.transform.smoothscale(canvas, window.get_size(), window)
             pygame.display.flip()
+            await asyncio.sleep(0)  # hand control back to the browser
             clock.tick(30)
         pygame.quit()
+
+    def run(self) -> None:
+        asyncio.run(self.run_async())
 
 
 def main(argv: list[str] | None = None) -> int:
