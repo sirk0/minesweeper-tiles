@@ -17,6 +17,7 @@ from minesweeper.boards import (
     mobius_hex_board,
     mobius_triangle_board,
     newell_normal,
+    penrose_board,
     sphere_board,
     sphere_triangle_board,
     square_board,
@@ -33,6 +34,7 @@ ALL_BOARDS = [
     triangle_grid_board(5, 9, 4),
     hex_board(5, 6, 4),
     hexhex_board(3, 5),
+    penrose_board(3, 9),
     sphere_board(7),
     c80_board(5),
     c180_board(10),
@@ -113,6 +115,42 @@ class TestCellCounts:
     def test_mobius_and_cylinder(self):
         assert len(mobius_board(20, 4, 10).adjacency) == 80
         assert len(cylinder_board(12, 7, 10).adjacency) == 84
+
+    def test_penrose_cell_counts(self):
+        assert len(penrose_board(3, 9).adjacency) == 60
+        assert len(penrose_board(4, 25).adjacency) == 160
+        assert len(penrose_board(5, 70).adjacency) == 430
+
+    def test_penrose_thick_outnumber_thin_by_phi(self):
+        board = penrose_board(5, 70)
+        thin = sum(1 for cell in board.adjacency if cell[0] == 0)
+        thick = sum(1 for cell in board.adjacency if cell[0] == 1)
+        assert abs(thick / thin - 1.618) < 0.02
+
+    def test_penrose_cells_are_rhombi(self):
+        board = penrose_board(3, 9)
+        for polygon in board.polygons.values():
+            assert len(polygon) == 4
+            # opposite sides of a rhombus have equal length
+            def side(i):
+                (x1, y1), (x2, y2) = polygon[i], polygon[(i + 1) % 4]
+                return ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+            sides = [side(i) for i in range(4)]
+            assert max(sides) - min(sides) < 1e-6 * max(sides)
+
+    def test_penrose_vertices_are_exact(self):
+        # exact Z[zeta] keys: distinct keys must be geometrically far
+        # apart (no floating-point near-duplicates)
+        board = penrose_board(3, 9)
+        points = {p for polygon in board.polygons.values() for p in polygon}
+        points = sorted(points)
+        min_gap = min(
+            ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+            for i, (ax, ay) in enumerate(points)
+            for bx, by in points[i + 1:i + 30]
+        )
+        side = penrose_board(3, 9).width / 5  # rhombus side scale
+        assert min_gap > side * 0.1
 
     def test_c180_is_goldberg_gp30(self):
         board = c180_board(10)

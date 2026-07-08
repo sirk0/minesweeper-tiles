@@ -4,7 +4,8 @@ A minesweeper clone in Python (pygame). Pick a surface, then a tiling:
 
 - **Flat surface** — classic squares (8 neighbors), a big triangle
   subdivided into small triangles (12), a triangle grid (12), hexagons
-  (6), or a big hexagon composed of small hexagons (6)
+  (6), a big hexagon composed of small hexagons (6), or an aperiodic
+  Penrose tiling of thick and thin rhombi (4–11 neighbors)
 - **Sphere (3D)** — 60 pentagons (a pentagonal hexecontahedron, 7
   neighbors), a C80 fullerene (12 pentagons + 30 hexagons), a C180
   fullerene (12 pentagons + 80 hexagons), or 80 geodesic triangles.
