@@ -493,6 +493,21 @@ def _render_icon(key: str) -> pygame.Surface:
         for hx, hy in centers:
             _icon_shape(s, _hexagon_points(hx, hy, r), width=4)
         _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.08, d * 0.84, d * 0.84))
+    elif key == "penrose":
+        # a sun of five thick rhombi
+        side, diag = d * 0.3, d * 0.3 * 1.618
+        for k in range(5):
+            angle = math.radians(72 * k - 90)
+            points = [
+                (c, c),
+                (c + side * math.cos(angle - math.radians(36)),
+                 c + side * math.sin(angle - math.radians(36))),
+                (c + diag * math.cos(angle), c + diag * math.sin(angle)),
+                (c + side * math.cos(angle + math.radians(36)),
+                 c + side * math.sin(angle + math.radians(36))),
+            ]
+            _icon_shape(s, points, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.06, d * 0.84, d * 0.6))
     elif key in ("sphere", "c80", "c180", "spheretri"):
         pygame.gfxdraw.filled_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
         pygame.gfxdraw.aacircle(s, int(c), int(c), int(d * 0.44), ICON_BLUE_DARK)
@@ -773,8 +788,11 @@ class GameScreen(BaseGameScreen):
         self.centers = {
             cell: centroid(vertices) for cell, vertices in self.polygons.items()
         }
-        any_cell = next(iter(self.polygons))
-        self.glyph_radius = inradius(self.polygons[any_cell]) * 0.85
+        # per cell: tilings like Penrose mix cells of different sizes
+        self.glyph_radius = {
+            cell: inradius(vertices) * 0.85
+            for cell, vertices in self.polygons.items()
+        }
 
     @property
     def size(self) -> tuple[int, int]:
@@ -793,7 +811,7 @@ class GameScreen(BaseGameScreen):
         for cell in self.polygons:
             self.draw_cell(
                 surface, fonts, cell, self.polygons[cell],
-                self.centers[cell], self.glyph_radius,
+                self.centers[cell], self.glyph_radius[cell],
             )
 
 

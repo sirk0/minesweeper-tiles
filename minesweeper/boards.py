@@ -28,6 +28,7 @@ MODE_LABELS = {
     "trigrid": "Triangle grid",
     "hex": "Hexagons",
     "hexhex": "Hexagon of hexagons",
+    "penrose": "Penrose rhombi",
     "sphere": "60 pentagons",
     "c80": "C80 fullerene",
     "c180": "C180 fullerene",
@@ -47,7 +48,7 @@ MODE_LABELS = {
 # cannot be tiled with hexagons alone (Euler's formula forces 12
 # pentagons in), so the sphere offers fullerenes instead.
 TOPOLOGIES = {
-    "flat": ("Flat surface", ("square", "triangle", "trigrid", "hex", "hexhex")),
+    "flat": ("Flat surface", ("square", "triangle", "trigrid", "hex", "hexhex", "penrose")),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri")),
     "torus": ("Donut", ("torus", "torustri", "torushex")),
     "mobius": ("Möbius strip", ("mobius", "mobiustri", "mobiushex")),
@@ -186,6 +187,110 @@ def hexhex_board(radius: int, mine_count: int, scale: float = 20) -> Board:
             ky = 3 * r + 3 * radius + 2
             cells[(q, r)] = [(kx + ox, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS]
     return _build("hexhex", cells, (scale * ROOT3 / 2, scale / 2), mine_count)
+
+
+# -- Penrose tiling (P3, rhombi) ---------------------------------------------
+#
+# Vertices are exact elements of Z[zeta], zeta = exp(i*pi/5), stored as 4
+# integer coefficients over the basis (1, z, z^2, z^3) with the reduction
+# z^4 = -1 + z - z^2 + z^3. Robinson-triangle deflation only ever needs
+# addition, subtraction and division by phi -- and 1/phi = phi - 1 =
+# z^2 - z^3, so every operation stays in integers and vertex keys are
+# exact: the shared-vertex adjacency needs no floating-point tolerance.
+
+ZPoint = tuple[int, int, int, int]
+
+
+def _zeta_mul(p: ZPoint) -> ZPoint:
+    a, b, c, d = p
+    return (-d, a + d, b - d, c + d)
+
+
+def _z_add(p: ZPoint, q: ZPoint) -> ZPoint:
+    return tuple(x + y for x, y in zip(p, q))
+
+
+def _z_sub(p: ZPoint, q: ZPoint) -> ZPoint:
+    return tuple(x - y for x, y in zip(p, q))
+
+
+def _z_div_phi(p: ZPoint) -> ZPoint:
+    z2 = _zeta_mul(_zeta_mul(p))
+    return _z_sub(z2, _zeta_mul(z2))
+
+
+_ZETA_BASIS = [
+    (math.cos(math.pi * k / 5), math.sin(math.pi * k / 5)) for k in range(4)
+]
+
+
+def _z_to_xy(p: ZPoint) -> tuple[float, float]:
+    return (
+        sum(c * bx for c, (bx, _) in zip(p, _ZETA_BASIS)),
+        sum(c * by for c, (_, by) in zip(p, _ZETA_BASIS)),
+    )
+
+
+def penrose_board(subdivisions: int, mine_count: int, scale: float = 300) -> Board:
+    """An aperiodic Penrose tiling (P3): thick and thin rhombi.
+
+    Starts from a wheel of ten half-rhombus Robinson triangles and
+    deflates ``subdivisions`` times; mirror-image triangle halves are
+    then merged into rhombi (unpaired halves on the outer rim are
+    dropped). ``scale`` is the wheel radius in pixels.
+    """
+    zero = (0, 0, 0, 0)
+    powers = [(1, 0, 0, 0)]
+    for _ in range(10):
+        powers.append(_zeta_mul(powers[-1]))
+
+    # (color, apex, base1, base2): color 0 = half-thin, 1 = half-thick
+    # (thick rhombi outnumber thin ones by phi in the limit)
+    triangles = []
+    for i in range(10):
+        b, c = powers[i], powers[i + 1]
+        if i % 2:
+            b, c = c, b  # alternate handedness so mirror halves pair up
+        triangles.append((0, zero, b, c))
+
+    for _ in range(subdivisions):
+        deflated = []
+        for color, a, b, c in triangles:
+            if color == 0:
+                p = _z_add(a, _z_div_phi(_z_sub(b, a)))
+                deflated += [(0, c, p, b), (1, p, c, a)]
+            else:
+                q = _z_add(b, _z_div_phi(_z_sub(a, b)))
+                r = _z_add(b, _z_div_phi(_z_sub(c, b)))
+                deflated += [(1, r, c, a), (1, q, r, b), (0, r, q, a)]
+        triangles = deflated
+
+    # merge mirror halves: partners share the color and the base edge
+    waiting: dict = {}
+    cells: dict[Cell, list[ZPoint]] = {}
+    for color, a, b, c in triangles:
+        key = (color, *sorted((b, c)))
+        if key in waiting:
+            other_apex = waiting.pop(key)
+            cells[(color, len(cells))] = [a, b, other_apex, c]
+        else:
+            waiting[key] = a
+
+    adjacency = _shared_vertex_adjacency(cells)
+    xy = {
+        key: _z_to_xy(key)
+        for quad in cells.values()
+        for key in quad
+    }
+    min_x = min(x for x, _ in xy.values())
+    min_y = min(y for _, y in xy.values())
+    polygons = {
+        cell: [((x - min_x) * scale, (y - min_y) * scale) for x, y in (xy[k] for k in quad)]
+        for cell, quad in cells.items()
+    }
+    width = max(x for polygon in polygons.values() for x, _ in polygon)
+    height = max(y for polygon in polygons.values() for _, y in polygon)
+    return Board("penrose", polygons, adjacency, mine_count, width, height)
 
 
 # -- 3D helpers --------------------------------------------------------------
@@ -792,6 +897,11 @@ _PRESETS = {
         "easy": lambda: hexhex_board(5, 12, scale=25),
         "medium": lambda: hexhex_board(7, 28, scale=21),
         "hard": lambda: hexhex_board(9, 58, scale=18),
+    },
+    "penrose": {
+        "easy": lambda: penrose_board(3, 9, scale=220),
+        "medium": lambda: penrose_board(4, 25, scale=280),
+        "hard": lambda: penrose_board(5, 70, scale=340),
     },
     "sphere": {
         "easy": lambda: sphere_board(7),
