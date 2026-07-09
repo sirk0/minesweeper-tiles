@@ -1241,12 +1241,38 @@ class App:
                 window = pygame.display.set_mode(wanted)
             if canvas.get_size() != self.screen.size:
                 canvas = pygame.Surface(self.screen.size)
+            self._fit_web_canvas(window.get_size())
             self.screen.draw(canvas, fonts)
             pygame.transform.smoothscale(canvas, window.get_size(), window)
             pygame.display.flip()
             await asyncio.sleep(0)  # hand control back to the browser
             clock.tick(30)
         pygame.quit()
+
+    _web_canvas_state = None
+
+    def _fit_web_canvas(self, size: tuple[int, int]) -> None:
+        """In the browser, pygbag's template sizes the canvas element once
+        at boot and never revisits it; after any set_mode with a different
+        aspect ratio the image would be stretched. Resize the canvas CSS
+        box ourselves whenever the window size (or the browser window)
+        changes, preserving the aspect ratio."""
+        if sys.platform != "emscripten":
+            return
+        import platform  # pygbag's platform module exposes the DOM
+
+        dom_window = platform.window
+        state = (size, dom_window.innerWidth, dom_window.innerHeight)
+        if state == self._web_canvas_state:
+            return
+        self._web_canvas_state = state
+        width, height = size
+        scale = min(
+            dom_window.innerWidth / width, dom_window.innerHeight / height
+        )
+        style = dom_window.canvas.style
+        style.width = f"{int(width * scale)}px"
+        style.height = f"{int(height * scale)}px"
 
     def run(self) -> None:
         asyncio.run(self.run_async())

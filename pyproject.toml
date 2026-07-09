@@ -6,7 +6,9 @@ requires-python = ">=3.14"
 dependencies = ["pygame-ce>=2.5"]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+web = ["pygbag>=0.9"]
+test = ["pytest", "ruff"]
+all = ["minesweeper[web]", "minesweeper[test]"]
 
 [project.scripts]
 minesweeper = "minesweeper.gui:main"
