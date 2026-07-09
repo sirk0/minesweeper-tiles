@@ -15,10 +15,10 @@ jobs:
           python-version-file: .python-version
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements-test.txt
       - name: Run tests
         # GUI tests set SDL's dummy video driver themselves
-        run: pytest -q
+        run: make test PY=python
 
   lint:
     runs-on: ubuntu-latest
@@ -28,6 +28,6 @@ jobs:
         with:
           python-version-file: .python-version
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -r requirements-test.txt
       - name: Lint
-        run: ruff check minesweeper tests
+        run: make lint PY=python

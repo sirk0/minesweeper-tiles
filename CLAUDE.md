@@ -27,10 +27,11 @@ Möbius strip, cylinder). Python 3.14 (see `.python-version`), only dependency: 
 .venv/bin/python -m minesweeper --mode hexhex   # skip menu; see MODE_LABELS
 ```
 
-The venv already has pygame-ce and pytest; recreate with
-`python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt`.
-Locked requirements files are generated from pyproject.toml with
-`uv pip compile pyproject.toml [--extra dev] -o <file> --universal`.
+The venv already has everything; recreate with `make venv`.
+Dependency groups in pyproject.toml: `web` (pygbag), `test` (pytest,
+ruff), `all` (both); locked to requirements[-web|-test|-all].txt by
+`make lock` (uv). The Makefile wraps all common commands (`make help`);
+CI runs `make test`/`make lint`, Pages deploys `make web-package`.
 
 ## Web build (pygbag)
 
@@ -43,12 +44,18 @@ gfxdraw doesn't exist in wasm at all — `_GFX` fallbacks in gui.py),
 pygame key constants read via `getattr` at module level, and `main.py`
 must import pygame itself so pygbag provisions the wasm wheel.
 
-Local test (must use pygbag's own server; on any other port the
-template rewrites the CDN to localhost:8000 and pygame fails to load):
+The canvas CSS box is resized from Python on every set_mode
+(`App._fit_web_canvas`) because pygbag's template only sizes it once at
+boot — without this, screens after the first render stretched. pygbag
+also regenerates its default favicon on every build, so `make
+web-package` overwrites it afterwards with scripts/make_favicon.py
+(the in-game mine-in-hexagon icon).
+
+Local test — must use pygbag's own server; on any other port the
+template rewrites the CDN to localhost:8000 and pygame fails to load:
 
 ```sh
-mkdir -p build/app && cp main.py build/app/ && cp -r minesweeper build/app/
-.venv/bin/python -m pygbag --ume_block 0 build/app   # http://localhost:8000
+make web-run   # builds, then serves at http://localhost:8000
 ```
 
 ## Tests
