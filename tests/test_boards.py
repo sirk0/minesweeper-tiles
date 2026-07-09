@@ -1,11 +1,17 @@
 import pytest
 
+import math
+from collections import defaultdict
+
 from minesweeper.boards import (
+    _ARCH_CONFIGS,
     DIFFICULTIES,
     MODE_LABELS,
     MODES_3D,
     TOPOLOGIES,
+    archimedean_board,
     build_board,
+    snub_dodecahedron_board,
     c80_board,
     c180_board,
     cylinder_board,
@@ -48,6 +54,13 @@ ALL_BOARDS = [
     cylinder_board(12, 7, 10),
     cylinder_triangle_board(16, 6, 11),
     cylinder_hex_board(12, 6, 9),
+    snub_dodecahedron_board(10),
+    archimedean_board("elongated", 4, 11),
+    archimedean_board("snubsquare", 4, 11),
+    archimedean_board("kagome", 5.5, 11),
+    archimedean_board("snubhex", 4.2, 12),
+    archimedean_board("truncsquare", 8, 10),
+    archimedean_board("trunchex", 11, 13),
 ]
 
 
@@ -301,6 +314,63 @@ class TestNeighborCounts:
         assert set(board.adjacency[(1, 2)]) == {
             (0, 2), (0, 3), (1, 1), (1, 3), (2, 2), (2, 3),
         }
+
+
+class TestArchimedean:
+    """The six semiregular tilings with two tile shapes."""
+
+    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    def test_has_exactly_the_two_configured_shapes(self, mode):
+        config, _ = _ARCH_CONFIGS[mode]
+        board = archimedean_board(mode, 6, 5)
+        assert {len(p) for p in board.polygons.values()} == set(config)
+
+    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    def test_interior_vertex_configuration(self, mode):
+        """Around every interior vertex the tile sizes must match the
+        tiling's vertex configuration (e.g. 3.3.4.3.4)."""
+        config, _ = _ARCH_CONFIGS[mode]
+        board = archimedean_board(mode, 6, 5)
+        at_vertex = defaultdict(list)
+        for polygon in board.polygons.values():
+            n = len(polygon)
+            for i, point in enumerate(polygon):
+                key = (round(point[0], 6), round(point[1], 6))
+                before, after = polygon[i - 1], polygon[(i + 1) % n]
+                v1 = (before[0] - point[0], before[1] - point[1])
+                v2 = (after[0] - point[0], after[1] - point[1])
+                angle = abs(
+                    math.atan2(
+                        v1[0] * v2[1] - v1[1] * v2[0],
+                        v1[0] * v2[0] + v1[1] * v2[1],
+                    )
+                )
+                at_vertex[key].append((n, angle))
+        interior = 0
+        for entries in at_vertex.values():
+            if abs(sum(a for _, a in entries) - 2 * math.pi) < 1e-6:
+                interior += 1
+                assert sorted(s for s, _ in entries) == sorted(config)
+        assert interior > 10  # the check actually saw interior vertices
+
+    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    def test_no_overlapping_tiles(self, mode):
+        # any edge shared by more than two tiles means overlap
+        board = archimedean_board(mode, 6, 5)
+        edge_count = defaultdict(int)
+        for polygon in board.polygons.values():
+            n = len(polygon)
+            for i in range(n):
+                a = (round(polygon[i][0], 6), round(polygon[i][1], 6))
+                b = (round(polygon[(i + 1) % n][0], 6), round(polygon[(i + 1) % n][1], 6))
+                edge_count[frozenset((a, b))] += 1
+        assert all(count <= 2 for count in edge_count.values())
+
+    def test_snub_dodecahedron_is_12_pentagons_80_triangles(self):
+        board = snub_dodecahedron_board(10)
+        sizes = sorted(len(p) for p in board.polygons.values())
+        assert len(board.adjacency) == 92
+        assert sizes.count(3) == 80 and sizes.count(5) == 12
 
 
 class TestPresets:
