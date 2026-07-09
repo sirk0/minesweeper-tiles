@@ -29,10 +29,17 @@ MODE_LABELS = {
     "hex": "Hexagons",
     "hexhex": "Hexagon of hexagons",
     "penrose": "Penrose rhombi",
+    "elongated": "Elongated triangular",
+    "snubsquare": "Snub square",
+    "kagome": "Kagome",
+    "snubhex": "Snub hexagonal",
+    "truncsquare": "Truncated square",
+    "trunchex": "Truncated hexagonal",
     "sphere": "60 pentagons",
     "c80": "C80 fullerene",
     "c180": "C180 fullerene",
     "spheretri": "Triangles",
+    "snubdodec": "Snub dodecahedron",
     "torus": "Squares",
     "torustri": "Triangles",
     "torushex": "Hexagons",
@@ -48,8 +55,15 @@ MODE_LABELS = {
 # cannot be tiled with hexagons alone (Euler's formula forces 12
 # pentagons in), so the sphere offers fullerenes instead.
 TOPOLOGIES = {
-    "flat": ("Flat surface", ("square", "triangle", "trigrid", "hex", "hexhex", "penrose")),
-    "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri")),
+    "flat": (
+        "Flat surface",
+        (
+            "square", "triangle", "trigrid", "hex", "hexhex", "penrose",
+            "elongated", "snubsquare", "kagome", "snubhex",
+            "truncsquare", "trunchex",
+        ),
+    ),
+    "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
     "torus": ("Donut", ("torus", "torustri", "torushex")),
     "mobius": ("Möbius strip", ("mobius", "mobiustri", "mobiushex")),
     "cylinder": ("Cylinder", ("cylinder", "cyltri", "cylhex")),
@@ -57,7 +71,7 @@ TOPOLOGIES = {
 
 MODES_3D = frozenset(
     {
-        "sphere", "c80", "c180", "spheretri",
+        "sphere", "c80", "c180", "spheretri", "snubdodec",
         "torus", "torustri", "torushex",
         "mobius", "mobiustri", "mobiushex",
         "cylinder", "cyltri", "cylhex",
@@ -293,6 +307,260 @@ def penrose_board(subdivisions: int, mine_count: int, scale: float = 300) -> Boa
     return Board("penrose", polygons, adjacency, mine_count, width, height)
 
 
+# -- Archimedean (semiregular) tilings ---------------------------------------
+#
+# The six uniform tilings with two tile shapes are grown outward from a
+# seed vertex, placing one polygon at a time wherever the vertex
+# configuration leaves only one possibility. All arithmetic is exact:
+# every edge direction is a multiple of 30 degrees (45 for the truncated
+# square tiling), so each coordinate is (a + b*sqrt(r))/2 with integer
+# a, b and r = 3 (or 2). A vertex id is ((ax, bx), (ay, by)).
+
+_ARCH_CONFIGS = {
+    "elongated": ((3, 3, 3, 4, 4), 12),
+    "snubsquare": ((3, 3, 4, 3, 4), 12),
+    "kagome": ((3, 6, 3, 6), 12),
+    "snubhex": ((3, 3, 3, 3, 6), 12),
+    "truncsquare": ((4, 8, 8), 8),
+    "trunchex": ((3, 12, 12), 12),
+}
+
+
+def _arch_directions(n_slots: int) -> list:
+    """Exact unit vectors for each direction index: components are
+    (a, b) meaning (a + b*sqrt(r))/2."""
+    if n_slots == 12:  # 30-degree steps, sqrt(3)
+        cos = [(2, 0), (0, 1), (1, 0), (0, 0), (-1, 0), (0, -1),
+               (-2, 0), (0, -1), (-1, 0), (0, 0), (1, 0), (0, 1)]
+        quarter = 3
+    else:  # 8 slots: 45-degree steps, sqrt(2)
+        cos = [(2, 0), (0, 1), (0, 0), (0, -1),
+               (-2, 0), (0, -1), (0, 0), (0, 1)]
+        quarter = 2
+    sin = [cos[(k - quarter) % n_slots] for k in range(n_slots)]
+    return [(cos[k], sin[k]) for k in range(n_slots)]
+
+
+def _arch_interior_slots(size: int, n_slots: int) -> int:
+    # interior angle of a regular size-gon, in slot units
+    return n_slots * (size - 2) // (2 * size)
+
+
+class _ArchimedeanTiler:
+    """Grows a uniform tiling from its vertex configuration."""
+
+    def __init__(self, config: tuple[int, ...], n_slots: int) -> None:
+        self.config = config
+        self.n_slots = n_slots
+        self.radical = 3.0**0.5 if n_slots == 12 else 2.0**0.5
+        self.directions = _arch_directions(n_slots)
+        self.faces: list[tuple[int, list]] = []  # (size, vertex ids)
+        self._seen_faces: set = set()
+        self._occupancy: dict = {}  # vertex -> per-slot (face index, size)
+        self._pending: dict = {}  # insertion-ordered set of vertices
+
+    def position(self, vertex) -> tuple[float, float]:
+        (ax, bx), (ay, by) = vertex
+        return ((ax + bx * self.radical) / 2, (ay + by * self.radical) / 2)
+
+    def _walk(self, start, direction: int, size: int) -> list:
+        exterior = self.n_slots // 2 - _arch_interior_slots(size, self.n_slots)
+        points = [start]
+        current, d = start, direction
+        for _ in range(size - 1):
+            (ax, bx), (ay, by) = current
+            (cx, dx), (cy, dy) = self.directions[d]
+            current = ((ax + cx, bx + dx), (ay + cy, by + dy))
+            points.append(current)
+            d = (d + exterior) % self.n_slots
+        return points
+
+    def place(self, start, direction: int, size: int) -> None:
+        """Add the size-gon whose first vertex is ``start`` with its first
+        edge along ``direction`` (interior on the left)."""
+        points = self._walk(start, direction, size)
+        face_key = tuple(sorted(points))
+        if face_key in self._seen_faces:
+            return
+        self._seen_faces.add(face_key)
+        face_index = len(self.faces)
+        self.faces.append((size, points))
+        interior = _arch_interior_slots(size, self.n_slots)
+        exterior = self.n_slots // 2 - interior
+        for i, vertex in enumerate(points):
+            out_dir = (direction + i * exterior) % self.n_slots
+            slots = self._occupancy.setdefault(vertex, [None] * self.n_slots)
+            for j in range(interior):
+                slot = (out_dir + j) % self.n_slots
+                if slots[slot] is not None:
+                    raise ValueError(f"overlapping polygons at {vertex}")
+                slots[slot] = (face_index, size)
+            self._pending[vertex] = None
+
+    def _resolve(self, vertex) -> bool:
+        """Fill one determined gap at ``vertex``. True if a polygon was
+        placed."""
+        slots = self._occupancy[vertex]
+        if None not in slots:
+            self._pending.pop(vertex, None)
+            return False
+        n = self.n_slots
+        targets = [
+            s
+            for s in range(n)
+            if slots[s] is None
+            and (slots[s - 1] is not None or slots[(s + 1) % n] is not None)
+        ]
+        if not targets:
+            return False
+        # every consistent way of laying the vertex configuration around
+        # this vertex, respecting the polygons already placed
+        layouts = []
+        k = len(self.config)
+        for rotation in range(k):
+            sequence = self.config[rotation:] + self.config[:rotation]
+            widths = [_arch_interior_slots(size, n) for size in sequence]
+            for offset in range(n):
+                owner = [None] * n  # slot -> (ordinal, size)
+                starts = []
+                position = offset
+                for ordinal, size in enumerate(sequence):
+                    starts.append(position % n)
+                    for j in range(widths[ordinal]):
+                        owner[(position + j) % n] = (ordinal, size)
+                    position += widths[ordinal]
+                consistent = True
+                ordinal_face: dict[int, int] = {}
+                face_ordinal: dict[int, int] = {}
+                for s in range(n):
+                    entry = slots[s]
+                    if entry is None:
+                        continue
+                    face, face_size = entry
+                    ordinal, size = owner[s]
+                    if size != face_size:
+                        consistent = False
+                        break
+                    if ordinal_face.setdefault(ordinal, face) != face:
+                        consistent = False
+                        break
+                    if face_ordinal.setdefault(face, ordinal) != ordinal:
+                        consistent = False
+                        break
+                if consistent:
+                    layouts.append((owner, starts))
+        # place any polygon whose position all layouts agree on
+        for target in targets:
+            candidates = {
+                (owner[target][1], starts[owner[target][0]])
+                for owner, starts in layouts
+            }
+            if len(candidates) == 1:
+                size, start = candidates.pop()
+                self.place(vertex, start, size)
+                return True
+        return False
+
+    def grow(self, radius: float) -> None:
+        origin = ((0, 0), (0, 0))
+        cursor = 0
+        for size in self.config:  # seed: the full star around the origin
+            self.place(origin, cursor, size)
+            cursor += _arch_interior_slots(size, self.n_slots)
+        process_radius = radius + 2
+        progressed = True
+        while progressed:
+            progressed = False
+            for vertex in list(self._pending):
+                x, y = self.position(vertex)
+                if x * x + y * y > process_radius * process_radius:
+                    self._pending.pop(vertex, None)
+                    continue
+                if self._resolve(vertex):
+                    progressed = True
+        for vertex, slots in self._occupancy.items():
+            x, y = self.position(vertex)
+            if x * x + y * y <= radius * radius and None in slots:
+                raise RuntimeError(f"could not complete tiling at {vertex}")
+
+
+def _snubhex_patch(radius: float) -> tuple[dict, callable]:
+    """The snub hexagonal tiling (3.3.3.3.6) is not locally forced, so
+    the constraint engine cannot grow it; build it directly instead.
+
+    Hexagon centers occupy a sqrt(7) superlattice of the triangular
+    lattice (basis (5,1) and (1,3) in half-side/row-height units): every
+    other lattice vertex then touches exactly one hexagon, which is the
+    3.3.3.3.6 vertex figure. Each small triangle with a hexagon-center
+    vertex belongs to that hexagon; the rest are triangle cells.
+    """
+    height = ROOT3 / 2
+
+    def position(vertex):
+        return (vertex[0] / 2, vertex[1] * height)
+
+    def hex_center(vertex):
+        dx, dy = vertex[0] - 1, vertex[1]
+        m, n = 3 * dx - dy, 5 * dy - dx
+        if m % 14 or n % 14:
+            return None
+        return (m // 14, n // 14)
+
+    cells: dict[Cell, list] = {}
+    span = int(radius) + 4
+    for row in range(-span, span):
+        for i in range(-2 * span, 2 * span):
+            points = _triangle_vertices(i, row, up=(row + i) % 2 == 0)
+            if any(hex_center(p) is not None for p in points):
+                continue  # part of a hexagon (or a dropped rim hexagon)
+            xs, ys = zip(*(position(p) for p in points))
+            cx, cy = sum(xs) / 3, sum(ys) / 3
+            if cx * cx + cy * cy <= radius * radius:
+                cells[(3, (row, i))] = points
+    ring = [(2, 0), (1, 1), (-1, 1), (-2, 0), (-1, -1), (1, -1)]
+    for m in range(-span, span):
+        for n in range(-span, span):
+            center = (1 + 5 * m + n, m + 3 * n)
+            x, y = position(center)
+            if x * x + y * y <= radius * radius:
+                cells[(6, (m, n))] = [
+                    (center[0] + ox, center[1] + oy) for ox, oy in ring
+                ]
+    return cells, position
+
+
+def archimedean_board(
+    mode: str, radius: float, mine_count: int, scale: float = 40
+) -> Board:
+    """A disc of an Archimedean tiling: all tiles whose center lies
+    within ``radius`` edge lengths of the seed vertex."""
+    if mode == "snubhex":
+        cells, position = _snubhex_patch(radius)
+    else:
+        config, n_slots = _ARCH_CONFIGS[mode]
+        tiler = _ArchimedeanTiler(config, n_slots)
+        tiler.grow(radius)
+        position = tiler.position
+        cells = {}
+        for index, (size, points) in enumerate(tiler.faces):
+            xs, ys = zip(*(position(p) for p in points))
+            cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
+            if cx * cx + cy * cy <= radius * radius:
+                cells[(size, index)] = points
+
+    adjacency = _shared_vertex_adjacency(cells)
+    xy = {key: position(key) for quad in cells.values() for key in quad}
+    min_x = min(x for x, _ in xy.values())
+    min_y = min(y for _, y in xy.values())
+    polygons = {
+        cell: [((x - min_x) * scale, (y - min_y) * scale) for x, y in (xy[k] for k in keys)]
+        for cell, keys in cells.items()
+    }
+    width = max(x for polygon in polygons.values() for x, _ in polygon)
+    height = max(y for polygon in polygons.values() for _, y in polygon)
+    return Board(mode, polygons, adjacency, mine_count, width, height)
+
+
 # -- 3D helpers --------------------------------------------------------------
 
 
@@ -388,15 +656,11 @@ def _sphere_board3d(mode: str, cells, positions, mine_count: int) -> Board3D:
 # -- 3D builders --------------------------------------------------------------
 
 
-def sphere_board(mine_count: int) -> Board3D:
-    """A sphere tiled with 60 pentagons (a pentagonal hexecontahedron,
-    projected onto the unit sphere).
-
-    Built with the Conway "gyro" operation on an icosahedron: each
-    triangular face gains a center vertex, each edge two division
-    points, and every (face, corner) pair becomes one pentagon. Every
-    pentagon has exactly 7 neighbors.
-    """
+def _gyro_pentagons() -> tuple[dict, dict]:
+    """The pentagonal hexecontahedron as (cells, vertex positions):
+    the Conway "gyro" operation on an icosahedron — each triangular
+    face gains a center vertex, each edge two division points, and
+    every (face, corner) pair becomes one pentagon."""
     vertices, faces = _icosahedron()
     positions: dict[Hashable, Vec3] = {}
 
@@ -430,7 +694,43 @@ def sphere_board(mine_count: int) -> Board3D:
                 edge_key(v, w, 1),
                 edge_key(v, w, 2),
             ]
+    return cells, positions
+
+
+def sphere_board(mine_count: int) -> Board3D:
+    """A sphere tiled with 60 pentagons (a pentagonal hexecontahedron,
+    projected onto the unit sphere). Every pentagon has exactly 7
+    neighbors."""
+    cells, positions = _gyro_pentagons()
     return _sphere_board3d("sphere", cells, positions, mine_count)
+
+
+def snub_dodecahedron_board(mine_count: int) -> Board3D:
+    """A snub dodecahedron: 12 pentagons and 80 triangles (vertex
+    configuration 3.3.3.3.5), projected onto the unit sphere.
+
+    Built as the dual of the pentagonal hexecontahedron: one cell per
+    hexecontahedron vertex, made of the surrounding pentagon centers.
+    """
+    pentagons, positions = _gyro_pentagons()
+    centers = {
+        cid: _normalize(
+            tuple(
+                sum(positions[k][axis] for k in keys) / len(keys)
+                for axis in range(3)
+            )
+        )
+        for cid, keys in pentagons.items()
+    }
+    around: dict[Hashable, list] = defaultdict(list)
+    for cid, keys in pentagons.items():
+        for key in keys:
+            around[key].append(cid)
+    cells = {
+        key: _tangent_order(positions[key], [(cid, centers[cid]) for cid in ids])
+        for key, ids in around.items()
+    }
+    return _sphere_board3d("snubdodec", cells, centers, mine_count)
 
 
 def _geodesic(frequency: int) -> tuple[dict, list[tuple]]:
@@ -903,10 +1203,45 @@ _PRESETS = {
         "medium": lambda: penrose_board(4, 25, scale=280),
         "hard": lambda: penrose_board(5, 70, scale=340),
     },
+    "elongated": {
+        "easy": lambda: archimedean_board("elongated", 4, 11, scale=62),
+        "medium": lambda: archimedean_board("elongated", 5.8, 27, scale=41),
+        "hard": lambda: archimedean_board("elongated", 8.2, 63, scale=29),
+    },
+    "snubsquare": {
+        "easy": lambda: archimedean_board("snubsquare", 4, 11, scale=59),
+        "medium": lambda: archimedean_board("snubsquare", 5.8, 28, scale=41),
+        "hard": lambda: archimedean_board("snubsquare", 8.2, 62, scale=29),
+    },
+    "kagome": {
+        "easy": lambda: archimedean_board("kagome", 5.5, 11, scale=45),
+        "medium": lambda: archimedean_board("kagome", 8.5, 30, scale=29),
+        "hard": lambda: archimedean_board("kagome", 11.5, 65, scale=21),
+    },
+    "snubhex": {
+        "easy": lambda: archimedean_board("snubhex", 4.2, 12, scale=52),
+        "medium": lambda: archimedean_board("snubhex", 6.3, 30, scale=38),
+        "hard": lambda: archimedean_board("snubhex", 8.6, 64, scale=27),
+    },
+    "truncsquare": {
+        "easy": lambda: archimedean_board("truncsquare", 8, 10, scale=31),
+        "medium": lambda: archimedean_board("truncsquare", 13, 29, scale=19),
+        "hard": lambda: archimedean_board("truncsquare", 17.5, 61, scale=14),
+    },
+    "trunchex": {
+        "easy": lambda: archimedean_board("trunchex", 11, 13, scale=20.5),
+        "medium": lambda: archimedean_board("trunchex", 16, 32, scale=15),
+        "hard": lambda: archimedean_board("trunchex", 21, 64, scale=11.5),
+    },
     "sphere": {
         "easy": lambda: sphere_board(7),
         "medium": lambda: sphere_board(10),
         "hard": lambda: sphere_board(14),
+    },
+    "snubdodec": {
+        "easy": lambda: snub_dodecahedron_board(10),
+        "medium": lambda: snub_dodecahedron_board(14),
+        "hard": lambda: snub_dodecahedron_board(19),
     },
     "c80": {
         "easy": lambda: c80_board(5),

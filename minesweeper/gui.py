@@ -430,12 +430,16 @@ ICON_SIZE = 44 * S
 _icon_cache: dict[str, pygame.Surface] = {}
 
 
-def _hexagon_points(cx, cy, r, rotation=30):
+def _ngon_points(cx, cy, r, n, rotation=0):
     return [
-        (cx + r * math.cos(math.radians(60 * k + rotation)),
-         cy + r * math.sin(math.radians(60 * k + rotation)))
-        for k in range(6)
+        (cx + r * math.cos(math.radians(360 / n * k + rotation)),
+         cy + r * math.sin(math.radians(360 / n * k + rotation)))
+        for k in range(n)
     ]
+
+
+def _hexagon_points(cx, cy, r, rotation=30):
+    return _ngon_points(cx, cy, r, 6, rotation)
 
 
 def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_BLUE_DARK, width=5):
@@ -540,11 +544,73 @@ def _render_icon(key: str) -> pygame.Surface:
             ]
             _icon_shape(s, points, width=4)
         _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.06, d * 0.84, d * 0.6))
-    elif key in ("sphere", "c80", "c180", "spheretri"):
+    elif key == "elongated":
+        # a square row under a triangle row
+        _icon_shape(s, [(d * 0.12, d * 0.5), (d * 0.5, d * 0.5),
+                        (d * 0.5, d * 0.88), (d * 0.12, d * 0.88)], width=4)
+        _icon_shape(s, [(d * 0.5, d * 0.5), (d * 0.88, d * 0.5),
+                        (d * 0.88, d * 0.88), (d * 0.5, d * 0.88)], width=4)
+        _icon_shape(s, [(d * 0.12, d * 0.5), (d * 0.5, d * 0.5), (d * 0.31, d * 0.12)],
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_shape(s, [(d * 0.5, d * 0.5), (d * 0.31, d * 0.12), (d * 0.69, d * 0.12)],
+                    width=4)
+        _icon_shape(s, [(d * 0.5, d * 0.5), (d * 0.88, d * 0.5), (d * 0.69, d * 0.12)],
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.1, d * 0.8, d * 0.7))
+    elif key == "snubsquare":
+        # an upright and a tilted square joined by triangles
+        _icon_shape(s, _ngon_points(d * 0.32, d * 0.62, d * 0.26, 4, 45), width=4)
+        _icon_shape(s, _ngon_points(d * 0.68, d * 0.36, d * 0.26, 4, 15), width=4)
+        _icon_shape(s, [(d * 0.32, d * 0.25), (d * 0.5, d * 0.44), (d * 0.58, d * 0.14)],
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_shape(s, [(d * 0.5, d * 0.6), (d * 0.72, d * 0.82), (d * 0.86, d * 0.6)],
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.6))
+    elif key == "kagome":
+        _icon_shape(s, _hexagon_points(c, c, d * 0.3, 0), width=4)
+        for k in range(3):
+            angle = math.radians(120 * k - 90)
+            tx = c + d * 0.42 * math.cos(angle)
+            ty = c + d * 0.42 * math.sin(angle)
+            _icon_shape(
+                s, _ngon_points(tx, ty, d * 0.15, 3, 120 * k - 90),
+                fill=ICON_BLUE_LIGHT, width=4,
+            )
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.7))
+    elif key == "snubhex":
+        _icon_shape(s, _hexagon_points(c, c, d * 0.28), width=4)
+        for k in range(6):
+            angle = math.radians(60 * k)
+            tx = c + d * 0.4 * math.cos(angle)
+            ty = c + d * 0.4 * math.sin(angle)
+            _icon_shape(
+                s, _ngon_points(tx, ty, d * 0.12, 3, 60 * k + 30),
+                fill=ICON_BLUE_LIGHT, width=3,
+            )
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.7))
+    elif key == "truncsquare":
+        _icon_shape(s, _ngon_points(c, c, d * 0.42, 8, 22.5), width=4)
+        _icon_shape(s, _ngon_points(d * 0.85, d * 0.85, d * 0.13, 4, 45),
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.8))
+    elif key == "trunchex":
+        _icon_shape(s, _ngon_points(c, c, d * 0.42, 12, 15), width=4)
+        _icon_shape(s, _ngon_points(d * 0.86, d * 0.82, d * 0.13, 3, -90),
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.8))
+    elif key in ("sphere", "c80", "c180", "spheretri", "snubdodec"):
         fill_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.44), 4)
         if key == "spheretri":
             _icon_badge(s, c, c, d * 0.2, "tri")
+        elif key == "snubdodec":
+            _icon_shape(s, _ngon_points(c, c - d * 0.06, d * 0.17, 5, -90),
+                        fill=ICON_BLUE_LIGHT, width=4)
+            for k in range(5):
+                angle = math.radians(72 * k - 90)
+                tx = c + d * 0.3 * math.cos(angle) * 1.05
+                ty = c - d * 0.06 + d * 0.3 * math.sin(angle) * 1.05
+                _icon_badge(s, tx, ty, d * 0.08, "tri")
         else:
             # pentagon center for the pentagonal solids, hexagon for C180
             sides = 6 if key == "c180" else 5
@@ -611,13 +677,16 @@ def _render_icon(key: str) -> pygame.Surface:
         }[key]
         _icon_badge(s, badge_pos[0], badge_pos[1], badge_pos[2], badge)
 
-    return pygame.transform.smoothscale(s, (ICON_SIZE, ICON_SIZE))
+    return s  # supersampled; menu_icon scales it down
 
 
-def menu_icon(key: str) -> pygame.Surface:
-    if key not in _icon_cache:
-        _icon_cache[key] = _render_icon(key)
-    return _icon_cache[key]
+def menu_icon(key: str, size: int = ICON_SIZE) -> pygame.Surface:
+    cache_key = (key, size)
+    if cache_key not in _icon_cache:
+        _icon_cache[cache_key] = pygame.transform.smoothscale(
+            _render_icon(key), (size, size)
+        )
+    return _icon_cache[cache_key]
 
 
 # -- game screens ------------------------------------------------------------
@@ -1000,13 +1069,16 @@ class MenuScreen:
 
     def layout(self):
         items = self._items()
+        compact = len(items) > 8  # long tiling lists get tighter rows
+        item_height = 42 * S if compact else self.ITEM_HEIGHT
+        item_step = 50 * S if compact else self.ITEM_STEP
         rects = []
         y = 96 * S
         for key, label in items:
             rects.append(
-                (pygame.Rect(50 * S, y, self.WIDTH - 100 * S, self.ITEM_HEIGHT), key, label)
+                (pygame.Rect(50 * S, y, self.WIDTH - 100 * S, item_height), key, label)
             )
-            y += self.ITEM_STEP
+            y += item_step
         y += 14 * S
         difficulty_buttons = []
         button_width = 110 * S
@@ -1025,6 +1097,7 @@ class MenuScreen:
             "items": rects,
             "difficulty": difficulty_buttons,
             "back": back,
+            "compact": compact,
             "height": y + 40 * S + 30 * S,
         }
 
@@ -1083,15 +1156,21 @@ class MenuScreen:
             label = fonts.get(14 * S).render("< back", True, TEXT)
             surface.blit(label, label.get_rect(center=rect.center))
 
+        compact = layout["compact"]
+        icon_size = (34 if compact else 44) * S
+        label_size = (15 if compact else 18) * S
         for rect, key, label_text in layout["items"]:
             bevel_rect(
                 surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
             )
-            icon = menu_icon(key)
+            icon = menu_icon(key, icon_size)
             surface.blit(icon, icon.get_rect(midleft=(rect.left + 10 * S, rect.centery)))
-            label = fonts.get(18 * S).render(label_text, True, TEXT)
+            label = fonts.get(label_size).render(label_text, True, TEXT)
             surface.blit(
-                label, label.get_rect(midleft=(rect.left + 66 * S, rect.centery))
+                label,
+                label.get_rect(
+                    midleft=(rect.left + 10 * S + icon_size + 12 * S, rect.centery)
+                ),
             )
 
         for rect, difficulty_key in layout["difficulty"]:
