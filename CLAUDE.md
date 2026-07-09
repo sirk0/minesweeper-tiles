@@ -32,6 +32,25 @@ The venv already has pygame-ce and pytest; recreate with
 Locked requirements files are generated from pyproject.toml with
 `uv pip compile pyproject.toml [--extra dev] -o <file> --universal`.
 
+## Web build (pygbag)
+
+`main.py` is the browser entry point; the game loop is async
+(`App.run_async`) so pygbag can yield to the browser each frame.
+`.github/workflows/deploy-pages.yml` builds and deploys to GitHub Pages
+on every push to master. Browser-specific care in the code: no plain
+`import pygame.gfxdraw` (pygbag's scanner would search PyPI for it;
+gfxdraw doesn't exist in wasm at all — `_GFX` fallbacks in gui.py),
+pygame key constants read via `getattr` at module level, and `main.py`
+must import pygame itself so pygbag provisions the wasm wheel.
+
+Local test (must use pygbag's own server; on any other port the
+template rewrites the CDN to localhost:8000 and pygame fails to load):
+
+```sh
+mkdir -p build/app && cp main.py build/app/ && cp -r minesweeper build/app/
+.venv/bin/python -m pygbag --ume_block 0 build/app   # http://localhost:8000
+```
+
 ## Tests
 
 ```sh

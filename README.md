@@ -21,6 +21,12 @@ A minesweeper clone in Python (pygame). Pick a surface, then a tiling:
 
 ## Play
 
+**In the browser:** <https://sirk0.github.io/minesweeper-tiles/>
+(built with [pygbag](https://pygame-web.github.io), deployed from master
+by GitHub Actions)
+
+On the desktop:
+
 ```sh
 pip install -r requirements.txt
 python3 -m minesweeper
