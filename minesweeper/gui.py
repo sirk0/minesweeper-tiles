@@ -101,6 +101,31 @@ DIFFICULTY_KEYS = {
 
 DRAG_THRESHOLD = 5 * S  # canvas pixels of motion that make a click a drag
 
+LONG_PRESS = 0.45  # seconds a touch must hold on a cell to place a flag
+
+IS_WEB = sys.platform == "emscripten"
+
+# SDL touch events (used for pinch zoom in the browser)
+FINGER_EVENTS = tuple(
+    value
+    for value in (
+        getattr(pygame, name, None)
+        for name in ("FINGERDOWN", "FINGERUP", "FINGERMOTION")
+    )
+    if value is not None
+)
+
+
+def _defer_click(event) -> bool:
+    """Should this press wait for release (so holding can flag)?
+
+    Native desktop pygame marks touchscreen-synthesized mouse events
+    with event.touch. The wasm build does not (and its finger events
+    arrive after the synthesized mouse events), so in the browser every
+    press is handled on release - which is also the usual feel for web
+    games."""
+    return IS_WEB or bool(getattr(event, "touch", False))
+
 LIGHT = (0.37, 0.46, 0.81)  # normalized light direction for 3D shading
 
 TILE_LIGHT_DIR = (-0.55, -0.83)  # screen-space light for the tile bevels
@@ -709,6 +734,10 @@ class BaseGameScreen:
         self.exploded = None
         self.started_at: float | None = None
         self.finished_at: float | None = None
+        # touch state: [cell, down position, start time, handled] while a
+        # finger is held on a cell; touch-and-hold places a flag
+        self._touch_hold: list | None = None
+        self._fingers: dict = {}  # active touch points (web only)
         self._setup_geometry()
 
     def _setup_geometry(self) -> None:
@@ -755,6 +784,8 @@ class BaseGameScreen:
                 self.new_game(DIFFICULTY_KEYS[event.key])
             else:
                 self._handle_key(event)
+        if IS_WEB and event.type in FINGER_EVENTS:
+            self._handle_finger(event)
         if event.type in (
             pygame.MOUSEBUTTONDOWN,
             pygame.MOUSEBUTTONUP,
@@ -772,18 +803,49 @@ class BaseGameScreen:
     def _handle_key(self, event) -> None:
         pass
 
-    def _handle_mouse(self, event) -> None:
-        if event.type != pygame.MOUSEBUTTONDOWN:
-            return
-        if self.face_rect.collidepoint(event.pos):
-            self.new_game()
-            return
-        cell = self.cell_at(event.pos)
-        if cell is not None:
-            if event.button == 1:
-                self.click(cell)
-            elif event.button == 3:
+    def _handle_finger(self, event) -> None:
+        if event.type == getattr(pygame, "FINGERUP", None):
+            self._fingers.pop(event.finger_id, None)
+        else:
+            self._fingers[event.finger_id] = (event.x, event.y)
+
+    def _update_touch_hold(self) -> None:
+        """Called every frame: once a touch has been held on a cell long
+        enough, toggle a flag there (touchscreens have no right button)."""
+        if self._touch_hold is not None and not self._touch_hold[3]:
+            cell, _, started, _ = self._touch_hold
+            if time.monotonic() - started >= LONG_PRESS:
                 self.game.toggle_flag(cell)
+                self._touch_hold[3] = True
+
+    def _handle_mouse(self, event) -> None:
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.face_rect.collidepoint(event.pos):
+                self.new_game()
+                return
+            if event.button == 1 and _defer_click(event):
+                # touch: act on release, so touch-and-hold can flag instead
+                cell = self.cell_at(event.pos)
+                if cell is not None:
+                    self._touch_hold = [cell, event.pos, time.monotonic(), False]
+                return
+            cell = self.cell_at(event.pos)
+            if cell is not None:
+                if event.button == 1:
+                    self.click(cell)
+                elif event.button == 3:
+                    self.game.toggle_flag(cell)
+        elif event.type == pygame.MOUSEMOTION and self._touch_hold is not None:
+            _, down_pos, _, _ = self._touch_hold
+            moved = math.hypot(
+                event.pos[0] - down_pos[0], event.pos[1] - down_pos[1]
+            )
+            if moved > DRAG_THRESHOLD:  # a moving finger is not a press
+                self._touch_hold = None
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self._touch_hold is not None and not self._touch_hold[3]:
+                self.click(self._touch_hold[0])  # a short tap reveals
+            self._touch_hold = None
 
     def click(self, cell) -> None:
         """Left-click: reveal a hidden cell, chord a revealed one."""
@@ -813,6 +875,7 @@ class BaseGameScreen:
     # -- drawing ----------------------------------------------------------
 
     def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
+        self._update_touch_hold()
         surface.fill(BG)
         self.draw_header(surface, fonts)
         self.draw_board(surface, fonts)
@@ -935,6 +998,8 @@ class GameScreen3D(BaseGameScreen):
     def _setup_geometry(self) -> None:
         self.rotation = self._initial_rotation()
         self.scale = (self.VIEWPORT / 2 - 24 * S) / self.board.radius
+        self._base_scale = self.scale
+        self._pinch = None  # (start distance, start scale) while pinching
         self._drag_from = None
         self._dragged = False
         self._frame = None  # projected geometry, rebuilt after rotation
@@ -1006,6 +1071,30 @@ class GameScreen3D(BaseGameScreen):
         elif event.key == pygame.K_DOWN:
             self.rotate(0, step)
 
+    def _handle_finger(self, event) -> None:
+        """Pinch with two fingers to zoom (browser touchscreens only)."""
+        super()._handle_finger(event)
+        if len(self._fingers) == 2:
+            (x1, y1), (x2, y2) = self._fingers.values()
+            distance = math.hypot(x1 - x2, y1 - y2)
+            if self._pinch is None:
+                self._pinch = (distance, self.scale)
+                # a second finger means zooming, not rotating or flagging
+                self._drag_from = None
+                self._dragged = False
+                self._touch_hold = None
+            else:
+                start_distance, start_scale = self._pinch
+                if start_distance > 1e-6:
+                    wanted = start_scale * distance / start_distance
+                    low, high = self._base_scale * 0.5, self._base_scale * 3.0
+                    wanted = max(low, min(high, wanted))
+                    if wanted != self.scale:
+                        self.scale = wanted
+                        self._frame = None
+        else:
+            self._pinch = None
+
     def _handle_mouse(self, event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
@@ -1014,6 +1103,12 @@ class GameScreen3D(BaseGameScreen):
                     return
                 self._drag_from = event.pos
                 self._dragged = False
+                if _defer_click(event):
+                    cell = self.cell_at(event.pos)
+                    if cell is not None:
+                        self._touch_hold = [
+                            cell, event.pos, time.monotonic(), False,
+                        ]
             elif event.button == 3:
                 cell = self.cell_at(event.pos)
                 if cell is not None:
@@ -1027,15 +1122,21 @@ class GameScreen3D(BaseGameScreen):
                 if moved < DRAG_THRESHOLD:
                     return
                 self._dragged = True
+                self._touch_hold = None  # a moving finger rotates, not flags
             # vertical drag is inverted: dragging up tilts the top toward you
             self.rotate(event.rel[0], -event.rel[1])
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._drag_from is not None and not self._dragged:
-                cell = self.cell_at(event.pos)
-                if cell is not None:
-                    self.click(cell)
+                if self._touch_hold is not None:
+                    if not self._touch_hold[3]:
+                        self.click(self._touch_hold[0])  # short tap reveals
+                else:
+                    cell = self.cell_at(event.pos)
+                    if cell is not None:
+                        self.click(cell)
             self._drag_from = None
             self._dragged = False
+            self._touch_hold = None
 
     def draw_board(self, surface, fonts: FontCache) -> None:
         for _, cell, polygon, center, glyph_radius, shade in self._project():
@@ -1219,6 +1320,7 @@ class App:
         pygame.display.set_icon(make_icon())
         window_size = (self.screen.size[0] // S, self.screen.size[1] // S)
         window = pygame.display.set_mode(window_size)
+        self._setup_web_touch()
         canvas = pygame.Surface(self.screen.size)
         fonts = FontCache()
         clock = pygame.time.Clock()
@@ -1248,6 +1350,19 @@ class App:
             await asyncio.sleep(0)  # hand control back to the browser
             clock.tick(30)
         pygame.quit()
+
+    def _setup_web_touch(self) -> None:
+        """Keep the browser from hijacking touches on the canvas: no page
+        scrolling or pinch-scrolling while playing, and no iOS long-press
+        callout while holding a cell to flag it."""
+        if sys.platform != "emscripten":
+            return
+        import platform  # pygbag's platform module exposes the DOM
+
+        style = platform.window.canvas.style
+        style.touchAction = "none"
+        style.webkitTouchCallout = "none"
+        style.webkitUserSelect = "none"
 
     _web_canvas_state = None
 

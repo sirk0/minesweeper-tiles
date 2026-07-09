@@ -49,6 +49,10 @@ In game:
 On 3D boards, **drag** with the left button (or use the arrow keys) to
 rotate the surface; a short click reveals.
 
+On a touchscreen (the browser version): **tap** to reveal,
+**touch and hold** to flag, drag to rotate 3D boards, and **pinch**
+with two fingers to zoom them.
+
 `python3 -m minesweeper --mode hex [difficulty]` skips the menu.
 
 ## Development

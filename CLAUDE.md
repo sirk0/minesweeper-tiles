@@ -44,6 +44,12 @@ gfxdraw doesn't exist in wasm at all — `_GFX` fallbacks in gui.py),
 pygame key constants read via `getattr` at module level, and `main.py`
 must import pygame itself so pygbag provisions the wasm wheel.
 
+Touch input: the wasm build cannot tell touch from mouse (no
+event.touch, finger events arrive after the synthesized mouse events),
+so on the web every press acts on release; holding LONG_PRESS seconds
+flags, two-finger pinch zooms 3D boards (FINGER* events, web-gated).
+Native desktop keeps reveal-on-press.
+
 The canvas CSS box is resized from Python on every set_mode
 (`App._fit_web_canvas`) because pygbag's template only sizes it once at
 boot — without this, screens after the first render stretched. pygbag

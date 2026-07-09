@@ -309,6 +309,177 @@ class Test3DScreens:
         assert screen._drag_from is None
 
 
+def touch_down(pos):
+    return pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=1, touch=True)
+
+
+def touch_up(pos):
+    return pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=1, touch=True)
+
+
+def backdate_hold(screen):
+    """Pretend the current touch started long ago, then run the per-frame
+    check that fires the long-press flag."""
+    assert screen._touch_hold is not None
+    screen._touch_hold[2] -= 10
+    screen._update_touch_hold()
+
+
+class TestTouch:
+    """Touchscreen play (the web build): tap reveals on release,
+    touch-and-hold flags, desktop mouse behavior is untouched."""
+
+    def test_tap_reveals_on_release_2d(self, gui):
+        pos = gui.centers[(4, 4)]
+        gui.handle_event(touch_down(pos))
+        assert gui.game.cell_state((4, 4)) is CellState.HIDDEN  # not yet
+        gui.handle_event(touch_up(pos))
+        assert gui.game.cell_state((4, 4)) is CellState.REVEALED
+
+    def test_long_press_flags_2d(self, gui):
+        pos = gui.centers[(2, 2)]
+        gui.handle_event(touch_down(pos))
+        backdate_hold(gui)
+        assert gui.game.cell_state((2, 2)) is CellState.FLAGGED
+        gui.handle_event(touch_up(pos))  # release must not reveal it
+        assert gui.game.cell_state((2, 2)) is CellState.FLAGGED
+
+    def test_moving_finger_cancels_the_press_2d(self, gui):
+        pos = gui.centers[(2, 2)]
+        gui.handle_event(touch_down(pos))
+        gui.handle_event(
+            pygame.event.Event(
+                pygame.MOUSEMOTION,
+                pos=(pos[0] + 60, pos[1]),
+                rel=(60, 0),
+                buttons=(1, 0, 0),
+                touch=True,
+            )
+        )
+        assert gui._touch_hold is None
+        gui.handle_event(touch_up((pos[0] + 60, pos[1])))
+        assert gui.game.cell_state((2, 2)) is CellState.HIDDEN
+
+    def test_desktop_mouse_still_reveals_on_down_2d(self, gui):
+        gui.handle_event(mouse_event(gui.centers[(4, 4)]))
+        assert gui.game.cell_state((4, 4)) is CellState.REVEALED
+
+    def test_web_build_defers_every_click_to_release(self, monkeypatch, gui):
+        # the wasm build cannot distinguish touch from mouse (no
+        # event.touch, finger events arrive late), so on the web all
+        # presses act on release and holding flags
+        import minesweeper.gui as gui_module
+
+        monkeypatch.setattr(gui_module, "IS_WEB", True)
+        pos = gui.centers[(4, 4)]
+        gui.handle_event(mouse_event(pos))
+        assert gui.game.cell_state((4, 4)) is CellState.HIDDEN
+        gui.handle_event(
+            pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=1)
+        )
+        assert gui.game.cell_state((4, 4)) is CellState.REVEALED
+
+    def test_web_build_long_press_flags(self, monkeypatch, gui):
+        import minesweeper.gui as gui_module
+
+        monkeypatch.setattr(gui_module, "IS_WEB", True)
+        pos = gui.centers[(2, 2)]
+        gui.handle_event(mouse_event(pos))
+        backdate_hold(gui)
+        assert gui.game.cell_state((2, 2)) is CellState.FLAGGED
+        gui.handle_event(
+            pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=1)
+        )
+        assert gui.game.cell_state((2, 2)) is CellState.FLAGGED
+
+    def test_tap_reveals_3d(self):
+        screen = GameScreen3D("sphere", "easy")
+        frame = screen._project()
+        _, cell, _, center, _, _ = frame[-1]
+        pos = (int(center[0]), int(center[1]))
+        screen.handle_event(touch_down(pos))
+        screen.handle_event(touch_up(pos))
+        assert screen.game.cell_state(cell) is CellState.REVEALED
+
+    def test_long_press_flags_3d(self):
+        screen = GameScreen3D("sphere", "easy")
+        frame = screen._project()
+        _, cell, _, center, _, _ = frame[-1]
+        pos = (int(center[0]), int(center[1]))
+        screen.handle_event(touch_down(pos))
+        backdate_hold(screen)
+        assert screen.game.cell_state(cell) is CellState.FLAGGED
+        screen.handle_event(touch_up(pos))
+        assert screen.game.cell_state(cell) is CellState.FLAGGED
+
+    def test_drag_rotates_without_flagging_3d(self):
+        screen = GameScreen3D("sphere", "easy")
+        frame = screen._project()
+        _, cell, _, center, _, _ = frame[-1]
+        pos = (int(center[0]), int(center[1]))
+        screen.handle_event(touch_down(pos))
+        screen.handle_event(
+            pygame.event.Event(
+                pygame.MOUSEMOTION,
+                pos=(pos[0] + 60, pos[1]),
+                rel=(60, 0),
+                buttons=(1, 0, 0),
+                touch=True,
+            )
+        )
+        assert screen._touch_hold is None
+        screen.handle_event(touch_up((pos[0] + 60, pos[1])))
+        assert all(
+            screen.game.cell_state(c) is CellState.HIDDEN
+            for c in screen.game.cells
+        )
+
+
+class TestPinchZoom:
+    def finger(self, kind, finger_id, x, y):
+        return pygame.event.Event(
+            getattr(pygame, kind), finger_id=finger_id, x=x, y=y
+        )
+
+    def test_pinch_zooms_on_the_web(self, monkeypatch):
+        import minesweeper.gui as gui_module
+
+        monkeypatch.setattr(gui_module, "IS_WEB", True)
+        screen = GameScreen3D("sphere", "easy")
+        base = screen.scale
+        screen.handle_event(self.finger("FINGERDOWN", 1, 0.45, 0.5))
+        screen.handle_event(self.finger("FINGERDOWN", 2, 0.55, 0.5))
+        screen.handle_event(self.finger("FINGERMOTION", 2, 0.75, 0.5))
+        assert screen.scale > base  # spread fingers -> zoom in
+        screen.handle_event(self.finger("FINGERMOTION", 2, 0.47, 0.5))
+        assert screen.scale < base  # close them -> zoom out
+        # the clamp keeps the board from vanishing
+        screen.handle_event(self.finger("FINGERMOTION", 2, 0.4501, 0.5))
+        assert screen.scale >= screen._base_scale * 0.5
+
+    def test_second_finger_cancels_press_and_drag(self, monkeypatch):
+        import minesweeper.gui as gui_module
+
+        monkeypatch.setattr(gui_module, "IS_WEB", True)
+        screen = GameScreen3D("sphere", "easy")
+        frame = screen._project()
+        _, cell, _, center, _, _ = frame[-1]
+        pos = (int(center[0]), int(center[1]))
+        screen.handle_event(touch_down(pos))
+        screen.handle_event(self.finger("FINGERDOWN", 1, 0.45, 0.5))
+        screen.handle_event(self.finger("FINGERDOWN", 2, 0.55, 0.5))
+        assert screen._touch_hold is None
+        assert screen._drag_from is None
+
+    def test_pinch_is_ignored_on_desktop(self):
+        screen = GameScreen3D("sphere", "easy")
+        base = screen.scale
+        screen.handle_event(self.finger("FINGERDOWN", 1, 0.45, 0.5))
+        screen.handle_event(self.finger("FINGERDOWN", 2, 0.55, 0.5))
+        screen.handle_event(self.finger("FINGERMOTION", 2, 0.75, 0.5))
+        assert screen.scale == base
+
+
 class TestMenu:
     def items(self, menu):
         return {key for _, key, _ in menu.layout()["items"]}
