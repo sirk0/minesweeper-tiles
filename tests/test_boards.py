@@ -6,9 +6,11 @@ from collections import Counter, defaultdict
 from minesweeper.boards import (
     _ARCH_CONFIGS,
     DIFFICULTIES,
+    GROUPS,
     MODE_LABELS,
     MODES_3D,
-    TOPOLOGIES,
+    SURFACE_LABELS,
+    TILINGS,
     arch_cylinder_board,
     arch_mobius_board,
     arch_torus_board,
@@ -561,7 +563,12 @@ class TestPresets:
         with pytest.raises(ValueError):
             build_board("square", "nope")
 
-    def test_every_mode_belongs_to_exactly_one_topology(self):
-        modes = [m for _, tilings in TOPOLOGIES.values() for m in tilings]
+    def test_every_mode_appears_exactly_once_in_the_menu(self):
+        modes = [m for _, modes in GROUPS.values() for m in modes]
+        modes += [m for _, surfaces in TILINGS.values() for m in surfaces.values()]
         assert sorted(modes) == sorted(MODE_LABELS)
         assert len(modes) == len(set(modes))
+
+    def test_tilings_use_known_surfaces(self):
+        for _, surfaces in TILINGS.values():
+            assert set(surfaces) <= set(SURFACE_LABELS)

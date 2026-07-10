@@ -7,7 +7,13 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 pygame = pytest.importorskip("pygame")
 
-from minesweeper.boards import MODE_LABELS, MODES_3D, TOPOLOGIES  # noqa: E402
+from minesweeper.boards import (  # noqa: E402
+    GROUPS,
+    MODE_LABELS,
+    MODES_3D,
+    SURFACE_LABELS,
+    TILINGS,
+)
 from minesweeper.game import CellState, Game, GameState  # noqa: E402
 from minesweeper.gui import (  # noqa: E402
     EXPLODED_FACE,
@@ -311,50 +317,87 @@ class Test3DScreens:
 
 class TestMenu:
     def items(self, menu):
-        return {key for _, key, _ in menu.layout()["items"]}
+        return {key for _, key, _, _ in menu.layout()["items"]}
 
     def click_item(self, menu, wanted):
-        for rect, key, _ in menu.layout()["items"]:
+        for rect, key, _, _ in menu.layout()["items"]:
             if key == wanted:
                 return menu.handle_event(mouse_event(rect.center))
         raise AssertionError(f"{wanted} not on the current page")
 
-    def test_first_page_lists_topologies(self):
+    def test_first_page_lists_groups(self):
         menu = MenuScreen()
-        assert menu.topology is None
-        assert self.items(menu) == set(TOPOLOGIES)
+        assert menu.group is None
+        assert self.items(menu) == set(GROUPS)
         assert menu.layout()["back"] is None
 
-    def test_choosing_topology_shows_its_tilings(self):
+    def test_choosing_a_plain_group_shows_its_tilings(self):
         menu = MenuScreen()
         assert self.click_item(menu, "sphere") is None
-        assert menu.topology == "sphere"
-        assert self.items(menu) == set(TOPOLOGIES["sphere"][1])
+        assert menu.group == "sphere"
+        assert self.items(menu) == set(GROUPS["sphere"][1])
 
-    def test_choosing_tiling_starts_the_game(self):
+    def test_choosing_a_tiling_in_a_plain_group_starts_the_game(self):
         menu = MenuScreen()
         self.click_item(menu, "sphere")
         assert self.click_item(menu, "c80") == ("start", "c80")
 
-    def test_every_tiling_is_reachable(self):
-        for topology, (_, modes) in TOPOLOGIES.items():
+    def test_periodic_group_goes_tiling_then_surface(self):
+        menu = MenuScreen()
+        self.click_item(menu, "periodic")
+        assert self.items(menu) == set(TILINGS)
+        assert self.click_item(menu, "kagome") is None
+        assert menu.tiling == "kagome"
+        assert self.items(menu) == set(SURFACE_LABELS)
+        assert self.click_item(menu, "torus") == ("start", "toruskagome")
+
+    def test_every_mode_is_reachable(self):
+        reached = set()
+        for tiling, (_, surfaces) in TILINGS.items():
+            for surface, mode in surfaces.items():
+                menu = MenuScreen()
+                self.click_item(menu, "periodic")
+                self.click_item(menu, tiling)
+                assert self.click_item(menu, surface) == ("start", mode)
+                reached.add(mode)
+        for group, (_, modes) in GROUPS.items():
             for mode in modes:
                 menu = MenuScreen()
-                self.click_item(menu, topology)
+                self.click_item(menu, group)
                 assert self.click_item(menu, mode) == ("start", mode)
+                reached.add(mode)
+        assert reached == set(MODE_LABELS)
 
-    def test_back_button_returns_to_topologies(self):
+    def test_impossible_surface_is_disabled(self):
+        # snub hexagonal is chiral, so its Möbius strip does not exist
         menu = MenuScreen()
-        self.click_item(menu, "flat")
+        self.click_item(menu, "periodic")
+        self.click_item(menu, "snubhex")
+        enabled = {key: on for _, key, _, on in menu.layout()["items"]}
+        assert enabled == {
+            "flat": True, "torus": True, "cylinder": True, "mobius": False,
+        }
+        assert self.click_item(menu, "mobius") is None  # click ignored
+        assert menu.tiling == "snubhex"  # still on the surface page
+
+    def test_back_button_pops_one_page(self):
+        menu = MenuScreen()
+        self.click_item(menu, "periodic")
+        self.click_item(menu, "hex")
         back = menu.layout()["back"]
         assert menu.handle_event(mouse_event(back.center)) is None
-        assert menu.topology is None
+        assert menu.group == "periodic" and menu.tiling is None
+        assert menu.handle_event(mouse_event(back.center)) is None
+        assert menu.group is None
 
     def test_escape_goes_back_then_quits(self):
         menu = MenuScreen()
-        self.click_item(menu, "torus")
+        self.click_item(menu, "periodic")
+        self.click_item(menu, "square")
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) is None
-        assert menu.topology is None
+        assert menu.group == "periodic" and menu.tiling is None
+        assert menu.handle_event(key_event(pygame.K_ESCAPE)) is None
+        assert menu.group is None
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) == "quit"
         assert menu.handle_event(pygame.event.Event(pygame.QUIT)) == "quit"
 
@@ -373,13 +416,13 @@ class TestMenu:
         menu = MenuScreen()
         assert menu.handle_event(mouse_event((2, 2))) is None
 
-    def test_both_pages_draw(self, fonts):
+    def test_all_pages_draw(self, fonts):
         menu = MenuScreen()
-        surface = pygame.Surface(menu.size)
-        menu.draw(surface, fonts)
-        self.click_item(menu, "sphere")
-        surface = pygame.Surface(menu.size)
-        menu.draw(surface, fonts)
+        for step in (None, "periodic", "snubhex"):
+            if step is not None:
+                self.click_item(menu, step)
+            surface = pygame.Surface(menu.size)
+            menu.draw(surface, fonts)
 
 
 class TestIcon:
@@ -391,10 +434,16 @@ class TestIcon:
         assert icon.get_at((256, 256))[3] == 255
         assert icon.get_at((2, 2))[3] == 0
 
-    def test_menu_icons_render_for_every_key(self):
+    def test_menu_icons_render_for_every_menu_key(self):
         from minesweeper.gui import ICON_SIZE, menu_icon
 
-        for key in list(TOPOLOGIES) + list(MODE_LABELS):
+        keys = (
+            set(GROUPS)
+            | set(TILINGS)
+            | set(SURFACE_LABELS)
+            | {mode for _, modes in GROUPS.values() for mode in modes}
+        )
+        for key in sorted(keys):
             icon = menu_icon(key)
             assert icon.get_size() == (ICON_SIZE, ICON_SIZE)
             opaque = any(

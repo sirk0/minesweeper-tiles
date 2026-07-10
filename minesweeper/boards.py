@@ -69,45 +69,74 @@ MODE_LABELS = {
     "cyltrunchex": "Truncated hexagonal",
 }
 
-# The menu picks a topology first, then one of its tilings. A sphere
-# cannot be tiled with hexagons alone (Euler's formula forces 12
-# pentagons in), so the sphere offers fullerenes instead.
-TOPOLOGIES = {
-    "flat": (
-        "Flat surface",
-        (
-            "square", "triangle", "trigrid", "hex", "hexhex", "penrose",
-            "elongated", "snubsquare", "kagome", "snubhex",
-            "truncsquare", "trunchex",
-        ),
+# The menu picks a group, then a tiling, then — for the periodic
+# tilings — a surface. Every periodic tiling wraps every surface, with
+# one exception: 3.3.3.3.6 (snub hexagonal) is chiral (p6, no mirror or
+# glide), so the orientation-reversing Möbius seam cannot glue it to
+# itself; the menu shows that surface disabled. The sphere is its own
+# group: none of these periodic patterns can tile it (Euler's formula
+# forces curvature in), so it offers spherical tilings instead.
+
+SURFACE_LABELS = {
+    "flat": "Flat",
+    "torus": "Donut",
+    "cylinder": "Cylinder",
+    "mobius": "Möbius strip",
+}
+
+TILINGS = {  # tiling -> (label, {surface: mode})
+    "square": (
+        "Squares",
+        {"flat": "square", "torus": "torus",
+         "cylinder": "cylinder", "mobius": "mobius"},
     ),
+    "tri": (
+        "Triangles",
+        {"flat": "trigrid", "torus": "torustri",
+         "cylinder": "cyltri", "mobius": "mobiustri"},
+    ),
+    "hex": (
+        "Hexagons",
+        {"flat": "hex", "torus": "torushex",
+         "cylinder": "cylhex", "mobius": "mobiushex"},
+    ),
+    "elongated": (
+        "Elongated triangular",
+        {"flat": "elongated", "torus": "toruselongated",
+         "cylinder": "cylelongated", "mobius": "mobiuselongated"},
+    ),
+    "snubsquare": (
+        "Snub square",
+        {"flat": "snubsquare", "torus": "torussnubsquare",
+         "cylinder": "cylsnubsquare", "mobius": "mobiussnubsquare"},
+    ),
+    "kagome": (
+        "Kagome",
+        {"flat": "kagome", "torus": "toruskagome",
+         "cylinder": "cylkagome", "mobius": "mobiuskagome"},
+    ),
+    "snubhex": (
+        "Snub hexagonal",
+        {"flat": "snubhex", "torus": "torussnubhex",
+         "cylinder": "cylsnubhex"},  # chiral: no Möbius strip
+    ),
+    "truncsquare": (
+        "Truncated square",
+        {"flat": "truncsquare", "torus": "torustruncsquare",
+         "cylinder": "cyltruncsquare", "mobius": "mobiustruncsquare"},
+    ),
+    "trunchex": (
+        "Truncated hexagonal",
+        {"flat": "trunchex", "torus": "torustrunchex",
+         "cylinder": "cyltrunchex", "mobius": "mobiustrunchex"},
+    ),
+}
+
+GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
+    "periodic": ("Periodic tilings", ()),
+    "aperiodic": ("Aperiodic", ("penrose",)),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
-    "torus": (
-        "Donut",
-        (
-            "torus", "torustri", "torushex",
-            "toruselongated", "torussnubsquare", "toruskagome",
-            "torussnubhex", "torustruncsquare", "torustrunchex",
-        ),
-    ),
-    # no mobiussnubhex: 3.3.3.3.6 is chiral (p6, no mirror or glide), so the
-    # orientation-reversing Möbius seam cannot glue it to itself
-    "mobius": (
-        "Möbius strip",
-        (
-            "mobius", "mobiustri", "mobiushex",
-            "mobiuselongated", "mobiussnubsquare", "mobiuskagome",
-            "mobiustruncsquare", "mobiustrunchex",
-        ),
-    ),
-    "cylinder": (
-        "Cylinder",
-        (
-            "cylinder", "cyltri", "cylhex",
-            "cylelongated", "cylsnubsquare", "cylkagome",
-            "cylsnubhex", "cyltruncsquare", "cyltrunchex",
-        ),
-    ),
+    "shaped": ("Shaped boards", ("triangle", "hexhex")),
 }
 
 MODES_3D = frozenset(
