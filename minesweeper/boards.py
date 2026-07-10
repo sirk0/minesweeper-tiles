@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Hashable
 
 Cell = Hashable
@@ -43,39 +44,104 @@ MODE_LABELS = {
     "torus": "Squares",
     "torustri": "Triangles",
     "torushex": "Hexagons",
+    "toruselongated": "Elongated triangular",
+    "torussnubsquare": "Snub square",
+    "toruskagome": "Kagome",
+    "torussnubhex": "Snub hexagonal",
+    "torustruncsquare": "Truncated square",
+    "torustrunchex": "Truncated hexagonal",
     "mobius": "Squares",
     "mobiustri": "Triangles",
     "mobiushex": "Hexagons",
+    "mobiuselongated": "Elongated triangular",
+    "mobiussnubsquare": "Snub square",
+    "mobiuskagome": "Kagome",
+    "mobiustruncsquare": "Truncated square",
+    "mobiustrunchex": "Truncated hexagonal",
     "cylinder": "Squares",
     "cyltri": "Triangles",
     "cylhex": "Hexagons",
+    "cylelongated": "Elongated triangular",
+    "cylsnubsquare": "Snub square",
+    "cylkagome": "Kagome",
+    "cylsnubhex": "Snub hexagonal",
+    "cyltruncsquare": "Truncated square",
+    "cyltrunchex": "Truncated hexagonal",
 }
 
-# The menu picks a topology first, then one of its tilings. A sphere
-# cannot be tiled with hexagons alone (Euler's formula forces 12
-# pentagons in), so the sphere offers fullerenes instead.
-TOPOLOGIES = {
-    "flat": (
-        "Flat surface",
-        (
-            "square", "triangle", "trigrid", "hex", "hexhex", "penrose",
-            "elongated", "snubsquare", "kagome", "snubhex",
-            "truncsquare", "trunchex",
-        ),
+# The menu picks a group, then a tiling, then — for the periodic
+# tilings — a surface. Every periodic tiling wraps every surface, with
+# one exception: 3.3.3.3.6 (snub hexagonal) is chiral (p6, no mirror or
+# glide), so the orientation-reversing Möbius seam cannot glue it to
+# itself; the menu shows that surface disabled. The sphere is its own
+# group: none of these periodic patterns can tile it (Euler's formula
+# forces curvature in), so it offers spherical tilings instead.
+
+SURFACE_LABELS = {
+    "flat": "Flat",
+    "torus": "Donut",
+    "cylinder": "Cylinder",
+    "mobius": "Möbius strip",
+}
+
+TILINGS = {  # tiling -> (label, {surface: mode})
+    "square": (
+        "Squares",
+        {"flat": "square", "torus": "torus",
+         "cylinder": "cylinder", "mobius": "mobius"},
     ),
+    "tri": (
+        "Triangles",
+        {"flat": "trigrid", "torus": "torustri",
+         "cylinder": "cyltri", "mobius": "mobiustri"},
+    ),
+    "hex": (
+        "Hexagons",
+        {"flat": "hex", "torus": "torushex",
+         "cylinder": "cylhex", "mobius": "mobiushex"},
+    ),
+    "elongated": (
+        "Elongated triangular",
+        {"flat": "elongated", "torus": "toruselongated",
+         "cylinder": "cylelongated", "mobius": "mobiuselongated"},
+    ),
+    "snubsquare": (
+        "Snub square",
+        {"flat": "snubsquare", "torus": "torussnubsquare",
+         "cylinder": "cylsnubsquare", "mobius": "mobiussnubsquare"},
+    ),
+    "kagome": (
+        "Kagome",
+        {"flat": "kagome", "torus": "toruskagome",
+         "cylinder": "cylkagome", "mobius": "mobiuskagome"},
+    ),
+    "snubhex": (
+        "Snub hexagonal",
+        {"flat": "snubhex", "torus": "torussnubhex",
+         "cylinder": "cylsnubhex"},  # chiral: no Möbius strip
+    ),
+    "truncsquare": (
+        "Truncated square",
+        {"flat": "truncsquare", "torus": "torustruncsquare",
+         "cylinder": "cyltruncsquare", "mobius": "mobiustruncsquare"},
+    ),
+    "trunchex": (
+        "Truncated hexagonal",
+        {"flat": "trunchex", "torus": "torustrunchex",
+         "cylinder": "cyltrunchex", "mobius": "mobiustrunchex"},
+    ),
+}
+
+GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
+    "periodic": ("Periodic tilings", ()),
+    "aperiodic": ("Aperiodic", ("penrose",)),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
-    "torus": ("Donut", ("torus", "torustri", "torushex")),
-    "mobius": ("Möbius strip", ("mobius", "mobiustri", "mobiushex")),
-    "cylinder": ("Cylinder", ("cylinder", "cyltri", "cylhex")),
+    "shaped": ("Shaped boards", ("triangle", "hexhex")),
 }
 
 MODES_3D = frozenset(
-    {
-        "sphere", "c80", "c180", "spheretri", "snubdodec",
-        "torus", "torustri", "torushex",
-        "mobius", "mobiustri", "mobiushex",
-        "cylinder", "cyltri", "cylhex",
-    }
+    {"sphere", "c80", "c180", "spheretri", "snubdodec"}
+    | {mode for mode in MODE_LABELS if mode.startswith(("torus", "mobius", "cyl"))}
 )
 
 
@@ -1170,6 +1236,413 @@ def cylinder_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
     )
 
 
+# -- Archimedean tilings on wrapped surfaces ---------------------------------
+#
+# Each two-shape tiling is reduced to one rectangular fundamental domain
+# (a template): vertices canonicalized into the domain, cells as references
+# into this or neighboring domain copies. Wrapping is then the same modular
+# arithmetic the square/triangle/hex surface boards use, with the whole
+# template as the repeating unit.
+
+
+@dataclass(frozen=True)
+class _ArchTemplate:
+    config: tuple[int, ...]  # vertex configuration, e.g. (3, 6, 3, 6)
+    width: float  # domain size in edge lengths
+    height: float
+    verts: dict  # tag -> (x, y) position within the domain
+    cells: tuple  # (name, ((tag, dm, dn), ...)); dm/dn = domain copy offset
+    mirror: dict | None  # tag -> (tag, dm, dn) under y -> height - y
+    glide: bool = False  # the mirror needs an extra width/2 x-shift (p4g)
+
+
+def _template(config, width, height, polygons, mirrored=True, glide=False):
+    """Build a template from one domain's worth of cell polygons in float
+    coordinates. Each vertex is canonicalized into [0, width) x [0, height);
+    the rounded canonical position doubles as its exact hashable tag."""
+
+    def reduce(value: float, size: float) -> tuple[float, int]:
+        # the slack absorbs tag rounding, so values that are exactly on a
+        # domain edge land on its near side; real vertices are never this
+        # close to an edge without being on it
+        d = math.floor(value / size + 1e-5)
+        return round(value - d * size, 6) + 0.0, d  # + 0.0 turns -0.0 into 0.0
+
+    def canonical(x: float, y: float):
+        (rx, dm), (ry, dn) = reduce(x, width), reduce(y, height)
+        return (rx, ry), dm, dn
+
+    verts = {}
+    cells = []
+    for name, polygon in polygons:
+        refs = []
+        for x, y in polygon:
+            tag, dm, dn = canonical(x, y)
+            verts[tag] = tag
+            refs.append((tag, dm, dn))
+        # normalize so the cell's centroid lies in domain copy (0, 0):
+        # the Möbius builder selects cell instances by centroid
+        cx = sum(dm * width + tag[0] for tag, dm, _ in refs) / len(refs)
+        cy = sum(dn * height + tag[1] for tag, _, dn in refs) / len(refs)
+        mshift = math.floor(cx / width + 1e-9)
+        nshift = math.floor(cy / height + 1e-9)
+        refs = [(tag, dm - mshift, dn - nshift) for tag, dm, dn in refs]
+        cells.append((name, tuple(refs)))
+
+    def wrap_gap(delta: float, size: float) -> float:
+        delta = abs(delta) % size
+        return min(delta, size - delta)
+
+    def distance(tag, x: float, y: float) -> float:
+        return math.hypot(wrap_gap(tag[0] - x, width), wrap_gap(tag[1] - y, height))
+
+    mirror = None
+    if mirrored:
+        shift = width / 2 if glide else 0.0
+        mirror = {}
+        for tag in verts:
+            x, y = tag[0] + shift, height - tag[1]
+            image, dm, dn = canonical(x, y)
+            if image not in verts:
+                # tags are rounded; match the closest vertex (wrap-aware)
+                image = min(verts, key=lambda v: distance(v, x, y))
+                if distance(image, x, y) > 1e-4:
+                    raise ValueError(f"mirror of {tag} is not a vertex")
+            mirror[tag] = (image, dm, dn)
+    return _ArchTemplate(config, width, height, verts, tuple(cells), mirror, glide)
+
+
+def _kagome_template() -> _ArchTemplate:
+    """Kagome (3.6.3.6): hexagon centers on a side-2 triangular lattice,
+    cell vertices at the lattice edge midpoints. The 2 x 2*sqrt(3)
+    rectangle holds two hexagons and four triangles."""
+    h = ROOT3 / 2
+
+    def hexagon(cx, cy):
+        return [(cx + 1, cy), (cx + 0.5, cy + h), (cx - 0.5, cy + h),
+                (cx - 1, cy), (cx - 0.5, cy - h), (cx + 0.5, cy - h)]
+
+    polygons = [
+        ("hex0", hexagon(0.0, 0.0)),
+        ("hex1", hexagon(1.0, ROOT3)),
+        # midpoint triangles of the four lattice faces per domain
+        ("tri0", [(1, 0), (1.5, h), (0.5, h)]),
+        ("tri1", [(1.5, h), (2, ROOT3), (2.5, h)]),
+        ("tri2", [(2, ROOT3), (2.5, ROOT3 + h), (1.5, ROOT3 + h)]),
+        ("tri3", [(1.5, ROOT3 + h), (1, 2 * ROOT3), (0.5, ROOT3 + h)]),
+    ]
+    return _template((3, 6, 3, 6), 2.0, 2 * ROOT3, polygons)
+
+
+def _truncsquare_template() -> _ArchTemplate:
+    """Truncated square (4.8.8): octagons on a square lattice of pitch
+    1 + sqrt(2), tilted unit squares filling the corners between them."""
+    a = 1 + 2**0.5  # lattice pitch
+    p, q = a / 2, 2**0.5 / 2
+    octagon = [(0.5, p), (p, 0.5), (p, -0.5), (0.5, -p),
+               (-0.5, -p), (-p, -0.5), (-p, 0.5), (-0.5, p)]
+    square = [(p - q, p), (p, p - q), (p + q, p), (p, p + q)]
+    return _template((4, 8, 8), a, a, [("oct", octagon), ("sq", square)])
+
+
+def _elongated_template() -> _ArchTemplate:
+    """Elongated triangular (3.3.3.4.4): rows of squares separated by rows
+    of triangles, consecutive square rows offset by half a square. The
+    domain is one square wide and two rows tall, starting at a square
+    row's centerline so that the template midline (through the other
+    square row) is a mirror line, which the Möbius seam needs."""
+    h = ROOT3 / 2
+    polygons = [
+        ("sq0", [(0, -0.5), (1, -0.5), (1, 0.5), (0, 0.5)]),
+        ("tri0", [(0, 0.5), (1, 0.5), (0.5, 0.5 + h)]),
+        ("tri1", [(0.5, 0.5 + h), (1, 0.5), (1.5, 0.5 + h)]),
+        ("sq1", [(0.5, 0.5 + h), (1.5, 0.5 + h), (1.5, 1.5 + h), (0.5, 1.5 + h)]),
+        ("tri2", [(0.5, 1.5 + h), (1.5, 1.5 + h), (1, 1.5 + 2 * h)]),
+        ("tri3", [(1, 1.5 + 2 * h), (1.5, 1.5 + h), (2, 1.5 + 2 * h)]),
+    ]
+    return _template((3, 3, 3, 4, 4), 1.0, 2 + ROOT3, polygons)
+
+
+def _snubsquare_template() -> _ArchTemplate:
+    """Snub square (3.3.4.3.4): squares alternately rotated +-15 degrees
+    on a square lattice of pitch sqrt(2+sqrt(3)), pairs of triangles
+    between them. p4g has no plain horizontal mirror, only a glide
+    (mirror plus half a period), so the template is aligned with the
+    glide axis on its midline and marked glide=True."""
+    a = (2 + ROOT3) ** 0.5
+    r = 2**-0.5
+
+    def square(cx, cy, first_corner):
+        return [(cx + r * math.cos(math.radians(first_corner + 90 * k)),
+                 cy + r * math.sin(math.radians(first_corner + 90 * k)))
+                for k in range(4)]
+
+    def tri_on(points, center, k):
+        # the equilateral triangle on edge k of a square, apex away from it
+        (x1, y1), (x2, y2) = points[k], points[(k + 1) % 4]
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        apex = (mx + ROOT3 * (mx - center[0]), my + ROOT3 * (my - center[1]))
+        return [(x1, y1), (x2, y2), apex]
+
+    plus = square(0, a / 4, 60)  # rotated +15
+    minus = square(a / 2, 3 * a / 4, 30)  # rotated -15
+    polygons = [
+        ("sq0", plus),
+        ("sq1", minus),
+        ("tri0", tri_on(plus, (0, a / 4), 0)),
+        ("tri1", tri_on(plus, (0, a / 4), 2)),
+        ("tri2", tri_on(minus, (a / 2, 3 * a / 4), 0)),
+        ("tri3", tri_on(minus, (a / 2, 3 * a / 4), 2)),
+    ]
+    return _template((3, 3, 4, 3, 4), a, a, polygons, glide=True)
+
+
+def _snubhex_template() -> _ArchTemplate:
+    """Snub hexagonal (3.3.3.3.6) on the rotated rectangle spanned by the
+    orthogonal superlattice vectors (5,1) and (3,-5) (in the half-side /
+    row-height units of _snubhex_patch): sqrt(7) x sqrt(21) edge lengths
+    holding two hexagons and sixteen triangles. The tiling is chiral
+    (p6: no mirror, no glide), so it cannot wrap a Möbius strip; there
+    is deliberately no mirror map."""
+    width, height = 7**0.5, 21**0.5
+
+    def uv(x, row):
+        # coordinates along the two orthogonal superlattice directions
+        return ((5 * x + 3 * row) / (4 * width), 3 * (x - 5 * row) / (4 * height))
+
+    def hex_center(x, row):
+        m, n = 3 * (x - 1) - row, 5 * row - (x - 1)
+        if m % 14 or n % 14:
+            return None
+        return (m // 14, n // 14)
+
+    def in_domain(points):
+        cu = sum(u for u, _ in points) / len(points)
+        cv = sum(v for _, v in points) / len(points)
+        return -1e-9 <= cu < width - 1e-9 and -1e-9 <= cv < height - 1e-9
+
+    polygons = []
+    for row in range(-7, 4):
+        for i in range(-3, 11):
+            corners = _triangle_vertices(i, row, up=(row + i) % 2 == 0)
+            if any(hex_center(*p) is not None for p in corners):
+                continue  # part of a hexagon
+            points = [uv(*p) for p in corners]
+            if in_domain(points):
+                polygons.append((f"t{row},{i}", points))
+    ring = [(2, 0), (1, 1), (-1, 1), (-2, 0), (-1, -1), (1, -1)]
+    for m in range(-3, 4):
+        for n in range(-3, 4):
+            cx, crow = 1 + 5 * m + n, m + 3 * n
+            points = [uv(cx + ox, crow + oy) for ox, oy in ring]
+            if in_domain(points):
+                polygons.append((f"h{m},{n}", points))
+    return _template((3, 3, 3, 3, 6), width, height, polygons, mirrored=False)
+
+
+def _trunchex_template() -> _ArchTemplate:
+    """Truncated hexagonal (3.12.12): dodecagons on a hexagonal lattice of
+    pitch 2+sqrt(3), up/down triangles between them. The conventional
+    rectangle holds two dodecagons and four triangles."""
+    a = 2 + ROOT3
+    r = (6**0.5 + 2**0.5) / 2  # dodecagon circumradius, side 1
+    e = 0.5 + ROOT3 / 2
+
+    def around(cx, cy, suffix):
+        dodecagon = [(cx + r * math.cos(math.radians(15 + 30 * k)),
+                      cy + r * math.sin(math.radians(15 + 30 * k)))
+                     for k in range(12)]
+        return [
+            ("dod" + suffix, dodecagon),
+            # the up and the down triangle right of this dodecagon
+            ("up" + suffix, [(cx + a / 2, cy + 0.5), (cx + a - e, cy + e),
+                             (cx + e, cy + e)]),
+            ("down" + suffix, [(cx + a / 2, cy - 0.5), (cx + e, cy - e),
+                               (cx + a - e, cy - e)]),
+        ]
+
+    polygons = around(0, 0, "0") + around(a / 2, a * ROOT3 / 2, "1")
+    return _template((3, 12, 12), a, a * ROOT3, polygons)
+
+
+_ARCH_TEMPLATES = {
+    "elongated": _elongated_template,
+    "snubsquare": _snubsquare_template,
+    "kagome": _kagome_template,
+    "snubhex": _snubhex_template,
+    "truncsquare": _truncsquare_template,
+    "trunchex": _trunchex_template,
+}
+
+
+@lru_cache(maxsize=None)
+def _arch_template(tiling: str) -> _ArchTemplate:
+    return _ARCH_TEMPLATES[tiling]()
+
+
+def _arch_cells(template, nx: int, ny: int, tiling: str, wrap_rows: bool = True):
+    """All cells of an nx x ny grid of domain copies, vertex keys wrapped
+    modulo the grid: key = (domain column, domain row, tag). Rows stay
+    unwrapped for open-ended surfaces (cylinder)."""
+    cells = {}
+    for m in range(nx):
+        for n in range(ny):
+            for name, refs in template.cells:
+                keys = [((m + dm) % nx, (n + dn) % ny if wrap_rows else n + dn, tag)
+                        for tag, dm, dn in refs]
+                if len(set(keys)) < len(keys):  # a cell met its own wrap
+                    raise ValueError(f"{nx}x{ny} is too small for {tiling}")
+                cells[(m, n, name)] = keys
+    return cells
+
+
+def arch_torus_board(
+    tiling: str, nx: int, ny: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """An Archimedean tiling wrapped around a donut: ``nx`` domain copies
+    around the ring, ``ny`` around the tube."""
+    template = _arch_template(tiling)
+    ring = nx * template.width
+    tube = ny * template.height
+
+    def position(m: int, n: int, tag) -> Vec3:
+        vx, vy = template.verts[tag]
+        theta = 2 * math.pi * (m * template.width + vx) / ring
+        phi = 2 * math.pi * (n * template.height + vy) / tube
+        radial = 1.0 + tube_radius * math.cos(phi)
+        return (
+            radial * math.cos(theta),
+            radial * math.sin(theta),
+            tube_radius * math.sin(phi),
+        )
+
+    cells = _arch_cells(template, nx, ny, tiling)
+    positions = {key: position(*key) for keys in cells.values() for key in keys}
+    return _torus_oriented(
+        "torus" + tiling, positions, cells, mine_count, radius=1.0 + tube_radius
+    )
+
+
+def _assemble_two_sided(mode, cells, positions, mine_count, radius) -> Board3D:
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(
+        mode, polygons, adjacency, mine_count, radius=radius, two_sided=True
+    )
+
+
+def arch_cylinder_board(
+    tiling: str, ring: int, rows: float, mine_count: int, cut: float = 0.0
+) -> Board3D:
+    """An Archimedean tiling around the side of a cylinder: ``ring``
+    domain copies around, ``rows`` up the axis, open ends. ``cut``
+    shifts where the strip starts within the repeating rows and ``rows``
+    may be fractional: along a tiling's horizontal edge-lines these make
+    the rims flat. Tilings without such lines (the snubs) get a clean
+    but zigzag rim: cells are only ever whole."""
+    template = _arch_template(tiling)
+    height = template.height
+    unit = 2 * math.pi / (ring * template.width)  # arc length of one edge unit
+    middle = rows * height / 2 + cut
+
+    def position(m: int, n: int, tag) -> Vec3:
+        vx, vy = template.verts[tag]
+        theta = (m * template.width + vx) * unit
+        return (
+            math.cos(theta),
+            (n * height + vy - middle) * unit,
+            math.sin(theta),
+        )
+
+    centroids = {
+        name: sum(dn * height + template.verts[tag][1] for tag, _, dn in refs)
+        / len(refs)
+        for name, refs in template.cells
+    }
+    cells = {}
+    for m in range(ring):
+        for n in range(math.ceil(rows) + 1):
+            for name, refs in template.cells:
+                if not cut - 1e-9 <= centroids[name] + n * height < rows * height + cut - 1e-9:
+                    continue  # this row copy of the cell is outside the strip
+                keys = [((m + dm) % ring, n + dn, tag) for tag, dm, dn in refs]
+                if len(set(keys)) < len(keys):
+                    raise ValueError(f"ring {ring} is too small for {tiling}")
+                cells[(m, n, name)] = keys
+    positions = {key: position(*key) for keys in cells.values() for key in keys}
+    return _assemble_two_sided(
+        "cyl" + tiling, cells, positions, mine_count,
+        radius=max(math.hypot(*p) for p in positions.values()),
+    )
+
+
+def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Board3D:
+    """An Archimedean tiling on a Möbius strip: ``ring`` domain copies
+    around, ``rows`` across; after a full loop the strip glues to its
+    start flipped. The flip needs a horizontal mirror symmetry. p4g
+    (snub square) only has a glide — mirror plus half a domain — so its
+    ring counts half-domains and must be odd for the seam to close.
+    3.3.3.3.6 (snub hexagonal) is chiral: no mirror, no glide, so no
+    Möbius strip at all (its mirror image is a different tiling)."""
+    template = _arch_template(tiling)
+    if template.mirror is None:
+        raise ValueError(f"{tiling} is chiral and cannot wrap a Möbius strip")
+    if template.glide:
+        if ring % 2 == 0:
+            raise ValueError("ring counts half-domains and must be odd")
+        halves = ring
+    else:
+        halves = 2 * ring
+    width, height = template.width, template.height
+    q, odd = divmod(halves, 2)
+    length = halves * width / 2
+    strip = rows * height
+    half_width = min(0.7, math.pi * strip / length / 2)
+
+    def flipped(mi: int, ni: int, tag):
+        image, dm, dn = template.mirror[tag]
+        return image, mi + dm - odd, rows - 1 - ni + dn
+
+    def canonical(mi: int, ni: int, tag):
+        # bring x = mi*width + vx into [0, length), flipping at the seam;
+        # measured in half-domains, with slack for the rounded tags
+        while 2 * mi + 2 * template.verts[tag][0] / width >= halves - 1e-5:
+            tag, mi, ni = flipped(mi - q, ni, tag)
+        while 2 * mi + 2 * template.verts[tag][0] / width < -1e-5:
+            tag, mi, ni = flipped(mi + q + odd, ni, tag)
+        return (mi, ni, tag)
+
+    def position(mi: int, ni: int, tag) -> Vec3:
+        vx, vy = template.verts[tag]
+        u = 2 * math.pi * (mi * width + vx) / length
+        v = half_width * (2 * (ni * height + vy) / strip - 1)
+        radial = 1.0 + v * math.cos(u / 2)
+        return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
+
+    centroids = {
+        name: sum(dm * width + template.verts[tag][0] for tag, dm, _ in refs)
+        / len(refs)
+        for name, refs in template.cells
+    }
+    cells = {}
+    for m in range(q + 1):
+        for n in range(rows):
+            for name, refs in template.cells:
+                if not -1e-9 <= centroids[name] + m * width < length - 1e-9:
+                    continue  # this domain copy of the cell is past the seam
+                keys = [canonical(m + dm, n + dn, tag) for tag, dm, dn in refs]
+                if len(set(keys)) < len(keys):
+                    raise ValueError(f"ring {ring} is too small for {tiling}")
+                cells[(m, n, name)] = keys
+    positions = {key: position(*key) for keys in cells.values() for key in keys}
+    return _assemble_two_sided(
+        "mobius" + tiling, cells, positions, mine_count,
+        radius=max(math.hypot(*p) for p in positions.values()),
+    )
+
+
 # -- presets ---------------------------------------------------------------
 
 _PRESETS = {
@@ -1302,6 +1775,100 @@ _PRESETS = {
         "easy": lambda: cylinder_hex_board(12, 6, 9),
         "medium": lambda: cylinder_hex_board(16, 9, 24),
         "hard": lambda: cylinder_hex_board(20, 12, 46),
+    },
+    "toruselongated": {
+        "easy": lambda: arch_torus_board("elongated", 12, 1, 9, 0.31),
+        "medium": lambda: arch_torus_board("elongated", 14, 2, 26, 0.53),
+        "hard": lambda: arch_torus_board("elongated", 20, 2, 48, 0.37),
+    },
+    "torussnubsquare": {
+        "easy": lambda: arch_torus_board("snubsquare", 5, 2, 8, 0.40),
+        "medium": lambda: arch_torus_board("snubsquare", 7, 3, 19, 0.43),
+        "hard": lambda: arch_torus_board("snubsquare", 10, 4, 48, 0.40),
+    },
+    "toruskagome": {
+        "easy": lambda: arch_torus_board("kagome", 8, 2, 12, 0.43),
+        "medium": lambda: arch_torus_board("kagome", 10, 2, 18, 0.35),
+        "hard": lambda: arch_torus_board("kagome", 12, 3, 43, 0.43),
+    },
+    "torussnubhex": {
+        "easy": lambda: arch_torus_board("snubhex", 4, 1, 9, 0.43),
+        "medium": lambda: arch_torus_board("snubhex", 6, 1, 16, 0.29),
+        "hard": lambda: arch_torus_board("snubhex", 7, 2, 50, 0.49),
+    },
+    "torustruncsquare": {
+        "easy": lambda: arch_torus_board("truncsquare", 9, 4, 9, 0.44),
+        "medium": lambda: arch_torus_board("truncsquare", 12, 6, 22, 0.50),
+        "hard": lambda: arch_torus_board("truncsquare", 16, 7, 45, 0.44),
+    },
+    "torustrunchex": {
+        "easy": lambda: arch_torus_board("trunchex", 7, 2, 10, 0.49),
+        "medium": lambda: arch_torus_board("trunchex", 10, 2, 18, 0.35),
+        "hard": lambda: arch_torus_board("trunchex", 12, 3, 43, 0.43),
+    },
+    "mobiuselongated": {
+        "easy": lambda: arch_mobius_board("elongated", 12, 1, 9),
+        "medium": lambda: arch_mobius_board("elongated", 12, 2, 22),
+        "hard": lambda: arch_mobius_board("elongated", 18, 2, 43),
+    },
+    "mobiussnubsquare": {
+        "easy": lambda: arch_mobius_board("snubsquare", 13, 2, 10),
+        "medium": lambda: arch_mobius_board("snubsquare", 15, 3, 20),
+        "hard": lambda: arch_mobius_board("snubsquare", 17, 4, 41),
+    },
+    "mobiuskagome": {
+        "easy": lambda: arch_mobius_board("kagome", 12, 1, 9),
+        "medium": lambda: arch_mobius_board("kagome", 12, 2, 22),
+        "hard": lambda: arch_mobius_board("kagome", 18, 2, 43),
+    },
+    "mobiustruncsquare": {
+        "easy": lambda: arch_mobius_board("truncsquare", 12, 3, 9),
+        "medium": lambda: arch_mobius_board("truncsquare", 16, 4, 19),
+        "hard": lambda: arch_mobius_board("truncsquare", 22, 5, 44),
+    },
+    "mobiustrunchex": {
+        "easy": lambda: arch_mobius_board("trunchex", 9, 1, 7),
+        "medium": lambda: arch_mobius_board("trunchex", 10, 2, 18),
+        "hard": lambda: arch_mobius_board("trunchex", 12, 3, 43),
+    },
+    # cylinder cuts: elongated ends on square rows (fractional rows adds
+    # the closing row), kagome cuts along its horizontal edge-line, the
+    # rest sit where their rims look best
+    "cylelongated": {
+        "easy": lambda: arch_cylinder_board(
+            "elongated", 10, 1 + 1 / (2 + ROOT3), 8, cut=-0.5),
+        "medium": lambda: arch_cylinder_board(
+            "elongated", 12, 2 + 1 / (2 + ROOT3), 24, cut=-0.5),
+        "hard": lambda: arch_cylinder_board(
+            "elongated", 15, 3 + 1 / (2 + ROOT3), 60, cut=-0.5),
+    },
+    "cylsnubsquare": {
+        "easy": lambda: arch_cylinder_board("snubsquare", 5, 2, 8),
+        "medium": lambda: arch_cylinder_board("snubsquare", 7, 3, 19),
+        "hard": lambda: arch_cylinder_board("snubsquare", 9, 5, 57),
+    },
+    "cylkagome": {
+        "easy": lambda: arch_cylinder_board("kagome", 6, 2, 9, cut=ROOT3 / 2),
+        "medium": lambda: arch_cylinder_board("kagome", 9, 3, 24, cut=ROOT3 / 2),
+        "hard": lambda: arch_cylinder_board("kagome", 11, 4, 55, cut=ROOT3 / 2),
+    },
+    "cylsnubhex": {
+        "easy": lambda: arch_cylinder_board("snubhex", 4, 1, 9, cut=21**0.5 / 4),
+        "medium": lambda: arch_cylinder_board("snubhex", 5, 2, 27, cut=21**0.5 / 4),
+        "hard": lambda: arch_cylinder_board("snubhex", 7, 2, 53, cut=21**0.5 / 4),
+    },
+    "cyltruncsquare": {
+        "easy": lambda: arch_cylinder_board("truncsquare", 9, 3, 7),
+        "medium": lambda: arch_cylinder_board("truncsquare", 12, 5, 18),
+        "hard": lambda: arch_cylinder_board("truncsquare", 16, 7, 45),
+    },
+    "cyltrunchex": {
+        "easy": lambda: arch_cylinder_board(
+            "trunchex", 6, 2, 9, cut=0.5 + ROOT3 / 2),
+        "medium": lambda: arch_cylinder_board(
+            "trunchex", 8, 3, 22, cut=0.5 + ROOT3 / 2),
+        "hard": lambda: arch_cylinder_board(
+            "trunchex", 10, 4, 48, cut=0.5 + ROOT3 / 2),
     },
 }
 

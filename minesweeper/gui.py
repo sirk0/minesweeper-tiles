@@ -29,9 +29,11 @@ import pygame
 
 from minesweeper.boards import (
     DIFFICULTIES,
+    GROUPS,
     MODE_LABELS,
     MODES_3D,
-    TOPOLOGIES,
+    SURFACE_LABELS,
+    TILINGS,
     build_board,
     newell_normal,
 )
@@ -469,14 +471,11 @@ def _icon_badge(s, cx, cy, r, shape: str) -> None:
     _icon_shape(s, points, fill=ICON_BLUE_LIGHT, width=4)
 
 
-# which badge each 3D tiling variant gets on its family's base icon
-_ICON_FAMILIES = {
-    "torustri": ("torus", "tri"),
-    "torushex": ("torus", "hex"),
-    "mobiustri": ("mobius", "tri"),
-    "mobiushex": ("mobius", "hex"),
-    "cyltri": ("cylinder", "tri"),
-    "cylhex": ("cylinder", "hex"),
+# menu keys that reuse another key's drawing
+_ICON_ALIASES = {
+    "tri": "trigrid",
+    "aperiodic": "penrose",
+    "shaped": "triangle",
 }
 
 
@@ -486,9 +485,19 @@ def _render_icon(key: str) -> pygame.Surface:
     s = pygame.Surface((d, d), pygame.SRCALPHA)
     c = d / 2
 
-    key, badge = _ICON_FAMILIES.get(key, (key, None))
+    key = _ICON_ALIASES.get(key, key)
 
-    if key in ("flat", "square", "torus_tile"):
+    if key == "periodic":
+        # one shape of each kind: the group of periodic tilings
+        _icon_shape(s, [(d * 0.08, d * 0.08), (d * 0.48, d * 0.08),
+                        (d * 0.48, d * 0.48), (d * 0.08, d * 0.48)])
+        _icon_shape(s, _hexagon_points(d * 0.72, d * 0.28, d * 0.22))
+        _icon_shape(s, [(d * 0.28, d * 0.9), (d * 0.08, d * 0.55),
+                        (d * 0.48, d * 0.55)], fill=ICON_BLUE_LIGHT)
+        _icon_shape(s, [(d * 0.52, d * 0.55), (d * 0.92, d * 0.55),
+                        (d * 0.92, d * 0.9), (d * 0.52, d * 0.9)])
+        _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.08, d * 0.84, d * 0.84))
+    elif key in ("flat", "square", "torus_tile"):
         gap, tile = d * 0.04, d * 0.42
         for ix in (0, 1):
             for iy in (0, 1):
@@ -668,14 +677,6 @@ def _render_icon(key: str) -> pygame.Surface:
     else:
         fill_circle(s, int(c), int(c), int(d * 0.4), ICON_BLUE)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.4), 2)
-
-    if badge is not None:
-        badge_pos = {
-            "torus": (c, d * 0.31, d * 0.085),
-            "mobius": (c, d * 0.27, d * 0.085),
-            "cylinder": (c, d * 0.5, d * 0.11),
-        }[key]
-        _icon_badge(s, badge_pos[0], badge_pos[1], badge_pos[2], badge)
 
     return s  # supersampled; menu_icon scales it down
 
@@ -1051,7 +1052,9 @@ def make_screen(mode: str, difficulty: str) -> BaseGameScreen:
 
 
 class MenuScreen:
-    """Two pages: pick a topology, then one of its tilings."""
+    """Up to three pages: pick a group, then a tiling, then — for the
+    periodic tilings — a surface. A surface a tiling cannot wrap (snub
+    hexagonal on the Möbius strip) is shown disabled."""
 
     WIDTH = 460 * S
     ITEM_HEIGHT = 58 * S
@@ -1059,13 +1062,39 @@ class MenuScreen:
 
     def __init__(self, difficulty: str = "easy") -> None:
         self.difficulty = difficulty
-        self.topology: str | None = None  # None = topology page
+        self.group: str | None = None  # None = group page
+        self.tiling: str | None = None  # periodic group: tiling page done
 
-    def _items(self) -> list[tuple[str, str]]:
-        if self.topology is None:
-            return [(key, label) for key, (label, _) in TOPOLOGIES.items()]
-        _, modes = TOPOLOGIES[self.topology]
-        return [(mode, MODE_LABELS[mode]) for mode in modes]
+    def _items(self) -> list[tuple[str, str, bool]]:
+        """(key, label, enabled) rows for the current page."""
+        if self.group is None:
+            return [(key, label, True) for key, (label, _) in GROUPS.items()]
+        if self.group == "periodic":
+            if self.tiling is None:
+                return [(key, label, True) for key, (label, _) in TILINGS.items()]
+            surfaces = TILINGS[self.tiling][1]
+            return [
+                (key, label, key in surfaces)
+                for key, label in SURFACE_LABELS.items()
+            ]
+        return [
+            (mode, MODE_LABELS[mode], True) for mode in GROUPS[self.group][1]
+        ]
+
+    def _subtitle(self) -> str:
+        if self.group is None:
+            return "choose a board"
+        if self.group == "periodic":
+            if self.tiling is None:
+                return "Periodic tilings — choose a tiling"
+            return TILINGS[self.tiling][0] + " — choose a surface"
+        return GROUPS[self.group][0] + " — choose a tiling"
+
+    def _back(self) -> None:
+        if self.tiling is not None:
+            self.tiling = None
+        else:
+            self.group = None
 
     def layout(self):
         items = self._items()
@@ -1074,9 +1103,14 @@ class MenuScreen:
         item_step = 50 * S if compact else self.ITEM_STEP
         rects = []
         y = 96 * S
-        for key, label in items:
+        for key, label, enabled in items:
             rects.append(
-                (pygame.Rect(50 * S, y, self.WIDTH - 100 * S, item_height), key, label)
+                (
+                    pygame.Rect(50 * S, y, self.WIDTH - 100 * S, item_height),
+                    key,
+                    label,
+                    enabled,
+                )
             )
             y += item_step
         y += 14 * S
@@ -1090,7 +1124,7 @@ class MenuScreen:
             x += button_width + 12 * S
         back = (
             pygame.Rect(16 * S, 26 * S, 84 * S, 34 * S)
-            if self.topology is not None
+            if self.group is not None
             else None
         )
         return {
@@ -1111,8 +1145,8 @@ class MenuScreen:
             return "quit"
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if self.topology is not None:
-                    self.topology = None
+                if self.group is not None:
+                    self._back()
                     return None
                 return "quit"
             if event.key in DIFFICULTY_KEYS:
@@ -1120,18 +1154,26 @@ class MenuScreen:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             layout = self.layout()
             if layout["back"] is not None and layout["back"].collidepoint(event.pos):
-                self.topology = None
+                self._back()
                 return None
             for rect, difficulty_key in layout["difficulty"]:
                 if rect.collidepoint(event.pos):
                     self.difficulty = difficulty_key
                     return None
-            for rect, key, _ in layout["items"]:
-                if rect.collidepoint(event.pos):
-                    if self.topology is None:
-                        self.topology = key
-                        return None
+            for rect, key, _, enabled in layout["items"]:
+                if not rect.collidepoint(event.pos):
+                    continue
+                if not enabled:
+                    return None
+                if self.group is None:
+                    self.group = key
+                elif self.group == "periodic" and self.tiling is None:
+                    self.tiling = key
+                elif self.group == "periodic":
+                    return ("start", TILINGS[self.tiling][1][key])
+                else:
                     return ("start", key)
+                return None
         return None
 
     def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
@@ -1141,11 +1183,7 @@ class MenuScreen:
 
         title = fonts.get(30 * S).render("MINESWEEPER", True, TEXT)
         surface.blit(title, title.get_rect(center=(self.WIDTH // 2, 44 * S)))
-        if self.topology is None:
-            subtitle_text = "choose a surface"
-        else:
-            subtitle_text = TOPOLOGIES[self.topology][0] + " — choose a tiling"
-        subtitle = fonts.get(14 * S).render(subtitle_text, True, MUTED)
+        subtitle = fonts.get(14 * S).render(self._subtitle(), True, MUTED)
         surface.blit(subtitle, subtitle.get_rect(center=(self.WIDTH // 2, 72 * S)))
 
         if layout["back"] is not None:
@@ -1159,19 +1197,27 @@ class MenuScreen:
         compact = layout["compact"]
         icon_size = (34 if compact else 44) * S
         label_size = (15 if compact else 18) * S
-        for rect, key, label_text in layout["items"]:
-            bevel_rect(
-                surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
-            )
-            icon = menu_icon(key, icon_size)
+        for rect, key, label_text, enabled in layout["items"]:
+            hover = enabled and rect.collidepoint(mouse)
+            bevel_rect(surface, rect, BUTTON_HOVER if hover else BUTTON)
+            icon = menu_icon(key, icon_size).copy()
+            if not enabled:
+                icon.set_alpha(70)
             surface.blit(icon, icon.get_rect(midleft=(rect.left + 10 * S, rect.centery)))
-            label = fonts.get(label_size).render(label_text, True, TEXT)
+            label = fonts.get(label_size).render(
+                label_text, True, TEXT if enabled else MUTED
+            )
             surface.blit(
                 label,
                 label.get_rect(
                     midleft=(rect.left + 10 * S + icon_size + 12 * S, rect.centery)
                 ),
             )
+            if not enabled:  # say why, quietly
+                note = fonts.get(11 * S).render("impossible", True, MUTED)
+                surface.blit(
+                    note, note.get_rect(midright=(rect.right - 12 * S, rect.centery))
+                )
 
         for rect, difficulty_key in layout["difficulty"]:
             selected = difficulty_key == self.difficulty

@@ -10,10 +10,13 @@ Möbius strip, cylinder). Python 3.14 (see `.python-version`), only dependency: 
 - `minesweeper/boards.py` — board builders. Cells are polygons whose
   vertices have exact hashable ids (integer lattice points in 2D,
   symbolic/barycentric keys in 3D); two cells are neighbors when they
-  share a vertex. Presets per mode/difficulty in `_PRESETS`;
-  `TOPOLOGIES` groups modes for the menu.
-- `minesweeper/gui.py` — pygame UI. `MenuScreen` (topology page →
-  tiling page), `GameScreen` (flat), `GameScreen3D` (orthographic
+  share a vertex. The two-shape Archimedean tilings wrap onto the
+  donut/cylinder/Möbius via `_ArchTemplate` (one rectangular periodic
+  domain + modular seam gluing; snub hexagonal is chiral, so no Möbius).
+  Presets per mode/difficulty in `_PRESETS`; `GROUPS`/`TILINGS`/
+  `SURFACE_LABELS` catalog the menu.
+- `minesweeper/gui.py` — pygame UI. `MenuScreen` (group → tiling →
+  surface pages), `GameScreen` (flat), `GameScreen3D` (orthographic
   projection, back-face culling or two-sided, depth sort, drag to
   rotate). Everything is drawn on a canvas at `UI_SCALE`(=2)× and
   smooth-downscaled to the window each frame (supersampling); `App`
