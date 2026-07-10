@@ -1,7 +1,7 @@
 import pytest
 
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from minesweeper.boards import (
     _ARCH_CONFIGS,
@@ -9,6 +9,9 @@ from minesweeper.boards import (
     MODE_LABELS,
     MODES_3D,
     TOPOLOGIES,
+    arch_cylinder_board,
+    arch_mobius_board,
+    arch_torus_board,
     archimedean_board,
     build_board,
     snub_dodecahedron_board,
@@ -61,6 +64,23 @@ ALL_BOARDS = [
     archimedean_board("snubhex", 4.2, 12),
     archimedean_board("truncsquare", 8, 10),
     archimedean_board("trunchex", 11, 13),
+    arch_torus_board("elongated", 12, 1, 9),
+    arch_torus_board("snubsquare", 5, 2, 8),
+    arch_torus_board("kagome", 8, 2, 12),
+    arch_torus_board("snubhex", 4, 1, 9),
+    arch_torus_board("truncsquare", 9, 4, 9),
+    arch_torus_board("trunchex", 7, 2, 10),
+    arch_cylinder_board("elongated", 10, 1, 8),
+    arch_cylinder_board("snubsquare", 5, 2, 8),
+    arch_cylinder_board("kagome", 6, 2, 9),
+    arch_cylinder_board("snubhex", 4, 1, 9),
+    arch_cylinder_board("truncsquare", 9, 3, 7),
+    arch_cylinder_board("trunchex", 6, 2, 9),
+    arch_mobius_board("elongated", 12, 1, 9),
+    arch_mobius_board("snubsquare", 13, 2, 10),
+    arch_mobius_board("kagome", 12, 1, 9),
+    arch_mobius_board("truncsquare", 12, 3, 9),
+    arch_mobius_board("trunchex", 9, 1, 7),
 ]
 
 
@@ -371,6 +391,156 @@ class TestArchimedean:
         sizes = sorted(len(p) for p in board.polygons.values())
         assert len(board.adjacency) == 92
         assert sizes.count(3) == 80 and sizes.count(5) == 12
+
+
+def _corner_fans(board):
+    """Cell sizes around each distinct polygon corner of a 3D board."""
+    at_vertex = defaultdict(list)
+    for polygon in board.polygons.values():
+        for point in polygon:
+            key = tuple(round(c, 6) for c in point)
+            at_vertex[key].append(len(polygon))
+    return at_vertex
+
+
+def _boundary_components(board):
+    """Connected components of the edges that belong to only one cell."""
+    count = defaultdict(int)
+    for polygon in board.polygons.values():
+        points = [tuple(round(c, 6) for c in p) for p in polygon]
+        for a, b in zip(points, points[1:] + points[:1]):
+            count[frozenset((a, b))] += 1
+    graph = defaultdict(set)
+    for edge, cells in count.items():
+        if cells == 1:
+            a, b = edge
+            graph[a].add(b)
+            graph[b].add(a)
+    seen, components = set(), 0
+    for start in graph:
+        if start in seen:
+            continue
+        components += 1
+        stack = [start]
+        while stack:
+            vertex = stack.pop()
+            if vertex not in seen:
+                seen.add(vertex)
+                stack.extend(graph[vertex] - seen)
+    return components
+
+
+class TestWrappedArchimedean:
+    """The two-shape tilings wrapped onto the donut, cylinder and
+    Möbius strip."""
+
+    WRAPPED = [
+        mode
+        for mode in MODE_LABELS
+        if mode.startswith(("torus", "mobius", "cyl"))
+        and any(mode.endswith(tiling) for tiling in _ARCH_CONFIGS)
+    ]
+
+    @pytest.mark.parametrize("tiling", sorted(_ARCH_CONFIGS))
+    def test_torus_vertex_configuration_everywhere(self, tiling):
+        """A torus has no boundary, so every single vertex must show the
+        tiling's full vertex configuration."""
+        board = build_board("torus" + tiling, "easy")
+        config = sorted(_ARCH_CONFIGS[tiling][0])
+        for fan in _corner_fans(board).values():
+            assert sorted(fan) == config
+
+    @pytest.mark.parametrize("mode", sorted(WRAPPED))
+    def test_vertices_are_full_or_boundary(self, mode):
+        """On the open surfaces every vertex fan is the configuration or
+        a part of it (boundary vertices)."""
+        board = build_board(mode, "easy")
+        tiling = next(t for t in _ARCH_CONFIGS if mode.endswith(t))
+        want = Counter(_ARCH_CONFIGS[tiling][0])
+        for fan in _corner_fans(board).values():
+            assert not Counter(fan) - want, (mode, fan)
+
+    @pytest.mark.parametrize("mode", sorted(WRAPPED))
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_euler_characteristic_is_zero(self, mode, difficulty):
+        # the torus, cylinder and Möbius strip all have chi = 0
+        board = build_board(mode, difficulty)
+        vertices = len(_corner_fans(board))
+        edges = set()
+        for polygon in board.polygons.values():
+            points = [tuple(round(c, 6) for c in p) for p in polygon]
+            for a, b in zip(points, points[1:] + points[:1]):
+                edges.add(frozenset((a, b)))
+        assert vertices - len(edges) + len(board.polygons) == 0
+
+    @pytest.mark.parametrize("mode", sorted(WRAPPED))
+    def test_boundary_circles_match_the_surface(self, mode):
+        """The seam gluing is what distinguishes the surfaces: a torus is
+        closed, a cylinder has two rims, a Möbius strip has one."""
+        board = build_board(mode, "easy")
+        want = {"torus": 0, "cyl": 2, "mobius": 1}[
+            next(p for p in ("torus", "mobius", "cyl") if mode.startswith(p))
+        ]
+        assert _boundary_components(board) == want
+
+    def test_cell_counts(self):
+        counts = {
+            "toruselongated": (72, 168, 240),
+            "torussnubsquare": (60, 126, 240),
+            "toruskagome": (96, 120, 216),
+            "torussnubhex": (72, 108, 252),
+            "torustruncsquare": (72, 144, 224),
+            "torustrunchex": (84, 120, 216),
+            "cylelongated": (70, 156, 285),
+            "cylsnubsquare": (60, 126, 270),
+            "cylkagome": (72, 162, 264),
+            "cylsnubhex": (72, 180, 252),
+            "cyltruncsquare": (54, 120, 224),
+            "cyltrunchex": (72, 144, 240),
+            "mobiuselongated": (72, 144, 216),
+            "mobiussnubsquare": (78, 135, 204),
+            "mobiuskagome": (72, 144, 216),
+            "mobiustruncsquare": (72, 128, 220),
+            "mobiustrunchex": (54, 120, 216),
+        }
+        assert sorted(counts) == sorted(self.WRAPPED)
+        for mode, expected in counts.items():
+            for difficulty, count in zip(DIFFICULTIES, expected):
+                assert len(build_board(mode, difficulty).adjacency) == count
+
+    def test_snubhex_is_chiral_so_no_mobius(self):
+        # 3.3.3.3.6 has no mirror or glide symmetry: its mirror image is
+        # a different (opposite-handed) tiling, so no Möbius gluing
+        assert "mobiussnubhex" not in MODE_LABELS
+        with pytest.raises(ValueError):
+            arch_mobius_board("snubhex", 8, 1, 5)
+
+    def test_snubsquare_mobius_needs_odd_half_domains(self):
+        # p4g glues via a glide (mirror + half a period): a whole number
+        # of periods would need a plain mirror, which p4g lacks
+        with pytest.raises(ValueError):
+            arch_mobius_board("snubsquare", 12, 2, 10)
+
+    def test_too_small_wraps_rejected(self):
+        with pytest.raises(ValueError):
+            arch_torus_board("kagome", 1, 3, 2)
+
+    def test_torus_polygons_face_outward(self):
+        for tiling in sorted(_ARCH_CONFIGS):
+            board = build_board("torus" + tiling, "easy")
+            for cell, polygon in board.polygons.items():
+                normal = newell_normal(polygon)
+                centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+                ring_scale = math.hypot(centroid[0], centroid[1])
+                outward = (
+                    centroid[0] - centroid[0] / ring_scale,
+                    centroid[1] - centroid[1] / ring_scale,
+                    centroid[2],
+                )
+                assert sum(n * o for n, o in zip(normal, outward)) > 0, (
+                    board.mode,
+                    cell,
+                )
 
 
 class TestPresets:
