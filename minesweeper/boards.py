@@ -1,6 +1,6 @@
 """Board geometry: flat tilings (squares, triangles, hexagons) and 3D
-surfaces (spheres, fullerenes, tori with one to three holes, a Möbius
-strip, a cylinder).
+surfaces (spheres, fullerenes, the torus and the double torus, a
+Möbius strip, a cylinder).
 
 Every board is a set of polygonal cells. Cell vertices are generated
 with exact, hashable ids (integer lattice points in 2D, symbolic keys
@@ -60,15 +60,6 @@ MODE_LABELS = {
     "torus2snubhex": "Snub hexagonal",
     "torus2truncsquare": "Truncated square",
     "torus2trunchex": "Truncated hexagonal",
-    "torus3": "Squares",
-    "torus3tri": "Triangles",
-    "torus3hex": "Hexagons",
-    "torus3elongated": "Elongated triangular",
-    "torus3snubsquare": "Snub square",
-    "torus3kagome": "Kagome",
-    "torus3snubhex": "Snub hexagonal",
-    "torus3truncsquare": "Truncated square",
-    "torus3trunchex": "Truncated hexagonal",
     "mobius": "Squares",
     "mobiustri": "Triangles",
     "mobiushex": "Hexagons",
@@ -92,11 +83,11 @@ MODE_LABELS = {
 # tilings — a surface. Every periodic tiling wraps every surface, with
 # one exception: 3.3.3.3.6 (snub hexagonal) is chiral (p6, no mirror or
 # glide), so the orientation-reversing Möbius seam cannot glue it to
-# itself; the menu shows that surface disabled. The double and triple
-# torus lobes are plain translates of the torus, so they carry every
-# torus tiling, snub hexagonal included. The sphere is its own group:
-# none of these periodic patterns can tile it (Euler's formula forces
-# curvature in), so it offers spherical tilings instead.
+# itself; the menu shows that surface disabled. The double torus lobes
+# are rotated copies of the torus, so they carry every torus tiling,
+# snub hexagonal included. The sphere is its own group: none of these
+# periodic patterns can tile it (Euler's formula forces curvature in),
+# so it offers spherical tilings instead.
 
 SURFACE_LABELS = {
     "flat": "Plane",
@@ -104,7 +95,6 @@ SURFACE_LABELS = {
     "cylinder": "Cylinder",
     "torus": "Torus",
     "torus2": "Double torus",
-    "torus3": "Triple torus",
 }
 
 
@@ -118,7 +108,6 @@ def _surfaces(tiling: str, mobius: bool = True) -> dict[str, str]:
     modes["cylinder"] = ("cylinder" if tiling == "square" else "cyl" + tiling)
     modes["torus"] = "torus" + suffix
     modes["torus2"] = "torus2" + suffix
-    modes["torus3"] = "torus3" + suffix
     return modes
 
 
@@ -1665,17 +1654,21 @@ def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Boa
     )
 
 
-# -- multi-hole tori (double and triple torus) -------------------------------
+# -- double torus (figure eight) ---------------------------------------------
 #
-# A genus-g surface is a connected sum of g tori: g torus lobes pressed
-# together like the loops of a figure eight. Where two lobes meet, one
-# cell is cut from each and the two polygonal rims are welded vertex to
-# vertex, so the lobes share a ring and the cells around it are real
-# neighbors. A weld removes 2 faces and merges k vertices and k edges:
-# each junction lowers the Euler characteristic by 2 (chi = 2 - 2g). The
-# lobes are rotated copies of one torus, which preserves chirality, so
-# every torus tiling (including the chiral snub hexagonal) also wraps
-# the multi-hole tori.
+# A genus-2 surface as a connected sum of two tori overlapping in a
+# figure eight. The lobes' spine circles are tangent, so each lobe's
+# outer equator reaches exactly to the other's inner equator and the
+# tubes interpenetrate around the junction. There the surfaces are
+# joined: the first lobe gives up the outer-equator cell that pokes
+# into the second, the second gives up the inner-equator cell it pokes
+# through, and the two polygonal rims are welded vertex to vertex --
+# the first lobe's outer wall flows straight into the second lobe's
+# inner wall, and cells across the junction are real neighbors. The
+# weld removes 2 faces and merges k vertices and k edges: the Euler
+# characteristic drops by 2 (chi = -2, genus 2). The second lobe is a
+# rotated copy, which preserves chirality, so every torus tiling
+# (including the chiral snub hexagonal) also wraps the double torus.
 
 
 def _torus_geometry(tiling: str, nx: int, ny: int, tube_radius: float):
@@ -1709,10 +1702,12 @@ def multi_torus_board(
     mine_count: int,
     tube_radius: float | None = None,
 ) -> Board3D:
-    """Two torus lobes pressed into a figure eight, or three into a
-    triangle (open at one corner: welding it too would add a fourth
-    handle). Each lobe is the ``tiling`` torus of ``nx`` by ``ny``
-    units; lobes touch along welded rims (see above)."""
+    """Two torus lobes overlapping in a figure eight: spine circles
+    tangent, one lobe's outer wall welded onto the other's inner wall
+    (see above). Each lobe is the ``tiling`` torus of ``nx`` by ``ny``
+    units."""
+    if holes != 2:
+        raise ValueError("only the two-hole torus is supported")
     if tube_radius is None:
         tube_radius = min(0.6, _torus_aspect(tiling, nx, ny))
     positions, cells = _torus_geometry(tiling, nx, ny, tube_radius)
@@ -1731,8 +1726,8 @@ def multi_torus_board(
             key=lambda cell: math.dist(centroid(cells[cell]), target),
         )
 
-    first = hole_cell((reach, 0.0, 0.0))
-    cx, cy, cz = centroid(cells[first])
+    outer = hole_cell((reach, 0.0, 0.0))
+    cx, cy, cz = centroid(cells[outer])
 
     # slide the lattice along both torus angles (an exact automorphism
     # of the surface) so this hole is centered on the outer equator
@@ -1751,61 +1746,23 @@ def multi_torus_board(
 
     positions = {key: recentered(p) for key, p in positions.items()}
 
-    # each lobe is this torus spun about the z axis so a hole faces its
-    # partner; welded rims meet halfway, so lobe centers sit 2 * the
-    # rim's reach apart
-    side = 2 * max(x for x, _, _ in (positions[key] for key in cells[first]))
-    if holes == 2:
-        centers = [(-side / 2, 0.0), (side / 2, 0.0)]
-        spins = [0.0, math.pi]
-        welds = [(0, first, 1, first)]  # (lobe, hole cell) pairs
-        cut = [{first}, {first}]
-    elif holes == 3:
-        # the middle lobe needs a second hole about a quarter turn away:
-        # the same shape, not touching the first hole (their rims must
-        # stay separate welds) and on the outer equator (so the rim
-        # faces its partner); its actual lattice direction sets the
-        # triangle's apex angle
-        apart = [
-            cell
-            for cell, keys in cells.items()
-            if len(keys) == largest and not set(keys) & set(cells[first])
-        ]
-        if not apart:
-            raise ValueError(f"{nx}x{ny} is too small to cut two holes")
+    # the cell on the inner equator, on the same meridian as the outer
+    # one: the second lobe gives this one up, and its rim is welded to
+    # the first lobe's outer rim right where the surfaces cross
+    inner = hole_cell((1.0 - tube_radius, 0.0, 0.0))
+    if inner == outer:
+        raise ValueError(f"{nx}x{ny} is too small to cut two holes")
 
-        def on_outer_equator(cell) -> bool:
-            x, y, z = centroid(cells[cell])
-            return abs(z) < tube_radius / 2 and math.hypot(x, y) > 1.0
-
-        candidates = [cell for cell in apart if on_outer_equator(cell)] or apart
-        # aim a little past a quarter turn: between two equally distant
-        # candidates the wider apex keeps the triangle's open corner open
-        aim = math.radians(100)
-        second = min(
-            candidates,
-            key=lambda cell: math.dist(
-                centroid(cells[cell]),
-                (reach * math.cos(aim), reach * math.sin(aim), 0.0),
-            ),
-        )
-        sx, sy, _ = centroid(cells[second])
-        corner = math.atan2(sy, sx)
-        to_a = -math.pi / 2 - corner / 2  # apex above, symmetric about y
-        to_c = -math.pi / 2 + corner / 2
-        corners = [
-            (side * math.cos(to_a), side * math.sin(to_a)),
-            (0.0, 0.0),
-            (side * math.cos(to_c), side * math.sin(to_c)),
-        ]
-        mid_x = sum(x for x, _ in corners) / 3
-        mid_y = sum(y for _, y in corners) / 3
-        centers = [(x - mid_x, y - mid_y) for x, y in corners]
-        spins = [to_a + math.pi, to_a, to_c + math.pi]
-        welds = [(1, first, 0, first), (1, second, 2, first)]
-        cut = [{first}, {first, second}, {first}]
-    else:
-        raise ValueError("only 2- and 3-hole tori are supported")
+    # the second lobe is spun half a turn so the two cut cells face
+    # each other; the unit spine circles are tangent at the origin,
+    # which puts each lobe's outer equator on the other's inner one
+    # (the tiny extra gap keeps symmetric lattice vertices of the two
+    # lobes from landing on exactly the same point)
+    apart = 1.0 + 1e-3
+    centers = [(-apart, 0.0), (apart, 0.0)]
+    spins = [0.0, math.pi]
+    welds = [(0, outer, 1, inner)]  # (lobe, hole cell) pairs
+    cut = [{outer}, {inner}]
 
     out_positions = {}
     out_cells = {}
@@ -2114,34 +2071,23 @@ _PRESETS = {
     },
 }
 
-# multi-hole tori: (tiling, holes) -> (nx, ny, mines) per difficulty;
-# nx by ny is one lobe, the tube radius comes from _torus_aspect
+# double torus: tiling -> (nx, ny, mines) per difficulty; nx by ny is
+# one lobe, the tube radius comes from _torus_aspect
 _MULTI_TORUS_PRESETS = {
-    ("square", 2): ((9, 5, 10), (12, 7, 26), (15, 8, 48)),
-    ("square", 3): ((8, 4, 12), (10, 6, 28), (12, 7, 50)),
-    ("tri", 2): ((7, 4, 13), (9, 5, 27), (10, 6, 48)),
-    ("tri", 3): ((6, 4, 15), (7, 4, 26), (8, 5, 48)),
-    ("hex", 2): ((8, 6, 12), (11, 6, 20), (13, 8, 42)),
-    ("hex", 3): ((7, 4, 11), (8, 6, 23), (11, 6, 41)),
-    ("elongated", 2): ((8, 1, 11), (12, 1, 21), (10, 2, 48)),
-    ("elongated", 3): ((6, 1, 12), (9, 1, 25), (12, 1, 44)),
-    ("snubsquare", 2): ((4, 2, 11), (5, 2, 18), (6, 3, 44)),
-    ("snubsquare", 3): ((3, 2, 13), (4, 2, 22), (6, 2, 44)),
-    ("kagome", 2): ((4, 2, 12), (6, 2, 22), (9, 2, 44)),
-    ("kagome", 3): ((6, 2, 26), (6, 2, 32), (6, 2, 44)),
-    ("snubhex", 2): ((3, 1, 13), (4, 1, 22), (6, 1, 44)),
-    ("snubhex", 3): ((3, 1, 17), (3, 1, 26), (4, 1, 45)),
-    ("truncsquare", 2): ((6, 3, 9), (8, 4, 20), (10, 5, 41)),
-    ("truncsquare", 3): ((7, 3, 14), (8, 3, 24), (8, 4, 41)),
-    ("trunchex", 2): ((4, 2, 12), (6, 2, 23), (8, 2, 40)),
-    ("trunchex", 3): ((5, 2, 20), (6, 2, 30), (7, 2, 47)),
+    "square": ((9, 5, 10), (12, 7, 26), (15, 8, 48)),
+    "tri": ((7, 4, 13), (9, 5, 27), (10, 6, 48)),
+    "hex": ((8, 6, 12), (11, 6, 20), (13, 8, 42)),
+    "elongated": ((8, 1, 11), (12, 1, 21), (10, 2, 48)),
+    "snubsquare": ((4, 2, 11), (5, 2, 18), (6, 3, 44)),
+    "kagome": ((4, 2, 12), (6, 2, 22), (9, 2, 44)),
+    "snubhex": ((3, 1, 13), (4, 1, 22), (6, 1, 44)),
+    "truncsquare": ((6, 3, 9), (8, 4, 20), (10, 5, 41)),
+    "trunchex": ((4, 2, 12), (6, 2, 23), (8, 2, 40)),
 }
 
-for (_tiling, _holes), _sizes in _MULTI_TORUS_PRESETS.items():
-    _PRESETS[f"torus{_holes}" + ("" if _tiling == "square" else _tiling)] = {
-        difficulty: (
-            lambda t=_tiling, h=_holes, s=size: multi_torus_board(t, h, *s)
-        )
+for _tiling, _sizes in _MULTI_TORUS_PRESETS.items():
+    _PRESETS["torus2" + ("" if _tiling == "square" else _tiling)] = {
+        difficulty: (lambda t=_tiling, s=size: multi_torus_board(t, 2, *s))
         for difficulty, size in zip(DIFFICULTIES, _sizes)
     }
 

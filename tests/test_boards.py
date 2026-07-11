@@ -85,11 +85,11 @@ ALL_BOARDS = [
     arch_mobius_board("truncsquare", 12, 3, 9),
     arch_mobius_board("trunchex", 9, 1, 7),
     multi_torus_board("square", 2, 9, 5, 10),
-    multi_torus_board("tri", 3, 6, 4, 15),
+    multi_torus_board("tri", 2, 7, 4, 13),
     multi_torus_board("hex", 2, 8, 6, 12),
-    multi_torus_board("kagome", 3, 3, 2, 14),
+    multi_torus_board("kagome", 2, 4, 2, 12),
     multi_torus_board("snubhex", 2, 3, 1, 13),
-    multi_torus_board("truncsquare", 3, 5, 3, 12),
+    multi_torus_board("truncsquare", 2, 6, 3, 9),
 ]
 
 
@@ -554,20 +554,15 @@ class TestWrappedArchimedean:
 
 
 class TestMultiTorus:
-    """The double and triple tori: torus lobes pressed together (a
-    figure eight, or an open triangle) with their cut rims welded."""
+    """The double torus: two lobes overlapping in a figure eight with
+    their cut rims welded."""
 
-    MODES = {
-        mode: holes
-        for holes in (2, 3)
-        for mode in MODE_LABELS
-        if mode.startswith(f"torus{holes}")
-    }
+    MODES = [mode for mode in MODE_LABELS if mode.startswith("torus2")]
 
     @pytest.mark.parametrize("mode", sorted(MODES))
     @pytest.mark.parametrize("difficulty", DIFFICULTIES)
     def test_euler_characteristic_matches_the_genus(self, mode, difficulty):
-        # a closed orientable surface with g holes has chi = 2 - 2g
+        # a closed orientable surface with 2 holes has chi = 2 - 2*2
         board = build_board(mode, difficulty)
         vertices = len(_corner_fans(board))
         edges = set()
@@ -575,15 +570,14 @@ class TestMultiTorus:
             points = [tuple(round(c, 6) for c in p) for p in polygon]
             for a, b in zip(points, points[1:] + points[:1]):
                 edges.add(frozenset((a, b)))
-        genus = self.MODES[mode]
-        assert vertices - len(edges) + len(board.polygons) == 2 - 2 * genus
+        assert vertices - len(edges) + len(board.polygons) == -2
 
     @pytest.mark.parametrize("mode", sorted(MODES))
     def test_surface_is_closed(self, mode):
         assert _boundary_components(build_board(mode, "easy")) == 0
 
     @pytest.mark.parametrize("mode", sorted(MODES))
-    def test_lobes_are_connected_through_the_bridges(self, mode):
+    def test_lobes_are_connected_through_the_weld(self, mode):
         board = build_board(mode, "easy")
         seen: set = set()
         stack = [next(iter(board.adjacency))]
@@ -597,30 +591,44 @@ class TestMultiTorus:
     @pytest.mark.parametrize("tiling", sorted(_ARCH_CONFIGS))
     def test_cells_are_all_tiling_shapes(self, tiling):
         # welding adds no cells of its own, unlike a bridge would
-        for holes in (2, 3):
-            board = build_board(f"torus{holes}{tiling}", "easy")
-            allowed = set(_ARCH_CONFIGS[tiling][0])
-            assert {len(p) for p in board.polygons.values()} <= allowed
+        board = build_board(f"torus2{tiling}", "easy")
+        allowed = set(_ARCH_CONFIGS[tiling][0])
+        assert {len(p) for p in board.polygons.values()} <= allowed
 
     @pytest.mark.parametrize("mode", sorted(MODES))
-    def test_lobes_touch_across_the_welds(self, mode):
-        # welded rims make cells of neighboring lobes direct neighbors
+    def test_lobes_touch_across_the_weld(self, mode):
+        # welded rims make cells of the two lobes direct neighbors
         board = build_board(mode, "easy")
-        lobe_pairs = {
-            frozenset((cell[0], neighbor[0]))
+        assert any(
+            cell[0] != neighbor[0]
             for cell, neighbors in board.adjacency.items()
             for neighbor in neighbors
-            if cell[0] != neighbor[0]
-        }
-        assert len(lobe_pairs) == self.MODES[mode] - 1
+        )
 
-    def test_too_small_boards_rejected(self):
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_lobes_overlap_like_a_figure_eight(self, mode):
+        # spine circles tangent: each lobe's outer equator reaches into
+        # the other's footprint, so the lobes' x-extents interleave
+        board = build_board(mode, "easy")
+        right_of_left = max(
+            x
+            for cell, polygon in board.polygons.items()
+            if cell[0] == 0
+            for x, _, _ in polygon
+        )
+        left_of_right = min(
+            x
+            for cell, polygon in board.polygons.items()
+            if cell[0] == 1
+            for x, _, _ in polygon
+        )
+        assert right_of_left > left_of_right + 0.1  # genuine overlap
+
+    def test_unsupported_boards_rejected(self):
         with pytest.raises(ValueError):
-            multi_torus_board("trunchex", 2, 1, 1, 1)
-        with pytest.raises(ValueError):  # every square touches the first hole
-            multi_torus_board("square", 3, 3, 3, 1)
+            multi_torus_board("trunchex", 2, 1, 1, 1)  # too small to wrap
         with pytest.raises(ValueError):
-            multi_torus_board("square", 4, 9, 5, 10)
+            multi_torus_board("square", 3, 9, 5, 10)  # only two lobes
 
 
 class TestPresets:

@@ -1,7 +1,7 @@
 # Minesweeper (pygame)
 
 A minesweeper clone with flat and 3D boards (sphere, fullerenes, torus,
-double/triple torus, Möbius strip, cylinder). Python 3.14 (see
+double torus, Möbius strip, cylinder). Python 3.14 (see
 `.python-version`), only dependency: `pygame-ce`.
 
 ## Architecture
@@ -14,10 +14,10 @@ double/triple torus, Möbius strip, cylinder). Python 3.14 (see
   share a vertex. The two-shape Archimedean tilings wrap onto the
   torus/cylinder/Möbius via `_ArchTemplate` (one rectangular periodic
   domain + modular seam gluing; snub hexagonal is chiral, so no Möbius).
-  The double/triple tori are connected sums (`multi_torus_board`):
-  torus lobes pressed together (figure eight / open triangle), one cell
-  cut where two lobes meet and the rims welded vertex to vertex, so
-  chi = 2 - 2*genus.
+  The double torus is a connected sum (`multi_torus_board`): two lobes
+  overlapping in a figure eight (spine circles tangent), one cell cut
+  from each where they meet and the rims welded vertex to vertex, so
+  chi = -2.
   Presets per mode/difficulty in `_PRESETS`; `GROUPS`/`TILINGS`/
   `SURFACE_LABELS` catalog the menu.
 - `minesweeper/gui.py` — pygame UI. `MenuScreen` (group → tiling →

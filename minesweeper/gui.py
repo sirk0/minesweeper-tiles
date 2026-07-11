@@ -1,8 +1,8 @@
 """Pygame GUI for minesweeper.
 
 Run with ``python -m minesweeper``. The menu picks a topology (plane,
-sphere, torus with one to three holes, Möbius strip, cylinder), then a
-tiling and difficulty.
+sphere, torus, double torus, Möbius strip, cylinder), then a tiling
+and difficulty.
 In game: left-click reveals (on a revealed number: chords), right-click
 flags, the face button or ``n`` restarts, ``1``/``2``/``3`` switch
 difficulty, the ``<`` button or ``Escape`` goes back to the menu. On 3D
@@ -639,19 +639,17 @@ def _render_icon(key: str) -> pygame.Surface:
                     y2 = c + d * 0.41 * math.sin(angle)
                     pygame.draw.line(s, ICON_BLUE_DARK, (x1, y1), (x2, y2), 4)
         _icon_gloss(s, pygame.Rect(d * 0.13, d * 0.06, d * 0.62, d * 0.62), 90)
-    elif key in ("torus", "torus2", "torus3"):
-        lobes = {"torus": 1, "torus2": 2, "torus3": 3}[key]
-        width = d * {1: 0.92, 2: 0.56, 3: 0.52}[lobes]
+    elif key in ("torus", "torus2"):
+        lobes = 1 if key == "torus" else 2
+        width = d * (0.92 if lobes == 1 else 0.62)
         height = width * 0.61
-        if lobes == 3:  # a triangle of donuts, touching, apex on top
-            anchors = [(d * 0.5, d * 0.34), (d * 0.28, d * 0.64), (d * 0.72, d * 0.64)]
-        else:  # one donut, or two pressed into an eight
-            step = (d * 0.92 - width) / max(1, lobes - 1)
-            anchors = [(d * 0.04 + k * step + width / 2, c) for k in range(lobes)]
+        overlap = width * 0.28  # the figure-eight loops interleave
+        step = width - overlap
+        left = c - (width + step * (lobes - 1)) / 2
         bands = []
-        for x, y in anchors:
+        for k in range(lobes):
             band = pygame.Rect(0, 0, width, height)
-            band.center = (int(x), int(y))
+            band.center = (int(left + width / 2 + k * step), int(c))
             bands.append(band)
         for band in bands:
             pygame.draw.ellipse(s, ICON_BLUE, band)
