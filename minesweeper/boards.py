@@ -1,5 +1,6 @@
 """Board geometry: flat tilings (squares, triangles, hexagons) and 3D
-surfaces (spheres, fullerenes, a donut, a Möbius strip, a cylinder).
+surfaces (spheres, fullerenes, tori with one to three holes, a Möbius
+strip, a cylinder).
 
 Every board is a set of polygonal cells. Cell vertices are generated
 with exact, hashable ids (integer lattice points in 2D, symbolic keys
@@ -50,6 +51,24 @@ MODE_LABELS = {
     "torussnubhex": "Snub hexagonal",
     "torustruncsquare": "Truncated square",
     "torustrunchex": "Truncated hexagonal",
+    "torus2": "Squares",
+    "torus2tri": "Triangles",
+    "torus2hex": "Hexagons",
+    "torus2elongated": "Elongated triangular",
+    "torus2snubsquare": "Snub square",
+    "torus2kagome": "Kagome",
+    "torus2snubhex": "Snub hexagonal",
+    "torus2truncsquare": "Truncated square",
+    "torus2trunchex": "Truncated hexagonal",
+    "torus3": "Squares",
+    "torus3tri": "Triangles",
+    "torus3hex": "Hexagons",
+    "torus3elongated": "Elongated triangular",
+    "torus3snubsquare": "Snub square",
+    "torus3kagome": "Kagome",
+    "torus3snubhex": "Snub hexagonal",
+    "torus3truncsquare": "Truncated square",
+    "torus3trunchex": "Truncated hexagonal",
     "mobius": "Squares",
     "mobiustri": "Triangles",
     "mobiushex": "Hexagons",
@@ -73,63 +92,46 @@ MODE_LABELS = {
 # tilings — a surface. Every periodic tiling wraps every surface, with
 # one exception: 3.3.3.3.6 (snub hexagonal) is chiral (p6, no mirror or
 # glide), so the orientation-reversing Möbius seam cannot glue it to
-# itself; the menu shows that surface disabled. The sphere is its own
-# group: none of these periodic patterns can tile it (Euler's formula
-# forces curvature in), so it offers spherical tilings instead.
+# itself; the menu shows that surface disabled. The double and triple
+# torus lobes are plain translates of the torus, so they carry every
+# torus tiling, snub hexagonal included. The sphere is its own group:
+# none of these periodic patterns can tile it (Euler's formula forces
+# curvature in), so it offers spherical tilings instead.
 
 SURFACE_LABELS = {
-    "flat": "Flat",
-    "torus": "Donut",
-    "cylinder": "Cylinder",
+    "flat": "Plane",
     "mobius": "Möbius strip",
+    "cylinder": "Cylinder",
+    "torus": "Torus",
+    "torus2": "Double torus",
+    "torus3": "Triple torus",
 }
 
+
+def _surfaces(tiling: str, mobius: bool = True) -> dict[str, str]:
+    """The {surface: mode} map of one tiling, in menu order."""
+    suffix = "" if tiling == "square" else tiling
+    flat = {"square": "square", "tri": "trigrid", "hex": "hex"}.get(tiling, tiling)
+    modes = {"flat": flat}
+    if mobius:
+        modes["mobius"] = "mobius" + suffix
+    modes["cylinder"] = ("cylinder" if tiling == "square" else "cyl" + tiling)
+    modes["torus"] = "torus" + suffix
+    modes["torus2"] = "torus2" + suffix
+    modes["torus3"] = "torus3" + suffix
+    return modes
+
+
 TILINGS = {  # tiling -> (label, {surface: mode})
-    "square": (
-        "Squares",
-        {"flat": "square", "torus": "torus",
-         "cylinder": "cylinder", "mobius": "mobius"},
-    ),
-    "tri": (
-        "Triangles",
-        {"flat": "trigrid", "torus": "torustri",
-         "cylinder": "cyltri", "mobius": "mobiustri"},
-    ),
-    "hex": (
-        "Hexagons",
-        {"flat": "hex", "torus": "torushex",
-         "cylinder": "cylhex", "mobius": "mobiushex"},
-    ),
-    "elongated": (
-        "Elongated triangular",
-        {"flat": "elongated", "torus": "toruselongated",
-         "cylinder": "cylelongated", "mobius": "mobiuselongated"},
-    ),
-    "snubsquare": (
-        "Snub square",
-        {"flat": "snubsquare", "torus": "torussnubsquare",
-         "cylinder": "cylsnubsquare", "mobius": "mobiussnubsquare"},
-    ),
-    "kagome": (
-        "Kagome",
-        {"flat": "kagome", "torus": "toruskagome",
-         "cylinder": "cylkagome", "mobius": "mobiuskagome"},
-    ),
-    "snubhex": (
-        "Snub hexagonal",
-        {"flat": "snubhex", "torus": "torussnubhex",
-         "cylinder": "cylsnubhex"},  # chiral: no Möbius strip
-    ),
-    "truncsquare": (
-        "Truncated square",
-        {"flat": "truncsquare", "torus": "torustruncsquare",
-         "cylinder": "cyltruncsquare", "mobius": "mobiustruncsquare"},
-    ),
-    "trunchex": (
-        "Truncated hexagonal",
-        {"flat": "trunchex", "torus": "torustrunchex",
-         "cylinder": "cyltrunchex", "mobius": "mobiustrunchex"},
-    ),
+    "square": ("Squares", _surfaces("square")),
+    "tri": ("Triangles", _surfaces("tri")),
+    "hex": ("Hexagons", _surfaces("hex")),
+    "elongated": ("Elongated triangular", _surfaces("elongated")),
+    "snubsquare": ("Snub square", _surfaces("snubsquare")),
+    "kagome": ("Kagome", _surfaces("kagome")),
+    "snubhex": ("Snub hexagonal", _surfaces("snubhex", mobius=False)),
+    "truncsquare": ("Truncated square", _surfaces("truncsquare")),
+    "trunchex": ("Truncated hexagonal", _surfaces("trunchex")),
 }
 
 GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
@@ -890,11 +892,7 @@ def _torus_position(i: float, j: float, ring: int, tube: int, tube_radius: float
     )
 
 
-def torus_board(
-    ring: int, tube: int, mine_count: int, tube_radius: float = 0.45
-) -> Board3D:
-    """A donut tiled with ``ring * tube`` quadrilaterals. The grid wraps
-    in both directions, so every cell has exactly 8 neighbors."""
+def _square_torus_cells(ring: int, tube: int, tube_radius: float):
     positions = {
         (i, j): _torus_position(i, j, ring, tube, tube_radius)
         for i in range(ring)
@@ -910,6 +908,15 @@ def torus_board(
         for i in range(ring)
         for j in range(tube)
     }
+    return positions, cells
+
+
+def torus_board(
+    ring: int, tube: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """A torus tiled with ``ring * tube`` quadrilaterals. The grid wraps
+    in both directions, so every cell has exactly 8 neighbors."""
+    positions, cells = _square_torus_cells(ring, tube, tube_radius)
     return _torus_oriented(
         "torus", positions, cells, mine_count, radius=1.0 + tube_radius
     )
@@ -930,11 +937,7 @@ def _torus_oriented(mode, positions, cells, mine_count, radius) -> Board3D:
     return Board3D(mode, polygons, adjacency, mine_count, radius=radius)
 
 
-def torus_triangle_board(
-    ring: int, tube: int, mine_count: int, tube_radius: float = 0.45
-) -> Board3D:
-    """A donut tiled with triangles: each quad of the torus grid is
-    split along a diagonal, giving ``2 * ring * tube`` cells."""
+def _tri_torus_cells(ring: int, tube: int, tube_radius: float):
     positions = {
         (i, j): _torus_position(i, j, ring, tube, tube_radius)
         for i in range(ring)
@@ -949,18 +952,21 @@ def torus_triangle_board(
             d = (i, (j + 1) % tube)
             cells[(i, j, 0)] = [a, b, c]
             cells[(i, j, 1)] = [a, c, d]
+    return positions, cells
+
+
+def torus_triangle_board(
+    ring: int, tube: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """A torus tiled with triangles: each quad of the torus grid is
+    split along a diagonal, giving ``2 * ring * tube`` cells."""
+    positions, cells = _tri_torus_cells(ring, tube, tube_radius)
     return _torus_oriented(
         "torustri", positions, cells, mine_count, radius=1.0 + tube_radius
     )
 
 
-def torus_hex_board(
-    rows: int, cols: int, mine_count: int, tube_radius: float = 0.45
-) -> Board3D:
-    """A donut tiled entirely with hexagons (possible because the torus
-    has Euler characteristic 0). The hex lattice wraps around the tube
-    (``rows``, must be even) and around the ring (``cols``); every cell
-    has exactly 6 neighbors."""
+def _hex_torus_cells(rows: int, cols: int, tube_radius: float):
     if rows % 2:
         raise ValueError("rows must be even so the offset lattice wraps")
     kx_period, ky_period = 2 * cols, 3 * rows
@@ -989,6 +995,17 @@ def torus_hex_board(
             for key in keys:
                 if key not in positions:
                     positions[key] = position(*key)
+    return positions, cells
+
+
+def torus_hex_board(
+    rows: int, cols: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """A torus tiled entirely with hexagons (possible because the torus
+    has Euler characteristic 0). The hex lattice wraps around the tube
+    (``rows``, must be even) and around the ring (``cols``); every cell
+    has exactly 6 neighbors."""
+    positions, cells = _hex_torus_cells(rows, cols, tube_radius)
     return _torus_oriented(
         "torushex", positions, cells, mine_count, radius=1.0 + tube_radius
     )
@@ -1496,11 +1513,7 @@ def _arch_cells(template, nx: int, ny: int, tiling: str, wrap_rows: bool = True)
     return cells
 
 
-def arch_torus_board(
-    tiling: str, nx: int, ny: int, mine_count: int, tube_radius: float = 0.45
-) -> Board3D:
-    """An Archimedean tiling wrapped around a donut: ``nx`` domain copies
-    around the ring, ``ny`` around the tube."""
+def _arch_torus_cells(tiling: str, nx: int, ny: int, tube_radius: float):
     template = _arch_template(tiling)
     ring = nx * template.width
     tube = ny * template.height
@@ -1518,6 +1531,15 @@ def arch_torus_board(
 
     cells = _arch_cells(template, nx, ny, tiling)
     positions = {key: position(*key) for keys in cells.values() for key in keys}
+    return positions, cells
+
+
+def arch_torus_board(
+    tiling: str, nx: int, ny: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """An Archimedean tiling wrapped around a torus: ``nx`` domain copies
+    around the ring, ``ny`` around the tube."""
+    positions, cells = _arch_torus_cells(tiling, nx, ny, tube_radius)
     return _torus_oriented(
         "torus" + tiling, positions, cells, mine_count, radius=1.0 + tube_radius
     )
@@ -1640,6 +1662,168 @@ def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Boa
     return _assemble_two_sided(
         "mobius" + tiling, cells, positions, mine_count,
         radius=max(math.hypot(*p) for p in positions.values()),
+    )
+
+
+# -- multi-hole tori (double and triple torus) -------------------------------
+#
+# A genus-g surface is a connected sum of g tori: g torus lobes in a row,
+# each facing pair joined by a short tube. One cell is removed from each
+# facing side and the two polygonal rims are bridged by a ring of
+# quadrilaterals: -2 faces, +k edges, +k faces per junction, so each
+# junction lowers the Euler characteristic by 2 (chi = 2 - 2g). The lobes
+# are plain translates, which preserves chirality, so every torus tiling
+# (including the chiral snub hexagonal) also wraps the multi-hole tori.
+
+
+def _torus_geometry(tiling: str, nx: int, ny: int, tube_radius: float):
+    """(positions, cells) of a single origin-centered torus: ``nx`` units
+    around the ring, ``ny`` around the tube."""
+    if tiling == "square":
+        return _square_torus_cells(nx, ny, tube_radius)
+    if tiling == "tri":
+        return _tri_torus_cells(nx, ny, tube_radius)
+    if tiling == "hex":
+        return _hex_torus_cells(ny, nx, tube_radius)  # ny rows, nx columns
+    return _arch_torus_cells(tiling, nx, ny, tube_radius)
+
+
+def _torus_aspect(tiling: str, nx: int, ny: int) -> float:
+    """Tube/ring circumference ratio of the flat lattice, used as the tube
+    radius so that cells keep their proportions on the torus."""
+    if tiling in ("square", "tri"):
+        return ny / nx
+    if tiling == "hex":  # x unit sqrt(3)/2 * s over 2nx, y unit s/2 over 3ny
+        return ROOT3 * ny / (2 * nx)
+    template = _arch_template(tiling)
+    return ny * template.height / (nx * template.width)
+
+
+def multi_torus_board(
+    tiling: str,
+    holes: int,
+    nx: int,
+    ny: int,
+    mine_count: int,
+    tube_radius: float | None = None,
+) -> Board3D:
+    """A donut with ``holes`` holes: that many torus lobes side by side,
+    consecutive lobes joined by a tube of quadrilaterals (see above).
+    Each lobe is the ``tiling`` torus of ``nx`` by ``ny`` units."""
+    if tube_radius is None:
+        tube_radius = min(0.6, _torus_aspect(tiling, nx, ny))
+    positions, cells = _torus_geometry(tiling, nx, ny, tube_radius)
+
+    def centroid(keys) -> Vec3:
+        points = [positions[key] for key in keys]
+        return tuple(sum(c) / len(points) for c in zip(*points))
+
+    # cut the largest tile shape: it leaves the widest rim to bridge
+    largest = max(len(keys) for keys in cells.values())
+    reach = 1.0 + tube_radius
+
+    def hole_cell(target: Vec3):
+        return min(
+            (cell for cell, keys in cells.items() if len(keys) == largest),
+            key=lambda cell: math.dist(centroid(cells[cell]), target),
+        )
+
+    right = hole_cell((reach, 0.0, 0.0))
+    cx, cy, cz = centroid(cells[right])
+    # the point diametrically opposite in both torus angles
+    left = hole_cell((-cx, -cy, cz))
+    if right == left:
+        raise ValueError(f"{nx}x{ny} is too small to cut two holes")
+
+    # slide the lattice along both torus angles (an exact automorphism of
+    # the surface) so the right hole is centered on the facing point; the
+    # left hole then sits opposite it, up to half a cell
+    theta0 = math.atan2(cy, cx)
+    phi0 = math.atan2(cz, math.hypot(cx, cy) - 1.0)
+
+    def recentered(p: Vec3) -> Vec3:
+        theta = math.atan2(p[1], p[0]) - theta0
+        phi = math.atan2(p[2], math.hypot(p[0], p[1]) - 1.0) - phi0
+        radial = 1.0 + tube_radius * math.cos(phi)
+        return (
+            radial * math.cos(theta),
+            radial * math.sin(theta),
+            tube_radius * math.sin(phi),
+        )
+
+    positions = {key: recentered(p) for key, p in positions.items()}
+
+    # lobe spacing: hole-rim extents plus a neck about as long as the
+    # rim is wide
+    right_rim = [positions[key] for key in cells[right]]
+    left_rim = [positions[key] for key in cells[left]]
+    rim_center = centroid(cells[right])
+    neck = max(math.dist(p, rim_center) for p in right_rim)
+    spacing = (
+        max(x for x, _, _ in right_rim) - min(x for x, _, _ in left_rim) + neck
+    )
+    offsets = [(k - (holes - 1) / 2) * spacing for k in range(holes)]
+
+    out_positions = {}
+    out_cells = {}
+    for k in range(holes):
+        for key, (x, y, z) in positions.items():
+            out_positions[(k, key)] = (x + offsets[k], y, z)
+        for cell, keys in cells.items():
+            if (cell == right and k < holes - 1) or (cell == left and k > 0):
+                continue  # this hole is bridged to the next/previous lobe
+            out_cells[(k, 0, cell)] = [(k, key) for key in keys]
+
+    def turn(cycle) -> float:  # winding sense around the bridge axis
+        points = [out_positions[key] for key in cycle]
+        return sum(
+            p[1] * q[2] - q[1] * p[2]
+            for p, q in zip(points, points[1:] + points[:1])
+        )
+
+    for k in range(holes - 1):
+        a = [(k, key) for key in cells[right]]
+        b = [(k + 1, key) for key in cells[left]]
+        if turn(a) * turn(b) < 0:  # matched pairs must advance the same way
+            b.reverse()
+        m = len(a)
+
+        def twist(offset: int) -> float:
+            return sum(
+                math.dist(out_positions[a[i]], out_positions[b[(i + offset) % m]])
+                for i in range(m)
+            )
+
+        start = min(range(m), key=twist)
+        b = b[start:] + b[:start]
+        for i in range(m):
+            out_cells[(k, 1, i)] = [a[i], a[(i + 1) % m], b[(i + 1) % m], b[i]]
+
+    adjacency = _shared_vertex_adjacency(out_cells)
+    polygons = {}
+    for cell, keys in out_cells.items():
+        polygon = [out_positions[key] for key in keys]
+        center = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+        if cell[1] == 1:  # bridge quad: outward is away from the x axis
+            outward = (0.0, center[1], center[2])
+        else:
+            dx = offsets[cell[0]]
+            ring_scale = math.hypot(center[0] - dx, center[1])
+            ring_point = (
+                dx + (center[0] - dx) / ring_scale,
+                center[1] / ring_scale,
+                0.0,
+            )
+            outward = tuple(c - p for c, p in zip(center, ring_point))
+        polygons[cell] = _orient_outward(polygon, outward)
+
+    suffix = "" if tiling == "square" else tiling
+    return Board3D(
+        f"torus{holes}{suffix}",
+        polygons,
+        adjacency,
+        mine_count,
+        radius=max(math.hypot(*p) for p in out_positions.values()),
     )
 
 
@@ -1871,6 +2055,37 @@ _PRESETS = {
             "trunchex", 10, 4, 48, cut=0.5 + ROOT3 / 2),
     },
 }
+
+# multi-hole tori: (tiling, holes) -> (nx, ny, mines) per difficulty;
+# nx by ny is one lobe, the tube radius comes from _torus_aspect
+_MULTI_TORUS_PRESETS = {
+    ("square", 2): ((9, 5, 10), (12, 7, 26), (15, 8, 48)),
+    ("square", 3): ((8, 4, 12), (10, 6, 28), (12, 7, 50)),
+    ("tri", 2): ((7, 4, 13), (9, 5, 27), (10, 6, 48)),
+    ("tri", 3): ((6, 4, 15), (7, 4, 26), (8, 5, 48)),
+    ("hex", 2): ((8, 6, 12), (11, 6, 20), (13, 8, 42)),
+    ("hex", 3): ((7, 4, 11), (8, 6, 23), (11, 6, 41)),
+    ("elongated", 2): ((8, 1, 11), (12, 1, 21), (10, 2, 48)),
+    ("elongated", 3): ((6, 1, 12), (9, 1, 25), (12, 1, 44)),
+    ("snubsquare", 2): ((4, 2, 11), (5, 2, 18), (6, 3, 44)),
+    ("snubsquare", 3): ((3, 2, 13), (4, 2, 22), (6, 2, 44)),
+    ("kagome", 2): ((4, 2, 12), (6, 2, 22), (9, 2, 44)),
+    ("kagome", 3): ((3, 2, 14), (4, 2, 23), (6, 2, 44)),
+    ("snubhex", 2): ((3, 1, 13), (4, 1, 22), (6, 1, 44)),
+    ("snubhex", 3): ((2, 1, 14), (3, 1, 26), (4, 1, 45)),
+    ("truncsquare", 2): ((6, 3, 9), (8, 4, 20), (10, 5, 41)),
+    ("truncsquare", 3): ((5, 3, 12), (7, 3, 21), (8, 4, 41)),
+    ("trunchex", 2): ((4, 2, 12), (6, 2, 23), (8, 2, 40)),
+    ("trunchex", 3): ((4, 2, 20), (5, 2, 30), (6, 2, 47)),
+}
+
+for (_tiling, _holes), _sizes in _MULTI_TORUS_PRESETS.items():
+    _PRESETS[f"torus{_holes}" + ("" if _tiling == "square" else _tiling)] = {
+        difficulty: (
+            lambda t=_tiling, h=_holes, s=size: multi_torus_board(t, h, *s)
+        )
+        for difficulty, size in zip(DIFFICULTIES, _sizes)
+    }
 
 
 def build_board(mode: str, difficulty: str) -> Board | Board3D:

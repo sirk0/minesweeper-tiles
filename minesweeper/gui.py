@@ -1,7 +1,8 @@
 """Pygame GUI for minesweeper.
 
-Run with ``python -m minesweeper``. The menu picks a topology (flat,
-sphere, donut, Möbius strip, cylinder), then a tiling and difficulty.
+Run with ``python -m minesweeper``. The menu picks a topology (plane,
+sphere, torus with one to three holes, Möbius strip, cylinder), then a
+tiling and difficulty.
 In game: left-click reveals (on a revealed number: chords), right-click
 flags, the face button or ``n`` restarts, ``1``/``2``/``3`` switch
 difficulty, the ``<`` button or ``Escape`` goes back to the menu. On 3D
@@ -638,15 +639,27 @@ def _render_icon(key: str) -> pygame.Surface:
                     y2 = c + d * 0.41 * math.sin(angle)
                     pygame.draw.line(s, ICON_BLUE_DARK, (x1, y1), (x2, y2), 4)
         _icon_gloss(s, pygame.Rect(d * 0.13, d * 0.06, d * 0.62, d * 0.62), 90)
-    elif key == "torus":
-        band = pygame.Rect(d * 0.04, d * 0.22, d * 0.92, d * 0.56)
-        pygame.draw.ellipse(s, ICON_BLUE, band)
-        pygame.draw.ellipse(s, ICON_BLUE_DARK, band, 4)
-        hole = pygame.Rect(0, 0, d * 0.34, d * 0.18)
-        hole.center = (int(c), int(c))
-        pygame.draw.ellipse(s, (0, 0, 0, 0), hole)
-        pygame.draw.ellipse(s, ICON_BLUE_DARK, hole, 4)
-        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.24, d * 0.8, d * 0.34), 80)
+    elif key in ("torus", "torus2", "torus3"):
+        lobes = {"torus": 1, "torus2": 2, "torus3": 3}[key]
+        width = d * {1: 0.92, 2: 0.56, 3: 0.42}[lobes]
+        height = width * 0.61
+        step = (d * 0.92 - width) / max(1, lobes - 1)
+        bands = [
+            pygame.Rect(d * 0.04 + k * step, c - height / 2, width, height)
+            for k in range(lobes)
+        ]
+        for band in bands:
+            pygame.draw.ellipse(s, ICON_BLUE, band)
+        for band in bands:
+            pygame.draw.ellipse(s, ICON_BLUE_DARK, band, 4)
+        for band in bands:
+            hole = pygame.Rect(0, 0, width * 0.37, height * 0.32)
+            hole.center = band.center
+            pygame.draw.ellipse(s, (0, 0, 0, 0), hole)
+            pygame.draw.ellipse(s, ICON_BLUE_DARK, hole, 4)
+        _icon_gloss(
+            s, pygame.Rect(d * 0.1, c - height * 0.46, d * 0.8, height * 0.6), 80
+        )
     elif key == "mobius":
         band = pygame.Rect(d * 0.05, d * 0.16, d * 0.9, d * 0.68)
         pygame.draw.ellipse(s, ICON_BLUE, band)

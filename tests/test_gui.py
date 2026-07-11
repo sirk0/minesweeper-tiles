@@ -375,7 +375,8 @@ class TestMenu:
         self.click_item(menu, "snubhex")
         enabled = {key: on for _, key, _, on in menu.layout()["items"]}
         assert enabled == {
-            "flat": True, "torus": True, "cylinder": True, "mobius": False,
+            "flat": True, "mobius": False, "cylinder": True,
+            "torus": True, "torus2": True, "torus3": True,
         }
         assert self.click_item(menu, "mobius") is None  # click ignored
         assert menu.tiling == "snubhex"  # still on the surface page

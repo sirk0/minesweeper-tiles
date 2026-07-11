@@ -27,6 +27,7 @@ from minesweeper.boards import (
     mobius_board,
     mobius_hex_board,
     mobius_triangle_board,
+    multi_torus_board,
     newell_normal,
     penrose_board,
     sphere_board,
@@ -83,6 +84,12 @@ ALL_BOARDS = [
     arch_mobius_board("kagome", 12, 1, 9),
     arch_mobius_board("truncsquare", 12, 3, 9),
     arch_mobius_board("trunchex", 9, 1, 7),
+    multi_torus_board("square", 2, 9, 5, 10),
+    multi_torus_board("tri", 3, 6, 4, 15),
+    multi_torus_board("hex", 2, 8, 6, 12),
+    multi_torus_board("kagome", 3, 3, 2, 14),
+    multi_torus_board("snubhex", 2, 3, 1, 13),
+    multi_torus_board("truncsquare", 3, 5, 3, 12),
 ]
 
 
@@ -440,6 +447,7 @@ class TestWrappedArchimedean:
         mode
         for mode in MODE_LABELS
         if mode.startswith(("torus", "mobius", "cyl"))
+        and not mode.startswith(("torus2", "torus3"))  # chi != 0: see below
         and any(mode.endswith(tiling) for tiling in _ARCH_CONFIGS)
     ]
 
@@ -543,6 +551,59 @@ class TestWrappedArchimedean:
                     board.mode,
                     cell,
                 )
+
+
+class TestMultiTorus:
+    """The double and triple tori: connected sums of torus lobes joined
+    by tubes of quadrilaterals."""
+
+    MODES = {
+        mode: holes
+        for holes in (2, 3)
+        for mode in MODE_LABELS
+        if mode.startswith(f"torus{holes}")
+    }
+
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_euler_characteristic_matches_the_genus(self, mode, difficulty):
+        # a closed orientable surface with g holes has chi = 2 - 2g
+        board = build_board(mode, difficulty)
+        vertices = len(_corner_fans(board))
+        edges = set()
+        for polygon in board.polygons.values():
+            points = [tuple(round(c, 6) for c in p) for p in polygon]
+            for a, b in zip(points, points[1:] + points[:1]):
+                edges.add(frozenset((a, b)))
+        genus = self.MODES[mode]
+        assert vertices - len(edges) + len(board.polygons) == 2 - 2 * genus
+
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_surface_is_closed(self, mode):
+        assert _boundary_components(build_board(mode, "easy")) == 0
+
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_lobes_are_connected_through_the_bridges(self, mode):
+        board = build_board(mode, "easy")
+        seen: set = set()
+        stack = [next(iter(board.adjacency))]
+        while stack:
+            cell = stack.pop()
+            if cell not in seen:
+                seen.add(cell)
+                stack.extend(set(board.adjacency[cell]) - seen)
+        assert len(seen) == len(board.adjacency)
+
+    @pytest.mark.parametrize("tiling", sorted(_ARCH_CONFIGS))
+    def test_cells_are_tiling_shapes_or_bridge_quads(self, tiling):
+        for holes in (2, 3):
+            board = build_board(f"torus{holes}{tiling}", "easy")
+            allowed = set(_ARCH_CONFIGS[tiling][0]) | {4}
+            assert {len(p) for p in board.polygons.values()} <= allowed
+
+    def test_number_of_holes_must_leave_two_hole_cells(self):
+        with pytest.raises(ValueError):
+            multi_torus_board("trunchex", 2, 1, 1, 1)
 
 
 class TestPresets:
