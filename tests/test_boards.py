@@ -554,8 +554,8 @@ class TestWrappedArchimedean:
 
 
 class TestMultiTorus:
-    """The double and triple tori: connected sums of torus lobes joined
-    by tubes of quadrilaterals."""
+    """The double and triple tori: torus lobes pressed together (a
+    figure eight, or an open triangle) with their cut rims welded."""
 
     MODES = {
         mode: holes
@@ -595,15 +595,32 @@ class TestMultiTorus:
         assert len(seen) == len(board.adjacency)
 
     @pytest.mark.parametrize("tiling", sorted(_ARCH_CONFIGS))
-    def test_cells_are_tiling_shapes_or_bridge_quads(self, tiling):
+    def test_cells_are_all_tiling_shapes(self, tiling):
+        # welding adds no cells of its own, unlike a bridge would
         for holes in (2, 3):
             board = build_board(f"torus{holes}{tiling}", "easy")
-            allowed = set(_ARCH_CONFIGS[tiling][0]) | {4}
+            allowed = set(_ARCH_CONFIGS[tiling][0])
             assert {len(p) for p in board.polygons.values()} <= allowed
 
-    def test_number_of_holes_must_leave_two_hole_cells(self):
+    @pytest.mark.parametrize("mode", sorted(MODES))
+    def test_lobes_touch_across_the_welds(self, mode):
+        # welded rims make cells of neighboring lobes direct neighbors
+        board = build_board(mode, "easy")
+        lobe_pairs = {
+            frozenset((cell[0], neighbor[0]))
+            for cell, neighbors in board.adjacency.items()
+            for neighbor in neighbors
+            if cell[0] != neighbor[0]
+        }
+        assert len(lobe_pairs) == self.MODES[mode] - 1
+
+    def test_too_small_boards_rejected(self):
         with pytest.raises(ValueError):
             multi_torus_board("trunchex", 2, 1, 1, 1)
+        with pytest.raises(ValueError):  # every square touches the first hole
+            multi_torus_board("square", 3, 3, 3, 1)
+        with pytest.raises(ValueError):
+            multi_torus_board("square", 4, 9, 5, 10)
 
 
 class TestPresets:

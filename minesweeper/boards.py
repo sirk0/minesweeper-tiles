@@ -1667,13 +1667,15 @@ def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Boa
 
 # -- multi-hole tori (double and triple torus) -------------------------------
 #
-# A genus-g surface is a connected sum of g tori: g torus lobes in a row,
-# each facing pair joined by a short tube. One cell is removed from each
-# facing side and the two polygonal rims are bridged by a ring of
-# quadrilaterals: -2 faces, +k edges, +k faces per junction, so each
-# junction lowers the Euler characteristic by 2 (chi = 2 - 2g). The lobes
-# are plain translates, which preserves chirality, so every torus tiling
-# (including the chiral snub hexagonal) also wraps the multi-hole tori.
+# A genus-g surface is a connected sum of g tori: g torus lobes pressed
+# together like the loops of a figure eight. Where two lobes meet, one
+# cell is cut from each and the two polygonal rims are welded vertex to
+# vertex, so the lobes share a ring and the cells around it are real
+# neighbors. A weld removes 2 faces and merges k vertices and k edges:
+# each junction lowers the Euler characteristic by 2 (chi = 2 - 2g). The
+# lobes are rotated copies of one torus, which preserves chirality, so
+# every torus tiling (including the chiral snub hexagonal) also wraps
+# the multi-hole tori.
 
 
 def _torus_geometry(tiling: str, nx: int, ny: int, tube_radius: float):
@@ -1707,9 +1709,10 @@ def multi_torus_board(
     mine_count: int,
     tube_radius: float | None = None,
 ) -> Board3D:
-    """A donut with ``holes`` holes: that many torus lobes side by side,
-    consecutive lobes joined by a tube of quadrilaterals (see above).
-    Each lobe is the ``tiling`` torus of ``nx`` by ``ny`` units."""
+    """Two torus lobes pressed into a figure eight, or three into a
+    triangle (open at one corner: welding it too would add a fourth
+    handle). Each lobe is the ``tiling`` torus of ``nx`` by ``ny``
+    units; lobes touch along welded rims (see above)."""
     if tube_radius is None:
         tube_radius = min(0.6, _torus_aspect(tiling, nx, ny))
     positions, cells = _torus_geometry(tiling, nx, ny, tube_radius)
@@ -1718,7 +1721,7 @@ def multi_torus_board(
         points = [positions[key] for key in keys]
         return tuple(sum(c) / len(points) for c in zip(*points))
 
-    # cut the largest tile shape: it leaves the widest rim to bridge
+    # cut the largest tile shape: it leaves the widest rim to weld
     largest = max(len(keys) for keys in cells.values())
     reach = 1.0 + tube_radius
 
@@ -1728,16 +1731,11 @@ def multi_torus_board(
             key=lambda cell: math.dist(centroid(cells[cell]), target),
         )
 
-    right = hole_cell((reach, 0.0, 0.0))
-    cx, cy, cz = centroid(cells[right])
-    # the point diametrically opposite in both torus angles
-    left = hole_cell((-cx, -cy, cz))
-    if right == left:
-        raise ValueError(f"{nx}x{ny} is too small to cut two holes")
+    first = hole_cell((reach, 0.0, 0.0))
+    cx, cy, cz = centroid(cells[first])
 
-    # slide the lattice along both torus angles (an exact automorphism of
-    # the surface) so the right hole is centered on the facing point; the
-    # left hole then sits opposite it, up to half a cell
+    # slide the lattice along both torus angles (an exact automorphism
+    # of the surface) so this hole is centered on the outer equator
     theta0 = math.atan2(cy, cx)
     phi0 = math.atan2(cz, math.hypot(cx, cy) - 1.0)
 
@@ -1753,68 +1751,128 @@ def multi_torus_board(
 
     positions = {key: recentered(p) for key, p in positions.items()}
 
-    # lobe spacing: hole-rim extents plus a neck about as long as the
-    # rim is wide
-    right_rim = [positions[key] for key in cells[right]]
-    left_rim = [positions[key] for key in cells[left]]
-    rim_center = centroid(cells[right])
-    neck = max(math.dist(p, rim_center) for p in right_rim)
-    spacing = (
-        max(x for x, _, _ in right_rim) - min(x for x, _, _ in left_rim) + neck
-    )
-    offsets = [(k - (holes - 1) / 2) * spacing for k in range(holes)]
+    # each lobe is this torus spun about the z axis so a hole faces its
+    # partner; welded rims meet halfway, so lobe centers sit 2 * the
+    # rim's reach apart
+    side = 2 * max(x for x, _, _ in (positions[key] for key in cells[first]))
+    if holes == 2:
+        centers = [(-side / 2, 0.0), (side / 2, 0.0)]
+        spins = [0.0, math.pi]
+        welds = [(0, first, 1, first)]  # (lobe, hole cell) pairs
+        cut = [{first}, {first}]
+    elif holes == 3:
+        # the middle lobe needs a second hole about a quarter turn away:
+        # the same shape, not touching the first hole (their rims must
+        # stay separate welds) and on the outer equator (so the rim
+        # faces its partner); its actual lattice direction sets the
+        # triangle's apex angle
+        apart = [
+            cell
+            for cell, keys in cells.items()
+            if len(keys) == largest and not set(keys) & set(cells[first])
+        ]
+        if not apart:
+            raise ValueError(f"{nx}x{ny} is too small to cut two holes")
+
+        def on_outer_equator(cell) -> bool:
+            x, y, z = centroid(cells[cell])
+            return abs(z) < tube_radius / 2 and math.hypot(x, y) > 1.0
+
+        candidates = [cell for cell in apart if on_outer_equator(cell)] or apart
+        # aim a little past a quarter turn: between two equally distant
+        # candidates the wider apex keeps the triangle's open corner open
+        aim = math.radians(100)
+        second = min(
+            candidates,
+            key=lambda cell: math.dist(
+                centroid(cells[cell]),
+                (reach * math.cos(aim), reach * math.sin(aim), 0.0),
+            ),
+        )
+        sx, sy, _ = centroid(cells[second])
+        corner = math.atan2(sy, sx)
+        to_a = -math.pi / 2 - corner / 2  # apex above, symmetric about y
+        to_c = -math.pi / 2 + corner / 2
+        corners = [
+            (side * math.cos(to_a), side * math.sin(to_a)),
+            (0.0, 0.0),
+            (side * math.cos(to_c), side * math.sin(to_c)),
+        ]
+        mid_x = sum(x for x, _ in corners) / 3
+        mid_y = sum(y for _, y in corners) / 3
+        centers = [(x - mid_x, y - mid_y) for x, y in corners]
+        spins = [to_a + math.pi, to_a, to_c + math.pi]
+        welds = [(1, first, 0, first), (1, second, 2, first)]
+        cut = [{first}, {first, second}, {first}]
+    else:
+        raise ValueError("only 2- and 3-hole tori are supported")
 
     out_positions = {}
     out_cells = {}
     for k in range(holes):
+        px, py = centers[k]
+        cos_s, sin_s = math.cos(spins[k]), math.sin(spins[k])
         for key, (x, y, z) in positions.items():
-            out_positions[(k, key)] = (x + offsets[k], y, z)
+            out_positions[(k, key)] = (
+                x * cos_s - y * sin_s + px,
+                x * sin_s + y * cos_s + py,
+                z,
+            )
         for cell, keys in cells.items():
-            if (cell == right and k < holes - 1) or (cell == left and k > 0):
-                continue  # this hole is bridged to the next/previous lobe
-            out_cells[(k, 0, cell)] = [(k, key) for key in keys]
+            if cell not in cut[k]:
+                out_cells[(k, cell)] = [(k, key) for key in keys]
 
-    def turn(cycle) -> float:  # winding sense around the bridge axis
-        points = [out_positions[key] for key in cycle]
-        return sum(
-            p[1] * q[2] - q[1] * p[2]
-            for p, q in zip(points, points[1:] + points[:1])
-        )
+    merged = {}
+    for i, cell_i, j, cell_j in welds:
+        ux, uy = centers[j][0] - centers[i][0], centers[j][1] - centers[i][1]
+        scale = math.hypot(ux, uy)
+        ux, uy = ux / scale, uy / scale
+        a = [(i, key) for key in cells[cell_i]]
+        b = [(j, key) for key in cells[cell_j]]
 
-    for k in range(holes - 1):
-        a = [(k, key) for key in cells[right]]
-        b = [(k + 1, key) for key in cells[left]]
+        def turn(cycle) -> float:  # winding sense around the weld axis
+            points = [out_positions[key] for key in cycle]
+            flat = [(ux * p[1] - uy * p[0], p[2]) for p in points]
+            return sum(
+                x1 * z2 - x2 * z1
+                for (x1, z1), (x2, z2) in zip(flat, flat[1:] + flat[:1])
+            )
+
         if turn(a) * turn(b) < 0:  # matched pairs must advance the same way
             b.reverse()
         m = len(a)
 
         def twist(offset: int) -> float:
             return sum(
-                math.dist(out_positions[a[i]], out_positions[b[(i + offset) % m]])
-                for i in range(m)
+                math.dist(out_positions[a[t]], out_positions[b[(t + offset) % m]])
+                for t in range(m)
             )
 
         start = min(range(m), key=twist)
-        b = b[start:] + b[:start]
-        for i in range(m):
-            out_cells[(k, 1, i)] = [a[i], a[(i + 1) % m], b[(i + 1) % m], b[i]]
+        for t in range(m):
+            ka, kb = a[t], b[(t + start) % m]
+            pa, pb = out_positions[ka], out_positions.pop(kb)
+            out_positions[ka] = tuple((p + q) / 2 for p, q in zip(pa, pb))
+            merged[kb] = ka
+
+    out_cells = {
+        cell: [merged.get(key, key) for key in keys]
+        for cell, keys in out_cells.items()
+    }
 
     adjacency = _shared_vertex_adjacency(out_cells)
     polygons = {}
     for cell, keys in out_cells.items():
         polygon = [out_positions[key] for key in keys]
         center = tuple(sum(c) / len(polygon) for c in zip(*polygon))
-        if cell[1] == 1:  # bridge quad: outward is away from the x axis
-            outward = (0.0, center[1], center[2])
-        else:
-            dx = offsets[cell[0]]
-            ring_scale = math.hypot(center[0] - dx, center[1])
-            ring_point = (
-                dx + (center[0] - dx) / ring_scale,
-                center[1] / ring_scale,
-                0.0,
-            )
-            outward = tuple(c - p for c, p in zip(center, ring_point))
+        px, py = centers[cell[0]]
+        ring_scale = math.hypot(center[0] - px, center[1] - py)
+        ring_point = (
+            px + (center[0] - px) / ring_scale,
+            py + (center[1] - py) / ring_scale,
+            0.0,
+        )
+        outward = tuple(c - p for c, p in zip(center, ring_point))
         polygons[cell] = _orient_outward(polygon, outward)
 
     suffix = "" if tiling == "square" else tiling
@@ -2070,13 +2128,13 @@ _MULTI_TORUS_PRESETS = {
     ("snubsquare", 2): ((4, 2, 11), (5, 2, 18), (6, 3, 44)),
     ("snubsquare", 3): ((3, 2, 13), (4, 2, 22), (6, 2, 44)),
     ("kagome", 2): ((4, 2, 12), (6, 2, 22), (9, 2, 44)),
-    ("kagome", 3): ((3, 2, 14), (4, 2, 23), (6, 2, 44)),
+    ("kagome", 3): ((6, 2, 26), (6, 2, 32), (6, 2, 44)),
     ("snubhex", 2): ((3, 1, 13), (4, 1, 22), (6, 1, 44)),
-    ("snubhex", 3): ((2, 1, 14), (3, 1, 26), (4, 1, 45)),
+    ("snubhex", 3): ((3, 1, 17), (3, 1, 26), (4, 1, 45)),
     ("truncsquare", 2): ((6, 3, 9), (8, 4, 20), (10, 5, 41)),
-    ("truncsquare", 3): ((5, 3, 12), (7, 3, 21), (8, 4, 41)),
+    ("truncsquare", 3): ((7, 3, 14), (8, 3, 24), (8, 4, 41)),
     ("trunchex", 2): ((4, 2, 12), (6, 2, 23), (8, 2, 40)),
-    ("trunchex", 3): ((4, 2, 20), (5, 2, 30), (6, 2, 47)),
+    ("trunchex", 3): ((5, 2, 20), (6, 2, 30), (7, 2, 47)),
 }
 
 for (_tiling, _holes), _sizes in _MULTI_TORUS_PRESETS.items():

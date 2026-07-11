@@ -15,8 +15,9 @@ double/triple torus, Möbius strip, cylinder). Python 3.14 (see
   torus/cylinder/Möbius via `_ArchTemplate` (one rectangular periodic
   domain + modular seam gluing; snub hexagonal is chiral, so no Möbius).
   The double/triple tori are connected sums (`multi_torus_board`):
-  torus lobes with one cell cut from each facing side and the rims
-  joined by a tube of quads, so chi = 2 - 2*genus.
+  torus lobes pressed together (figure eight / open triangle), one cell
+  cut where two lobes meet and the rims welded vertex to vertex, so
+  chi = 2 - 2*genus.
   Presets per mode/difficulty in `_PRESETS`; `GROUPS`/`TILINGS`/
   `SURFACE_LABELS` catalog the menu.
 - `minesweeper/gui.py` — pygame UI. `MenuScreen` (group → tiling →

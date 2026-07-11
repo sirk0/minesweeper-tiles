@@ -641,13 +641,18 @@ def _render_icon(key: str) -> pygame.Surface:
         _icon_gloss(s, pygame.Rect(d * 0.13, d * 0.06, d * 0.62, d * 0.62), 90)
     elif key in ("torus", "torus2", "torus3"):
         lobes = {"torus": 1, "torus2": 2, "torus3": 3}[key]
-        width = d * {1: 0.92, 2: 0.56, 3: 0.42}[lobes]
+        width = d * {1: 0.92, 2: 0.56, 3: 0.52}[lobes]
         height = width * 0.61
-        step = (d * 0.92 - width) / max(1, lobes - 1)
-        bands = [
-            pygame.Rect(d * 0.04 + k * step, c - height / 2, width, height)
-            for k in range(lobes)
-        ]
+        if lobes == 3:  # a triangle of donuts, touching, apex on top
+            anchors = [(d * 0.5, d * 0.34), (d * 0.28, d * 0.64), (d * 0.72, d * 0.64)]
+        else:  # one donut, or two pressed into an eight
+            step = (d * 0.92 - width) / max(1, lobes - 1)
+            anchors = [(d * 0.04 + k * step + width / 2, c) for k in range(lobes)]
+        bands = []
+        for x, y in anchors:
+            band = pygame.Rect(0, 0, width, height)
+            band.center = (int(x), int(y))
+            bands.append(band)
         for band in bands:
             pygame.draw.ellipse(s, ICON_BLUE, band)
         for band in bands:
@@ -657,9 +662,10 @@ def _render_icon(key: str) -> pygame.Surface:
             hole.center = band.center
             pygame.draw.ellipse(s, (0, 0, 0, 0), hole)
             pygame.draw.ellipse(s, ICON_BLUE_DARK, hole, 4)
-        _icon_gloss(
-            s, pygame.Rect(d * 0.1, c - height * 0.46, d * 0.8, height * 0.6), 80
-        )
+        if lobes == 1:
+            _icon_gloss(
+                s, pygame.Rect(d * 0.1, c - height * 0.46, d * 0.8, height * 0.6), 80
+            )
     elif key == "mobius":
         band = pygame.Rect(d * 0.05, d * 0.16, d * 0.9, d * 0.68)
         pygame.draw.ellipse(s, ICON_BLUE, band)
