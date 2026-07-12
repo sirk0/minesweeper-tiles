@@ -1,6 +1,20 @@
 # Minesweeper
 
-A minesweeper clone in Python (pygame). Pick a surface, then a tiling:
+Classic minesweeper, but the board can be almost any surface and tiling —
+from a flat aperiodic Penrose mosaic to a fullerene sphere or a Möbius strip.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/c180.png" width="380"><br>C180 fullerene on a sphere</td>
+    <td align="center"><img src="docs/screenshots/mobiushex.png" width="380"><br>Hexagons on a Möbius strip</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/penrose.png" width="380"><br>Penrose rhombi</td>
+    <td align="center"><img src="docs/screenshots/torussnubsquare-lost.png" width="380"><br>Snub square on a donut (boom)</td>
+  </tr>
+</table>
+
+Pick a surface, then a tiling:
 
 - **Flat surface** — classic squares (8 neighbors), a big triangle
   subdivided into small triangles (12), a triangle grid (12), hexagons
