@@ -1842,6 +1842,157 @@ def multi_torus_board(
     )
 
 
+# -- double torus as one smooth surface (squares and triangles) --------------
+#
+# The overlap weld above leaves a visible seam where two lattices meet.
+# For the square and triangle tilings the mesh is instead built
+# combinatorially first, then bent onto the smooth union of the two
+# tori, so a single grid flows across the junction with no seam.
+#
+# Combinatorics: a rectangular slab, ``z`` cells thick, with two square
+# through-holes, tiled by unit squares (top and bottom faces plus the
+# walls around the outer rim and the two holes). This is a genus-2
+# polyhedron whose grid is regular everywhere except at 24 isolated
+# corners -- 8 of degree 3 at the outer shoulders and 16 of degree 5 at
+# the hole corners. That defect is unavoidable: for any quad mesh the
+# sum over vertices of (4 - degree) equals 4*chi, which is -8 on a
+# genus-2 surface, so a perfectly regular square grid (degree 4
+# everywhere) cannot close up. It is the same Euler-formula obstruction
+# that forces 12 pentagons onto every fullerene.
+#
+# Geometry: each vertex is projected (a few Newton steps down the
+# gradient) onto the zero set of a smooth minimum of the two tori's
+# signed distance fields. The smooth minimum rounds away the crease
+# where the tori would cross, giving a single surface with no
+# intersection curve, and moving only positions leaves the clean
+# combinatorics intact. Triangles: split each quad along a diagonal.
+
+
+def _slab_double_torus_cells(z: int, hole: int, wall: int):
+    """Boundary unit squares of a slab ``z`` cells thick with two
+    ``hole`` x ``hole`` through-holes ``wall`` cells apart. Vertices are
+    exact integer (x, y, z) lattice points. Returns (cells, nx, ny)."""
+    nx = 2 * z + 2 * hole + wall
+    ny = 2 * z + hole
+    hy0 = (ny - hole) // 2
+    hole_corners = ((z, hy0), (z + hole + wall, hy0))
+
+    def solid(x: int, y: int) -> bool:
+        if not (0 <= x < nx and 0 <= y < ny):
+            return False
+        return not any(
+            hx <= x < hx + hole and hy <= y < hy + hole
+            for hx, hy in hole_corners
+        )
+
+    cells: dict[Cell, list] = {}
+    for x in range(nx):
+        for y in range(ny):
+            if not solid(x, y):
+                continue
+            cells[("top", x, y)] = [
+                (x, y, z), (x + 1, y, z), (x + 1, y + 1, z), (x, y + 1, z)
+            ]
+            cells[("bot", x, y)] = [
+                (x, y, 0), (x + 1, y, 0), (x + 1, y + 1, 0), (x, y + 1, 0)
+            ]
+            walls = (
+                ("wx", 1, 0, ((x + 1, y), (x + 1, y + 1))),
+                ("wx", -1, 0, ((x, y), (x, y + 1))),
+                ("wy", 0, 1, ((x, y + 1), (x + 1, y + 1))),
+                ("wy", 0, -1, ((x, y), (x + 1, y))),
+            )
+            for kind, dx, dy, ((ax, ay), (bx, by)) in walls:
+                if not solid(x + dx, y + dy):
+                    for zz in range(z):
+                        cells[(kind, ax, ay, zz)] = [
+                            (ax, ay, zz), (bx, by, zz),
+                            (bx, by, zz + 1), (ax, ay, zz + 1),
+                        ]
+    return cells, nx, ny
+
+
+def double_torus_board(
+    z: int,
+    hole: int,
+    wall: int,
+    mine_count: int,
+    *,
+    triangles: bool = False,
+    blend: float = 0.35,
+) -> Board3D:
+    """A double torus (genus 2) as one smooth surface. A slab ``z`` cells
+    thick with two ``hole`` x ``hole`` holes ``wall`` cells apart gives a
+    clean quad grid (see above); every vertex is bent onto the smooth
+    union of two unit-spine tori of tube radius ``z / (z + hole)``. With
+    ``triangles`` each quad is split along a diagonal."""
+    cells, nx, ny = _slab_double_torus_cells(z, hole, wall)
+    unit = 2.0 / (z + hole)  # lattice cell size in world units
+    tube = z * unit / 2  # tube radius
+    lobe = (hole + wall) * unit / 2  # each lobe center's distance from x=0
+    k = blend * tube  # smooth-min blend radius
+
+    def torus_sdf(p: Vec3, cx: float) -> float:
+        return math.hypot(math.hypot(p[0] - cx, p[1]) - 1.0, p[2]) - tube
+
+    def sdf(p: Vec3) -> float:
+        a, b = torus_sdf(p, -lobe), torus_sdf(p, lobe)
+        h = max(k - abs(a - b), 0.0) / k
+        return min(a, b) - h * h * k / 4.0
+
+    def gradient(p: Vec3) -> Vec3:
+        eps = 1e-5
+        return tuple(
+            (sdf(p[:i] + (p[i] + eps,) + p[i + 1:])
+             - sdf(p[:i] + (p[i] - eps,) + p[i + 1:])) / (2 * eps)
+            for i in range(3)
+        )
+
+    def project(p: Vec3) -> Vec3:
+        for _ in range(12):
+            f = sdf(p)
+            if abs(f) < 1e-10:
+                break
+            g = gradient(p)
+            g2 = sum(v * v for v in g) or 1.0
+            p = tuple(v - f * gv / g2 for v, gv in zip(p, g))
+        return p
+
+    positions = {}
+    for keys in cells.values():
+        for key in keys:
+            if key not in positions:
+                x, y, zz = key
+                positions[key] = project(
+                    ((x - nx / 2) * unit, (y - ny / 2) * unit,
+                     (zz - z / 2) * unit)
+                )
+
+    if triangles:
+        cells = {
+            (name, half): tri
+            for name, quad in cells.items()
+            for half, tri in enumerate(
+                ([quad[0], quad[1], quad[2]], [quad[0], quad[2], quad[3]])
+            )
+        }
+
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {}
+    for cell, keys in cells.items():
+        polygon = [positions[key] for key in keys]
+        center = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+        polygons[cell] = _orient_outward(polygon, gradient(center))
+
+    return Board3D(
+        "torus2" + ("tri" if triangles else ""),
+        polygons,
+        adjacency,
+        mine_count,
+        radius=max(math.hypot(*p) for p in positions.values()),
+    )
+
+
 # -- presets ---------------------------------------------------------------
 
 _PRESETS = {
@@ -2071,11 +2222,27 @@ _PRESETS = {
     },
 }
 
-# double torus: tiling -> (nx, ny, mines) per difficulty; nx by ny is
-# one lobe, the tube radius comes from _torus_aspect
+# double torus, square and triangle tilings: one smooth surface from a
+# slab (z thick, hole x hole holes, wall apart) with the given mines
+_SLAB_DOUBLE_TORUS_PRESETS = {
+    "square": ((1, 2, 1, 10), (2, 2, 2, 30), (2, 3, 2, 50)),
+    "tri": ((1, 2, 1, 15), (1, 3, 1, 32), (1, 4, 2, 52)),
+}
+
+
+def _slab_preset(z, hole, wall, mines, triangles):
+    return lambda: double_torus_board(z, hole, wall, mines, triangles=triangles)
+
+
+for _tiling, _sizes in _SLAB_DOUBLE_TORUS_PRESETS.items():
+    _PRESETS["torus2" + ("" if _tiling == "square" else _tiling)] = {
+        difficulty: _slab_preset(*size, _tiling == "tri")
+        for difficulty, size in zip(DIFFICULTIES, _sizes)
+    }
+
+# double torus, other tilings: two lobes welded in a figure eight;
+# tiling -> (nx, ny, mines) per difficulty, one lobe is nx by ny
 _MULTI_TORUS_PRESETS = {
-    "square": ((9, 5, 10), (12, 7, 26), (15, 8, 48)),
-    "tri": ((7, 4, 13), (9, 5, 27), (10, 6, 48)),
     "hex": ((8, 6, 12), (11, 6, 20), (13, 8, 42)),
     "elongated": ((8, 1, 11), (12, 1, 21), (10, 2, 48)),
     "snubsquare": ((4, 2, 11), (5, 2, 18), (6, 3, 44)),
@@ -2086,7 +2253,7 @@ _MULTI_TORUS_PRESETS = {
 }
 
 for _tiling, _sizes in _MULTI_TORUS_PRESETS.items():
-    _PRESETS["torus2" + ("" if _tiling == "square" else _tiling)] = {
+    _PRESETS["torus2" + _tiling] = {
         difficulty: (lambda t=_tiling, s=size: multi_torus_board(t, 2, *s))
         for difficulty, size in zip(DIFFICULTIES, _sizes)
     }

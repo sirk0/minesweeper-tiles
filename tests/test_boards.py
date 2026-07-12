@@ -22,6 +22,7 @@ from minesweeper.boards import (
     cylinder_board,
     cylinder_hex_board,
     cylinder_triangle_board,
+    double_torus_board,
     hex_board,
     hexhex_board,
     mobius_board,
@@ -84,12 +85,12 @@ ALL_BOARDS = [
     arch_mobius_board("kagome", 12, 1, 9),
     arch_mobius_board("truncsquare", 12, 3, 9),
     arch_mobius_board("trunchex", 9, 1, 7),
-    multi_torus_board("square", 2, 9, 5, 10),
-    multi_torus_board("tri", 2, 7, 4, 13),
     multi_torus_board("hex", 2, 8, 6, 12),
     multi_torus_board("kagome", 2, 4, 2, 12),
     multi_torus_board("snubhex", 2, 3, 1, 13),
     multi_torus_board("truncsquare", 2, 6, 3, 9),
+    double_torus_board(1, 2, 1, 10),
+    double_torus_board(2, 2, 2, 30, triangles=True),
 ]
 
 
@@ -554,10 +555,12 @@ class TestWrappedArchimedean:
 
 
 class TestMultiTorus:
-    """The double torus: two lobes overlapping in a figure eight with
-    their cut rims welded."""
+    """The double torus (genus 2). Squares and triangles are one smooth
+    surface bent from a slab; the other tilings are two lobes welded in
+    a figure eight."""
 
     MODES = [mode for mode in MODE_LABELS if mode.startswith("torus2")]
+    WELD_MODES = [m for m in MODES if m not in ("torus2", "torus2tri")]
 
     @pytest.mark.parametrize("mode", sorted(MODES))
     @pytest.mark.parametrize("difficulty", DIFFICULTIES)
@@ -577,7 +580,7 @@ class TestMultiTorus:
         assert _boundary_components(build_board(mode, "easy")) == 0
 
     @pytest.mark.parametrize("mode", sorted(MODES))
-    def test_lobes_are_connected_through_the_weld(self, mode):
+    def test_is_connected(self, mode):
         board = build_board(mode, "easy")
         seen: set = set()
         stack = [next(iter(board.adjacency))]
@@ -588,14 +591,31 @@ class TestMultiTorus:
                 stack.extend(set(board.adjacency[cell]) - seen)
         assert len(seen) == len(board.adjacency)
 
+    def test_square_double_torus_is_all_quads(self):
+        board = build_board("torus2", "medium")
+        assert {len(p) for p in board.polygons.values()} == {4}
+
+    def test_triangle_double_torus_is_all_triangles(self):
+        board = build_board("torus2tri", "medium")
+        assert {len(p) for p in board.polygons.values()} == {3}
+
+    def test_square_double_torus_defect_is_gauss_bonnet_minimal(self):
+        # for any quad mesh sum(4 - degree) = 4*chi = -8 on genus 2, so
+        # a perfectly regular grid is impossible; the slab hides the
+        # forced defect at eight degree-3 and sixteen degree-5 corners
+        board = build_board("torus2", "hard")
+        degrees = Counter(len(fan) for fan in _corner_fans(board).values())
+        assert sum((4 - d) * n for d, n in degrees.items()) == -8
+        assert degrees[3] == 8 and degrees[5] == 16
+
     @pytest.mark.parametrize("tiling", sorted(_ARCH_CONFIGS))
-    def test_cells_are_all_tiling_shapes(self, tiling):
+    def test_weld_cells_are_all_tiling_shapes(self, tiling):
         # welding adds no cells of its own, unlike a bridge would
         board = build_board(f"torus2{tiling}", "easy")
         allowed = set(_ARCH_CONFIGS[tiling][0])
         assert {len(p) for p in board.polygons.values()} <= allowed
 
-    @pytest.mark.parametrize("mode", sorted(MODES))
+    @pytest.mark.parametrize("mode", sorted(WELD_MODES))
     def test_lobes_touch_across_the_weld(self, mode):
         # welded rims make cells of the two lobes direct neighbors
         board = build_board(mode, "easy")
@@ -605,7 +625,7 @@ class TestMultiTorus:
             for neighbor in neighbors
         )
 
-    @pytest.mark.parametrize("mode", sorted(MODES))
+    @pytest.mark.parametrize("mode", sorted(WELD_MODES))
     def test_lobes_overlap_like_a_figure_eight(self, mode):
         # spine circles tangent: each lobe's outer equator reaches into
         # the other's footprint, so the lobes' x-extents interleave

@@ -14,10 +14,14 @@ double torus, Möbius strip, cylinder). Python 3.14 (see
   share a vertex. The two-shape Archimedean tilings wrap onto the
   torus/cylinder/Möbius via `_ArchTemplate` (one rectangular periodic
   domain + modular seam gluing; snub hexagonal is chiral, so no Möbius).
-  The double torus is a connected sum (`multi_torus_board`): two lobes
-  overlapping in a figure eight (spine circles tangent), one cell cut
-  from each where they meet and the rims welded vertex to vertex, so
-  chi = -2.
+  The double torus (genus 2, chi = -2) has two constructions. Squares
+  and triangles use `double_torus_board`: a slab with two square holes
+  (a genus-2 quad mesh, regular except at 24 forced corners) whose
+  vertices are projected onto the smooth-min union of two torus SDFs —
+  one seamless surface, grid flowing across the junction. The other
+  tilings use `multi_torus_board`: two lobes overlapping in a figure
+  eight, one cell cut from each where they meet and the rims welded
+  vertex to vertex.
   Presets per mode/difficulty in `_PRESETS`; `GROUPS`/`TILINGS`/
   `SURFACE_LABELS` catalog the menu.
 - `minesweeper/gui.py` — pygame UI. `MenuScreen` (group → tiling →
