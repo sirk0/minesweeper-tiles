@@ -476,6 +476,7 @@ _ICON_ALIASES = {
     "tri": "trigrid",
     "aperiodic": "penrose",
     "shaped": "triangle",
+    "polyhedra": "cube",
 }
 
 
@@ -638,6 +639,43 @@ def _render_icon(key: str) -> pygame.Surface:
                     y2 = c + d * 0.41 * math.sin(angle)
                     pygame.draw.line(s, ICON_BLUE_DARK, (x1, y1), (x2, y2), 4)
         _icon_gloss(s, pygame.Rect(d * 0.13, d * 0.06, d * 0.62, d * 0.62), 90)
+    elif key == "cube":
+        # an isometric cube: three visible rhombic faces, grid-lined
+        r = d * 0.4
+        h = _hexagon_points(c, c, r, -90)  # h0 top, then clockwise
+        faces = [
+            ([h[0], h[1], (c, c), h[5]], ICON_BLUE_LIGHT),  # top
+            ([h[1], h[2], h[3], (c, c)], ICON_BLUE),        # right
+            ([h[5], (c, c), h[3], h[4]], ICON_BLUE_DARK),   # left
+        ]
+
+        def lerp(a, b, t):
+            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+        for quad, fill in faces:
+            _icon_shape(s, quad, fill=fill, width=4)
+            a, b, cc, dd = quad  # sides a-b and d-c, a-d and b-c
+            for k in (1, 2):
+                t = k / 3
+                pygame.draw.line(s, ICON_BLUE_DARK, lerp(a, b, t), lerp(dd, cc, t), 3)
+                pygame.draw.line(s, ICON_BLUE_DARK, lerp(a, dd, t), lerp(b, cc, t), 3)
+        _icon_gloss(s, pygame.Rect(d * 0.12, d * 0.1, d * 0.76, d * 0.4))
+    elif key == "tetrahedron":
+        # a tetrahedron seen down a vertex: outer triangle with edges to
+        # the center, each sub-face lightly triangulated
+        outer = _ngon_points(c, c + d * 0.04, d * 0.46, 3, -90)
+        shades = (ICON_BLUE_LIGHT, ICON_BLUE, ICON_BLUE_DARK)
+
+        def lerp(a, b, t):
+            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+        for k in range(3):
+            a, b = outer[k], outer[(k + 1) % 3]
+            _icon_shape(s, [a, b, (c, c)], fill=shades[k], width=4)
+            mid = lerp(a, b, 0.5)
+            pygame.draw.line(s, ICON_BLUE_DARK, mid, (c, c), 3)
+            pygame.draw.line(s, ICON_BLUE_DARK, lerp(a, (c, c), 0.5), lerp(b, (c, c), 0.5), 3)
+        _icon_gloss(s, pygame.Rect(d * 0.18, d * 0.1, d * 0.64, d * 0.4))
     elif key == "torus":
         band = pygame.Rect(d * 0.04, d * 0.22, d * 0.92, d * 0.56)
         pygame.draw.ellipse(s, ICON_BLUE, band)
@@ -928,6 +966,10 @@ class GameScreen3D(BaseGameScreen):
     TILT = {"torus": -1.0, "mobius": -0.8, "cyl": -0.35}  # by mode prefix
 
     def _initial_rotation(self):
+        # flat-faced solids show only one face head-on; a 3/4 turn reveals
+        # three faces at once
+        if self.mode in ("cube", "tetrahedron"):
+            return mat_mul(rot_x(-0.5), rot_y(0.6))
         for prefix, angle in self.TILT.items():
             if self.mode.startswith(prefix):
                 return rot_x(angle)

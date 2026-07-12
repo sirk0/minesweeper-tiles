@@ -1,7 +1,8 @@
 # Minesweeper (pygame)
 
-A minesweeper clone with flat and 3D boards (sphere, fullerenes, donut,
-Möbius strip, cylinder). Python 3.14 (see `.python-version`), only dependency: `pygame-ce`.
+A minesweeper clone with flat and 3D boards (sphere, fullerenes, cube,
+tetrahedron, donut, Möbius strip, cylinder). Python 3.14 (see
+`.python-version`), only dependency: `pygame-ce`.
 
 ## Architecture
 

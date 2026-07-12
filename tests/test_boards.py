@@ -19,6 +19,7 @@ from minesweeper.boards import (
     snub_dodecahedron_board,
     c80_board,
     c180_board,
+    cube_board,
     cylinder_board,
     cylinder_hex_board,
     cylinder_triangle_board,
@@ -32,6 +33,7 @@ from minesweeper.boards import (
     sphere_board,
     sphere_triangle_board,
     square_board,
+    tetrahedron_board,
     torus_board,
     torus_hex_board,
     torus_triangle_board,
@@ -50,6 +52,8 @@ ALL_BOARDS = [
     c80_board(5),
     c180_board(10),
     sphere_triangle_board(10),
+    cube_board(4, 12),
+    tetrahedron_board(8, 4),
     torus_board(12, 6, 9),
     torus_triangle_board(10, 5, 12),
     torus_hex_board(6, 12, 9),
@@ -309,6 +313,8 @@ class TestNeighborCounts:
             sphere_board(7),
             c180_board(10),
             sphere_triangle_board(10),
+            cube_board(4, 12),
+            tetrahedron_board(8, 4),
             torus_board(12, 6, 9),
             torus_triangle_board(10, 5, 12),
             torus_hex_board(6, 12, 9),
@@ -316,7 +322,7 @@ class TestNeighborCounts:
             for cell, polygon in board.polygons.items():
                 normal = newell_normal(polygon)
                 centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
-                if board.mode in ("sphere", "c180", "spheretri"):
+                if board.mode in ("sphere", "c180", "spheretri", "cube", "tetrahedron"):
                     outward = centroid
                 else:
                     import math
@@ -543,6 +549,62 @@ class TestWrappedArchimedean:
                     board.mode,
                     cell,
                 )
+
+
+def _euler_characteristic(board):
+    """V - E + F over the board's polygon mesh (2 for sphere topology)."""
+    vertices = len(_corner_fans(board))
+    edges = set()
+    for polygon in board.polygons.values():
+        points = [tuple(round(c, 6) for c in p) for p in polygon]
+        for a, b in zip(points, points[1:] + points[:1]):
+            edges.add(frozenset((a, b)))
+    return vertices - len(edges) + len(board.polygons)
+
+
+class TestPolyhedra:
+    """The cube and the tetrahedron: closed, convex, flat-faced solids
+    (sphere topology, so Euler characteristic 2)."""
+
+    @pytest.mark.parametrize("n", [2, 4, 6])
+    def test_cube_is_six_square_faces(self, n):
+        board = cube_board(n, 5)
+        assert len(board.polygons) == 6 * n * n
+        assert all(len(p) == 4 for p in board.polygons.values())
+
+    @pytest.mark.parametrize("frequency", [1, 4, 6])
+    def test_tetrahedron_is_four_triangular_faces(self, frequency):
+        board = tetrahedron_board(3, frequency)
+        assert len(board.polygons) == 4 * frequency * frequency
+        assert all(len(p) == 3 for p in board.polygons.values())
+
+    @pytest.mark.parametrize(
+        "board", [cube_board(5, 5), tetrahedron_board(3, 5)], ids=lambda b: b.mode
+    )
+    def test_closed_surface_no_boundary(self, board):
+        assert _boundary_components(board) == 0
+
+    @pytest.mark.parametrize(
+        "board", [cube_board(5, 5), tetrahedron_board(3, 5)], ids=lambda b: b.mode
+    )
+    def test_euler_characteristic_is_two(self, board):
+        assert _euler_characteristic(board) == 2
+
+    @pytest.mark.parametrize(
+        "board", [cube_board(4, 5), tetrahedron_board(3, 4)], ids=lambda b: b.mode
+    )
+    def test_faces_stitch_into_one_connected_surface(self, board):
+        # shared edge/corner vertices must join every face; a flood must
+        # reach all cells (a face left unstitched splits the graph)
+        adjacency = board.adjacency
+        start = next(iter(adjacency))
+        seen, stack = {start}, [start]
+        while stack:
+            for neighbor in adjacency[stack.pop()]:
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    stack.append(neighbor)
+        assert len(seen) == len(adjacency)
 
 
 class TestPresets:
