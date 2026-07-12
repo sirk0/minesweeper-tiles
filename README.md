@@ -29,6 +29,9 @@ Pick a surface, then a tiling:
   (12 pentagons + 80 triangles).
   (A sphere cannot be tiled with hexagons alone — Euler's formula
   forces 12 pentagons in.)
+- **Polyhedra (3D)** — a cube tiled with squares (6 faces), or a
+  tetrahedron tiled with triangles (4 faces); cells stitch across the
+  edges where faces meet
 - **Donut (3D)** — squares, triangles, or pure hexagons (possible
   because the torus has Euler characteristic 0); the grid wraps in
   both directions, so there are no border cells

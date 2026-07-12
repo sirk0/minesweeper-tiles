@@ -1,5 +1,6 @@
 """Board geometry: flat tilings (squares, triangles, hexagons) and 3D
-surfaces (spheres, fullerenes, a donut, a Möbius strip, a cylinder).
+surfaces (spheres, fullerenes, a cube, a tetrahedron, a donut, a Möbius
+strip, a cylinder).
 
 Every board is a set of polygonal cells. Cell vertices are generated
 with exact, hashable ids (integer lattice points in 2D, symbolic keys
@@ -41,6 +42,8 @@ MODE_LABELS = {
     "c180": "C180 fullerene",
     "spheretri": "Triangles",
     "snubdodec": "Snub dodecahedron",
+    "cube": "Cube",
+    "tetrahedron": "Tetrahedron",
     "torus": "Squares",
     "torustri": "Triangles",
     "torushex": "Hexagons",
@@ -136,11 +139,12 @@ GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
     "periodic": ("Periodic tilings", ()),
     "aperiodic": ("Aperiodic", ("penrose",)),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
+    "polyhedra": ("Polyhedra", ("cube", "tetrahedron")),
     "shaped": ("Shaped boards", ("triangle", "hexhex")),
 }
 
 MODES_3D = frozenset(
-    {"sphere", "c80", "c180", "spheretri", "snubdodec"}
+    {"sphere", "c80", "c180", "spheretri", "snubdodec", "cube", "tetrahedron"}
     | {mode for mode in MODE_LABELS if mode.startswith(("torus", "mobius", "cyl"))}
 )
 
@@ -709,14 +713,30 @@ def _icosahedron() -> tuple[list[Vec3], list[tuple[int, int, int]]]:
     return vertices, faces
 
 
-def _sphere_board3d(mode: str, cells, positions, mine_count: int) -> Board3D:
+def _tetrahedron() -> tuple[list[Vec3], list[tuple[int, int, int]]]:
+    """A regular tetrahedron: four vertices on alternate cube corners,
+    the four faces being the four vertex triples. Winding is arbitrary
+    (each subdivided cell is re-oriented outward on assembly)."""
+    vertices: list[Vec3] = [(1.0, 1.0, 1.0), (1.0, -1.0, -1.0),
+                            (-1.0, 1.0, -1.0), (-1.0, -1.0, 1.0)]
+    faces = [(1, 2, 3), (0, 2, 3), (0, 1, 3), (0, 1, 2)]
+    return vertices, faces
+
+
+def _convex_board3d(
+    mode: str, cells, positions, mine_count: int, radius: float = 1.0
+) -> Board3D:
+    """Assemble a closed convex board, orienting each polygon outward by
+    its centroid direction. Correct for any convex solid that contains the
+    origin (sphere, cube, tetrahedron): every surface point has a positive
+    dot with its face's outward normal."""
     adjacency = _shared_vertex_adjacency(cells)
     polygons = {}
     for cell, keys in cells.items():
         polygon = [positions[key] for key in keys]
         centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
         polygons[cell] = _orient_outward(polygon, centroid)
-    return Board3D(mode, polygons, adjacency, mine_count, radius=1.0)
+    return Board3D(mode, polygons, adjacency, mine_count, radius=radius)
 
 
 # -- 3D builders --------------------------------------------------------------
@@ -768,7 +788,7 @@ def sphere_board(mine_count: int) -> Board3D:
     projected onto the unit sphere). Every pentagon has exactly 7
     neighbors."""
     cells, positions = _gyro_pentagons()
-    return _sphere_board3d("sphere", cells, positions, mine_count)
+    return _convex_board3d("sphere", cells, positions, mine_count)
 
 
 def snub_dodecahedron_board(mine_count: int) -> Board3D:
@@ -796,18 +816,23 @@ def snub_dodecahedron_board(mine_count: int) -> Board3D:
         key: _tangent_order(positions[key], [(cid, centers[cid]) for cid in ids])
         for key, ids in around.items()
     }
-    return _sphere_board3d("snubdodec", cells, centers, mine_count)
+    return _convex_board3d("snubdodec", cells, centers, mine_count)
 
 
-def _geodesic(frequency: int) -> tuple[dict, list[tuple]]:
-    """A geodesic icosahedron: every face subdivided into ``frequency**2``
-    triangles, all vertices projected onto the unit sphere.
+def _geodesic(
+    frequency: int, vertices=None, faces=None, project: bool = True
+) -> tuple[dict, list[tuple]]:
+    """Subdivide each triangular face into ``frequency**2`` triangles.
+    Defaults to the icosahedron; ``project`` normalizes vertices onto the
+    unit sphere (a geodesic icosahedron), otherwise they stay on the flat
+    faces (e.g. a triangulated tetrahedron).
 
     Returns (positions, triangles). Vertex keys are gcd-normalized
-    barycentric weights over the icosahedron corners, so vertices on
-    shared edges match exactly across faces.
+    barycentric weights over the corners, so vertices on shared edges
+    match exactly across faces.
     """
-    vertices, faces = _icosahedron()
+    if vertices is None or faces is None:
+        vertices, faces = _icosahedron()
     positions: dict[Hashable, Vec3] = {}
     triangles: list[tuple] = []
     for face in faces:
@@ -819,12 +844,11 @@ def _geodesic(frequency: int) -> tuple[dict, list[tuple]]:
             g = math.gcd(*(w for _, w in items))
             vertex_key = tuple(sorted((v, w // g) for v, w in items))
             if vertex_key not in positions:
-                positions[vertex_key] = _normalize(
-                    tuple(
-                        sum(w * c[axis] for w, c in zip(weights, corners))
-                        for axis in range(3)
-                    )
+                point = tuple(
+                    sum(w * c[axis] for w, c in zip(weights, corners)) / frequency
+                    for axis in range(3)
                 )
+                positions[vertex_key] = _normalize(point) if project else point
             return vertex_key
 
         for i in range(frequency):
@@ -856,7 +880,7 @@ def _goldberg_board(mode: str, frequency: int, mine_count: int) -> Board3D:
     for key, triangle_ids in around.items():
         ring = [(tid, centers[tid]) for tid in triangle_ids]
         cells[key] = _tangent_order(positions[key], ring)
-    return _sphere_board3d(mode, cells, centers, mine_count)
+    return _convex_board3d(mode, cells, centers, mine_count)
 
 
 def c80_board(mine_count: int) -> Board3D:
@@ -876,7 +900,43 @@ def sphere_triangle_board(mine_count: int, frequency: int = 2) -> Board3D:
     ``20 * frequency**2`` triangular cells."""
     positions, triangles = _geodesic(frequency)
     cells = {("t", n): list(triangle) for n, triangle in enumerate(triangles)}
-    return _sphere_board3d("spheretri", cells, positions, mine_count)
+    return _convex_board3d("spheretri", cells, positions, mine_count)
+
+
+def cube_board(n: int, mine_count: int) -> Board3D:
+    """A cube surface tiled with ``6 * n**2`` squares: each face an n x n
+    grid. Vertices are integer points on ``[-n, n]**3`` (a surface vertex
+    has one axis at +-n; the grid lines step by 2), so cells on adjacent
+    faces sharing a cube edge or corner become neighbors automatically."""
+    cells: dict[Cell, list] = {}
+    positions: dict[Hashable, Vec3] = {}
+    for axis in range(3):
+        u_axis, v_axis = (a for a in range(3) if a != axis)
+        for sign in (-1, 1):
+            for i in range(n):
+                for j in range(n):
+                    keys = []
+                    for du, dv in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                        coord = [0, 0, 0]
+                        coord[axis] = sign * n
+                        coord[u_axis] = -n + 2 * (i + du)
+                        coord[v_axis] = -n + 2 * (j + dv)
+                        key = tuple(coord)
+                        keys.append(key)
+                        if key not in positions:
+                            positions[key] = (key[0] / n, key[1] / n, key[2] / n)
+                    cells[(axis, sign, i, j)] = keys
+    return _convex_board3d("cube", cells, positions, mine_count, radius=ROOT3)
+
+
+def tetrahedron_board(mine_count: int, frequency: int = 4) -> Board3D:
+    """A regular tetrahedron tiled with triangles: each of the 4 faces
+    subdivided into ``frequency**2`` cells, kept flat on the faces."""
+    vertices, faces = _tetrahedron()
+    positions, triangles = _geodesic(frequency, vertices, faces, project=False)
+    cells = {("t", n): list(triangle) for n, triangle in enumerate(triangles)}
+    radius = max(math.hypot(*p) for p in positions.values())
+    return _convex_board3d("tetrahedron", cells, positions, mine_count, radius=radius)
 
 
 def _torus_position(i: float, j: float, ring: int, tube: int, tube_radius: float) -> Vec3:
@@ -1730,6 +1790,16 @@ _PRESETS = {
         "easy": lambda: sphere_triangle_board(10),
         "medium": lambda: sphere_triangle_board(14),
         "hard": lambda: sphere_triangle_board(18),
+    },
+    "cube": {
+        "easy": lambda: cube_board(4, 12),
+        "medium": lambda: cube_board(6, 38),
+        "hard": lambda: cube_board(8, 84),
+    },
+    "tetrahedron": {
+        "easy": lambda: tetrahedron_board(8, 4),
+        "medium": lambda: tetrahedron_board(24, 6),
+        "hard": lambda: tetrahedron_board(55, 8),
     },
     "torus": {
         "easy": lambda: torus_board(12, 6, 9),
