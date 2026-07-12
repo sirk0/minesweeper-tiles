@@ -4,7 +4,7 @@ PY ?= $(VENV)/bin/python
 WEB_STAGE = build/minesweeper
 WEB_OUT = $(WEB_STAGE)/build/web
 
-.PHONY: help venv install lock test lint run \
+.PHONY: help venv install lock test lint run screenshots \
         web-prepare web-package web-run clean
 
 help:            ## list available targets
@@ -31,6 +31,9 @@ lint:            ## ruff over the code and tests
 
 run:             ## run the desktop game
 	$(PY) -m minesweeper
+
+screenshots:     ## regenerate the README screenshots into docs/screenshots
+	PYTHONPATH=. $(PY) scripts/make_screenshots.py
 
 web-prepare:     ## stage the browser app files into $(WEB_STAGE)
 	rm -rf $(WEB_STAGE)
