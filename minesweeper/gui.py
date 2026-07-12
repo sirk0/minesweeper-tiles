@@ -660,6 +660,41 @@ def _render_icon(key: str) -> pygame.Surface:
                 pygame.draw.line(s, ICON_BLUE_DARK, lerp(a, b, t), lerp(dd, cc, t), 3)
                 pygame.draw.line(s, ICON_BLUE_DARK, lerp(a, dd, t), lerp(b, cc, t), 3)
         _icon_gloss(s, pygame.Rect(d * 0.12, d * 0.1, d * 0.76, d * 0.4))
+    elif key == "cubeframe":
+        # an isometric cube with a square hole punched through each of the
+        # three visible faces: the bored-out Menger frame
+        r = d * 0.4
+        h = _hexagon_points(c, c, r, -90)  # h0 top, then clockwise
+        faces = [
+            ([h[0], h[1], (c, c), h[5]], ICON_BLUE_LIGHT),  # top
+            ([h[1], h[2], h[3], (c, c)], ICON_BLUE),        # right
+            ([h[5], (c, c), h[3], h[4]], ICON_BLUE_DARK),   # left
+        ]
+        for quad, fill in faces:
+            _icon_shape(s, quad, fill=fill, width=4)
+            fx = sum(p[0] for p in quad) / 4
+            fy = sum(p[1] for p in quad) / 4
+            hole = [(fx + (px - fx) * 0.44, fy + (py - fy) * 0.44) for px, py in quad]
+            fill_polygon(s, hole, (0, 0, 0, 0))
+            pygame.draw.lines(
+                s, ICON_BLUE_DARK, True, [(int(x), int(y)) for x, y in hole], 3
+            )
+        _icon_gloss(s, pygame.Rect(d * 0.12, d * 0.1, d * 0.76, d * 0.4))
+    elif key == "steppedbipyramid":
+        # a terraced diamond: square slabs widest at the equator, tapering
+        # up and down (a stepped bipyramid seen head-on)
+        widths = (0.34, 0.58, 0.82, 0.58, 0.34)
+        shades = (ICON_BLUE_LIGHT, ICON_BLUE_LIGHT, ICON_BLUE,
+                  ICON_BLUE_DARK, ICON_BLUE_DARK)
+        slab = d * 0.135
+        top = c - slab * len(widths) / 2
+        for idx, w in enumerate(widths):
+            ww = d * w
+            y = top + idx * slab
+            rect = [(c - ww / 2, y), (c + ww / 2, y),
+                    (c + ww / 2, y + slab), (c - ww / 2, y + slab)]
+            _icon_shape(s, rect, fill=shades[idx], width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.12, d * 0.14, d * 0.76, d * 0.34))
     elif key == "tetrahedron":
         # a tetrahedron seen down a vertex: outer triangle with edges to
         # the center, each sub-face lightly triangulated
@@ -968,7 +1003,7 @@ class GameScreen3D(BaseGameScreen):
     def _initial_rotation(self):
         # flat-faced solids show only one face head-on; a 3/4 turn reveals
         # three faces at once
-        if self.mode in ("cube", "tetrahedron"):
+        if self.mode in ("cube", "tetrahedron", "cubeframe", "steppedbipyramid"):
             return mat_mul(rot_x(-0.5), rot_y(0.6))
         for prefix, angle in self.TILT.items():
             if self.mode.startswith(prefix):

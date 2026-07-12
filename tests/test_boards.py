@@ -20,6 +20,7 @@ from minesweeper.boards import (
     c80_board,
     c180_board,
     cube_board,
+    cube_frame_board,
     cylinder_board,
     cylinder_hex_board,
     cylinder_triangle_board,
@@ -33,6 +34,7 @@ from minesweeper.boards import (
     sphere_board,
     sphere_triangle_board,
     square_board,
+    stepped_bipyramid_board,
     tetrahedron_board,
     torus_board,
     torus_hex_board,
@@ -54,6 +56,8 @@ ALL_BOARDS = [
     sphere_triangle_board(10),
     cube_board(4, 12),
     tetrahedron_board(8, 4),
+    cube_frame_board(6, 2, 40),
+    stepped_bipyramid_board(6, 3, 20),
     torus_board(12, 6, 9),
     torus_triangle_board(10, 5, 12),
     torus_hex_board(6, 12, 9),
@@ -399,6 +403,119 @@ class TestArchimedean:
         sizes = sorted(len(p) for p in board.polygons.values())
         assert len(board.adjacency) == 92
         assert sizes.count(3) == 80 and sizes.count(5) == 12
+
+
+class TestCubeFrame:
+    """The cube-frame (level-1 Menger sponge) surface: a genus-5 polycube
+    boundary tiled by unit squares."""
+
+    def test_all_cells_are_quads(self):
+        board = cube_frame_board(6, 2, 40)
+        assert all(len(p) == 4 for p in board.polygons.values())
+
+    def test_hole_removes_the_face_centers(self):
+        # a plain 6x6x6 cube surface would have 6*36 = 216 squares; boring a
+        # 2x2 hole through each face and hollowing the middle leaves the
+        # twelve edge bars, whose surface is 288 squares
+        assert len(cube_frame_board(6, 2, 40).adjacency) == 288
+
+    @pytest.mark.parametrize(
+        "n, thickness, genus", [(6, 2, 5), (9, 3, 5), (12, 4, 5)]
+    )
+    def test_surface_is_genus_five(self, n, thickness, genus):
+        # a cube frame is topologically a cube with a tunnel through each
+        # pair of opposite faces: chi = 2 - 2*genus = -8
+        board = cube_frame_board(n, thickness, 10)
+        vertices = len(_corner_fans(board))
+        edges = set()
+        for polygon in board.polygons.values():
+            points = [tuple(round(c, 6) for c in v) for v in polygon]
+            for a, b in zip(points, points[1:] + points[:1]):
+                edges.add(frozenset((a, b)))
+        chi = vertices - len(edges) + len(board.polygons)
+        assert chi == 2 - 2 * genus
+
+    def test_surface_is_closed(self):
+        # every edge borders exactly two faces: no boundary, so back-face
+        # culling (not two_sided rendering) is correct
+        board = cube_frame_board(6, 2, 40)
+        assert _boundary_components(board) == 0
+        assert board.two_sided is False
+
+    def test_orientation_is_consistent_and_outward(self):
+        # a consistently wound closed mesh traverses every shared edge once
+        # in each direction; check that, then pin the global sign outward
+        # via an outer +x face (all its corners sit at x = +1)
+        board = cube_frame_board(6, 2, 40)
+        directed = [
+            (tuple(round(c, 6) for c in a), tuple(round(c, 6) for c in b))
+            for polygon in board.polygons.values()
+            for a, b in zip(polygon, polygon[1:] + polygon[:1])
+        ]
+        assert len(directed) == len(set(directed))  # no edge repeated a way
+        outer = next(
+            p for p in board.polygons.values() if all(v[0] > 0.99 for v in p)
+        )
+        assert newell_normal(outer)[0] > 0  # normal points along +x, outward
+
+    def test_thickness_must_leave_a_hole(self):
+        with pytest.raises(ValueError):
+            cube_frame_board(4, 2, 5)  # 2*2 == 4: no hole left
+
+
+class TestSteppedCube:
+    """The stepped-cube board: a stepped pyramid stitched base-to-base
+    with its z-mirror, forming a terraced bipyramid (a sphere)."""
+
+    def test_all_cells_are_quads(self):
+        board = stepped_bipyramid_board(6, 3, 20)
+        assert all(len(p) == 4 for p in board.polygons.values())
+
+    def test_easy_cell_count(self):
+        assert len(stepped_bipyramid_board(6, 3, 20).adjacency) == 144
+
+    @pytest.mark.parametrize("base, levels", [(6, 3), (8, 4), (10, 5)])
+    def test_surface_is_a_sphere(self, base, levels):
+        # a solid terraced diamond is a topological sphere: chi = 2
+        board = stepped_bipyramid_board(base, levels, 10)
+        vertices = len(_corner_fans(board))
+        edges = set()
+        for polygon in board.polygons.values():
+            points = [tuple(round(c, 6) for c in v) for v in polygon]
+            for a, b in zip(points, points[1:] + points[:1]):
+                edges.add(frozenset((a, b)))
+        assert vertices - len(edges) + len(board.polygons) == 2
+
+    def test_surface_is_closed_and_outward(self):
+        board = stepped_bipyramid_board(8, 4, 40)
+        assert _boundary_components(board) == 0
+        assert board.two_sided is False
+        directed = [
+            (tuple(round(c, 6) for c in a), tuple(round(c, 6) for c in b))
+            for polygon in board.polygons.values()
+            for a, b in zip(polygon, polygon[1:] + polygon[:1])
+        ]
+        assert len(directed) == len(set(directed))  # consistently wound
+        # the very top cap is a square facing straight up (+z)
+        top = max(v[2] for p in board.polygons.values() for v in p)
+        cap = next(
+            p for p in board.polygons.values()
+            if all(abs(v[2] - top) < 1e-6 for v in p)
+        )
+        assert newell_normal(cap)[2] > 0
+
+    def test_widest_terrace_is_the_equator(self):
+        # the middle layer spans the full base; the two poles are smaller,
+        # so the widest cross-section sits at z = 0 (mirror symmetry)
+        board = stepped_bipyramid_board(8, 4, 40)
+        zs = [v[2] for p in board.polygons.values() for v in p]
+        assert abs(min(zs) + max(zs)) < 1e-6  # symmetric about z = 0
+
+    def test_needs_two_levels_and_a_positive_apex(self):
+        with pytest.raises(ValueError):
+            stepped_bipyramid_board(6, 1, 5)  # a single level is just a slab
+        with pytest.raises(ValueError):
+            stepped_bipyramid_board(4, 3, 5)  # apex 4 - 2*2 = 0: nothing left
 
 
 def _corner_fans(board):

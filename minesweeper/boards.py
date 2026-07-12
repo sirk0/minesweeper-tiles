@@ -44,6 +44,8 @@ MODE_LABELS = {
     "snubdodec": "Snub dodecahedron",
     "cube": "Cube",
     "tetrahedron": "Tetrahedron",
+    "cubeframe": "Cube frame",
+    "steppedbipyramid": "Stepped bipyramid",
     "torus": "Squares",
     "torustri": "Triangles",
     "torushex": "Hexagons",
@@ -139,12 +141,15 @@ GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
     "periodic": ("Periodic tilings", ()),
     "aperiodic": ("Aperiodic", ("penrose",)),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
-    "polyhedra": ("Polyhedra", ("cube", "tetrahedron")),
+    "polyhedra": (
+        "Polyhedra", ("cube", "tetrahedron", "cubeframe", "steppedbipyramid")
+    ),
     "shaped": ("Shaped boards", ("triangle", "hexhex")),
 }
 
 MODES_3D = frozenset(
-    {"sphere", "c80", "c180", "spheretri", "snubdodec", "cube", "tetrahedron"}
+    {"sphere", "c80", "c180", "spheretri", "snubdodec", "cube", "tetrahedron",
+     "cubeframe", "steppedbipyramid"}
     | {mode for mode in MODE_LABELS if mode.startswith(("torus", "mobius", "cyl"))}
 )
 
@@ -927,6 +932,120 @@ def cube_board(n: int, mine_count: int) -> Board3D:
                             positions[key] = (key[0] / n, key[1] / n, key[2] / n)
                     cells[(axis, sign, i, j)] = keys
     return _convex_board3d("cube", cells, positions, mine_count, radius=ROOT3)
+
+
+def _polycube_board3d(mode, cells, positions, mine_count, radius) -> Board3D:
+    """Assemble a closed but non-convex polycube surface. Each cell is a
+    unit square already wound outward by the builder (its outward normal
+    is known from which cube face it is), so — unlike ``_convex_board3d``
+    — orientation is not inferred from the centroid direction, which is
+    wrong for the inward-facing tunnel walls."""
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {
+        cell: [positions[key] for key in keys] for cell, keys in cells.items()
+    }
+    return Board3D(mode, polygons, adjacency, mine_count, radius=radius)
+
+
+def _polycube_surface(mode, solid, extent, mine_count) -> Board3D:
+    """The boundary of a polycube (a union of axis-aligned unit cubes),
+    tiled by unit squares. ``solid(i, j, k)`` says whether the unit cube
+    at integer indices is filled; ``extent`` is the ``(nx, ny, nz)``
+    bounding box. Cubes are scaled uniformly and centered in ``[-1, 1]``.
+
+    A unit square is a cell exactly when it separates a filled cube from
+    empty space, and it is wound so its normal points outward (out of the
+    filled cube) — which, unlike the centroid rule ``_convex_board3d``
+    uses, is also correct for the concave step shoulders and inner walls
+    these solids have. Vertices are the integer lattice points, so faces
+    meeting at an edge or corner share vertex ids and become neighbors."""
+    nx, ny, nz = extent
+    center = (nx / 2, ny / 2, nz / 2)
+    scale = 2.0 / max(extent)
+
+    def position(p) -> Vec3:
+        return tuple((c - o) * scale for c, o in zip(p, center))
+
+    def filled(i: int, j: int, k: int) -> bool:
+        return 0 <= i < nx and 0 <= j < ny and 0 <= k < nz and solid(i, j, k)
+
+    cells: dict[Cell, list] = {}
+    positions: dict[Hashable, Vec3] = {}
+    for i in range(nx):
+        for j in range(ny):
+            for k in range(nz):
+                if not solid(i, j, k):
+                    continue
+                for axis in range(3):
+                    for sign in (-1, 1):
+                        step = [0, 0, 0]
+                        step[axis] = sign
+                        if filled(i + step[0], j + step[1], k + step[2]):
+                            continue  # interior face, not on the boundary
+                        base = [i, j, k]
+                        if sign > 0:
+                            base[axis] += 1  # the far face of the cube
+                        u_axis, v_axis = (a for a in range(3) if a != axis)
+                        corners = []
+                        for du, dv in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                            p = list(base)
+                            p[u_axis] += du
+                            p[v_axis] += dv
+                            corners.append(tuple(p))
+                        outward = [0.0, 0.0, 0.0]
+                        outward[axis] = float(sign)
+                        pts = [position(p) for p in corners]
+                        if _dot(newell_normal(pts), tuple(outward)) <= 0:
+                            corners.reverse()
+                        for p in corners:
+                            positions.setdefault(p, position(p))
+                        cells[(i, j, k, axis, sign)] = corners
+    radius = max(math.hypot(*p) for p in positions.values())
+    return _polycube_board3d(mode, cells, positions, mine_count, radius=radius)
+
+
+def cube_frame_board(n: int, thickness: int, mine_count: int) -> Board3D:
+    """The surface of a cube frame (a level-1 Menger sponge): an
+    ``n x n x n`` stack of unit cubes with an ``(n - 2*thickness)`` cube
+    bored out of the middle of each face, meeting in a hollow centre. What
+    is left are the twelve edge bars plus eight corners — a genus-5 solid
+    whose whole boundary is tiled by unit squares.
+
+    A unit cube is kept when at least two of its three coordinates lie in
+    the outer band (within ``thickness`` of a face)."""
+    if not (thickness >= 1 and 2 * thickness < n):
+        raise ValueError("thickness must be >= 1 and leave a non-empty hole")
+
+    def outer(c: int) -> bool:
+        return c < thickness or c >= n - thickness
+
+    def solid(i: int, j: int, k: int) -> bool:
+        return (outer(i) + outer(j) + outer(k)) >= 2
+
+    return _polycube_surface("cubeframe", solid, (n, n, n), mine_count)
+
+
+def stepped_bipyramid_board(base: int, levels: int, mine_count: int) -> Board3D:
+    """A stepped bipyramid: a stepped pyramid of square terraces stitched
+    base-to-base with its z-mirror image (the shared biggest terrace kept
+    only once). Square layer ``d`` steps from the middle has side
+    ``base - 2*d``, so the solid is widest at the equator and tapers to a
+    small square top and bottom — a terraced diamond whose staircase
+    surface (concave at every shoulder) is tiled by unit squares.
+
+    ``levels`` counts the terraces of one pyramid; the apex square has
+    side ``base - 2*(levels - 1)`` and the whole stack is ``2*levels - 1``
+    layers tall."""
+    if not (levels >= 2 and base - 2 * (levels - 1) >= 1):
+        raise ValueError("need levels >= 2 and a positive apex square")
+    height = 2 * levels - 1
+    middle = levels - 1  # the z-index of the biggest (equator) terrace
+
+    def solid(i: int, j: int, k: int) -> bool:
+        margin = abs(k - middle)  # each step in from the equator shrinks by 1
+        return margin <= i < base - margin and margin <= j < base - margin
+
+    return _polycube_surface("steppedbipyramid", solid, (base, base, height), mine_count)
 
 
 def tetrahedron_board(mine_count: int, frequency: int = 4) -> Board3D:
@@ -1800,6 +1919,16 @@ _PRESETS = {
         "easy": lambda: tetrahedron_board(8, 4),
         "medium": lambda: tetrahedron_board(24, 6),
         "hard": lambda: tetrahedron_board(55, 8),
+    },
+    "cubeframe": {  # n x n x n frame, thickness = hole = n / 3
+        "easy": lambda: cube_frame_board(6, 2, 40),
+        "medium": lambda: cube_frame_board(9, 3, 104),
+        "hard": lambda: cube_frame_board(12, 4, 200),
+    },
+    "steppedbipyramid": {  # stepped bipyramid, base x base, `levels` terraces
+        "easy": lambda: stepped_bipyramid_board(6, 3, 20),
+        "medium": lambda: stepped_bipyramid_board(8, 4, 40),
+        "hard": lambda: stepped_bipyramid_board(10, 5, 72),
     },
     "torus": {
         "easy": lambda: torus_board(12, 6, 9),
