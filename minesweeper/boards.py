@@ -45,6 +45,7 @@ MODE_LABELS = {
     "snubdodec": "Snub dodecahedron",
     "cube": "Cube",
     "tetrahedron": "Tetrahedron",
+    "tetraframe": "Tetrahedron frame",
     "cubeframe": "Cube frame",
     "steppedbipyramid": "Stepped bipyramid",
     "torus": "Squares",
@@ -143,14 +144,15 @@ GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
     "aperiodic": ("Aperiodic", ("penrose", "hat")),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
     "polyhedra": (
-        "Polyhedra", ("cube", "tetrahedron", "cubeframe", "steppedbipyramid")
+        "Polyhedra",
+        ("cube", "tetrahedron", "tetraframe", "cubeframe", "steppedbipyramid"),
     ),
     "shaped": ("Shaped boards", ("triangle", "hexhex")),
 }
 
 MODES_3D = frozenset(
     {"sphere", "c80", "c180", "spheretri", "snubdodec", "cube", "tetrahedron",
-     "cubeframe", "steppedbipyramid"}
+     "tetraframe", "cubeframe", "steppedbipyramid"}
     | {mode for mode in MODE_LABELS if mode.startswith(("torus", "mobius", "cyl"))}
 )
 
@@ -1377,6 +1379,59 @@ def tetrahedron_board(mine_count: int, frequency: int = 4) -> Board3D:
     return _convex_board3d("tetrahedron", cells, positions, mine_count, radius=radius)
 
 
+def tetrahedron_frame_board(mine_count: int, frequency: int = 4) -> Board3D:
+    """A level-1 Sierpiński tetrahedron: midpoint-subdividing a regular
+    tetrahedron splits it into four corner sub-tetrahedra plus a central
+    octahedron, and the octahedron is carved out. What is left are the four
+    half-scale corner tetrahedra, meeting only at the six edge-midpoints of
+    the original — so on each original face the middle triangle is gone. Each
+    sub-tetrahedron face is subdivided into ``frequency**2`` flat triangles.
+
+    Non-convex (the inward faces point toward the hollow centre), so unlike
+    ``tetrahedron_board`` each triangle is oriented outward from its own
+    sub-tetrahedron's centroid rather than the origin."""
+    base, _ = _tetrahedron()
+    # Ten shared points: the 4 original corners, then the 6 edge midpoints.
+    # A single global vertex list keeps the midpoints' subdivision keys
+    # identical across the two sub-tetrahedra that meet at them.
+    verts = list(base)
+    mid_index: dict[tuple[int, int], int] = {}
+    for a in range(4):
+        for b in range(a + 1, 4):
+            mid_index[(a, b)] = len(verts)
+            verts.append(tuple((base[a][axis] + base[b][axis]) / 2 for axis in range(3)))
+
+    cells: dict[Cell, list] = {}
+    positions: dict[Hashable, Vec3] = {}
+    centroids: dict[Cell, Vec3] = {}
+    for corner in range(4):
+        others = [j for j in range(4) if j != corner]
+        tet = [corner] + [mid_index[tuple(sorted((corner, j)))] for j in others]
+        centroid = tuple(sum(verts[v][axis] for v in tet) / 4 for axis in range(3))
+        faces = [
+            (tet[1], tet[2], tet[3]),
+            (tet[0], tet[2], tet[3]),
+            (tet[0], tet[1], tet[3]),
+            (tet[0], tet[1], tet[2]),
+        ]
+        pos, triangles = _geodesic(frequency, verts, faces, project=False)
+        positions.update(pos)
+        for n, triangle in enumerate(triangles):
+            cell = (corner, n)
+            cells[cell] = list(triangle)
+            centroids[cell] = centroid
+
+    adjacency = _shared_vertex_adjacency(cells)
+    polygons = {}
+    for cell, keys in cells.items():
+        polygon = [positions[key] for key in keys]
+        face_centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+        outward = tuple(f - c for f, c in zip(face_centroid, centroids[cell]))
+        polygons[cell] = _orient_outward(polygon, outward)
+    radius = max(math.hypot(*p) for p in positions.values())
+    return Board3D("tetraframe", polygons, adjacency, mine_count, radius=radius)
+
+
 def _torus_position(i: float, j: float, ring: int, tube: int, tube_radius: float) -> Vec3:
     theta = 2 * math.pi * i / ring
     phi = 2 * math.pi * j / tube
@@ -2243,6 +2298,11 @@ _PRESETS = {
         "easy": lambda: tetrahedron_board(8, 4),
         "medium": lambda: tetrahedron_board(24, 6),
         "hard": lambda: tetrahedron_board(55, 8),
+    },
+    "tetraframe": {  # level-1 Sierpiński tetrahedron; 16 * frequency**2 cells
+        "easy": lambda: tetrahedron_frame_board(8, 2),
+        "medium": lambda: tetrahedron_frame_board(26, 3),
+        "hard": lambda: tetrahedron_frame_board(54, 4),
     },
     "cubeframe": {  # n x n x n frame, thickness = hole = n / 3
         "easy": lambda: cube_frame_board(6, 2, 40),

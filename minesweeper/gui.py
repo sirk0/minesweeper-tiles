@@ -726,6 +726,20 @@ def _render_icon(key: str) -> pygame.Surface:
             pygame.draw.line(s, ICON_BLUE_DARK, mid, (c, c), 3)
             pygame.draw.line(s, ICON_BLUE_DARK, lerp(a, (c, c), 0.5), lerp(b, (c, c), 0.5), 3)
         _icon_gloss(s, pygame.Rect(d * 0.18, d * 0.1, d * 0.64, d * 0.4))
+    elif key == "tetraframe":
+        # a level-1 Sierpiński tetrahedron seen down a vertex: the three
+        # corner sub-triangles kept, the middle triangle removed
+        outer = _ngon_points(c, c + d * 0.04, d * 0.46, 3, -90)
+        shades = (ICON_BLUE_LIGHT, ICON_BLUE, ICON_BLUE_DARK)
+
+        def lerp(a, b, t):
+            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+        mids = [lerp(outer[k], outer[(k + 1) % 3], 0.5) for k in range(3)]
+        for k in range(3):
+            _icon_shape(s, [outer[k], mids[k], mids[(k - 1) % 3]],
+                        fill=shades[k], width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.18, d * 0.1, d * 0.64, d * 0.4))
     elif key == "torus":
         band = pygame.Rect(d * 0.04, d * 0.22, d * 0.92, d * 0.56)
         pygame.draw.ellipse(s, ICON_BLUE, band)
@@ -1020,6 +1034,10 @@ class GameScreen3D(BaseGameScreen):
         # three faces at once
         if self.mode in ("cube", "tetrahedron", "cubeframe", "steppedbipyramid"):
             return mat_mul(rot_x(-0.5), rot_y(0.6))
+        # a tetrahedron viewed down a 2-fold axis looks like a flat square;
+        # turn to a vertex-first 3/4 view so the frame's gaps read clearly
+        if self.mode == "tetraframe":
+            return mat_mul(rot_x(-0.62), rot_y(0.45))
         for prefix, angle in self.TILT.items():
             if self.mode.startswith(prefix):
                 return rot_x(angle)

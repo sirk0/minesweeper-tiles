@@ -37,6 +37,7 @@ from minesweeper.boards import (
     square_board,
     stepped_bipyramid_board,
     tetrahedron_board,
+    tetrahedron_frame_board,
     torus_board,
     torus_hex_board,
     torus_triangle_board,
@@ -519,6 +520,52 @@ class TestCubeFrame:
     def test_thickness_must_leave_a_hole(self):
         with pytest.raises(ValueError):
             cube_frame_board(4, 2, 5)  # 2*2 == 4: no hole left
+
+
+class TestTetrahedronFrame:
+    """The tetrahedron frame (level-1 Sierpiński tetrahedron): four
+    half-scale corner tetrahedra meeting only at the six edge-midpoints of
+    the original, tiled with flat triangles."""
+
+    @pytest.mark.parametrize("frequency", [2, 3, 4])
+    def test_cell_count_is_sixteen_faces_of_triangles(self, frequency):
+        board = tetrahedron_frame_board(5, frequency)
+        # 4 corner tetrahedra * 4 faces * frequency**2 triangles
+        assert len(board.polygons) == 16 * frequency * frequency
+        assert all(len(p) == 3 for p in board.polygons.values())
+
+    def test_surface_is_closed(self):
+        # each corner tetrahedron is a closed manifold; every edge borders two
+        # faces, so back-face culling (not two_sided rendering) is correct
+        board = tetrahedron_frame_board(5, 3)
+        assert _boundary_components(board) == 0
+        assert board.two_sided is False
+
+    def test_graph_is_connected_through_the_pinch_points(self):
+        # the four corner tetrahedra touch only at shared edge-midpoints, but
+        # vertex-adjacency there still links them into one component
+        board = tetrahedron_frame_board(5, 3)
+        seen, stack = set(), [next(iter(board.adjacency))]
+        while stack:
+            cell = stack.pop()
+            if cell not in seen:
+                seen.add(cell)
+                stack.extend(board.adjacency[cell])
+        assert len(seen) == len(board.adjacency)
+
+    def test_orientation_is_outward_at_an_original_corner(self):
+        # the three faces meeting at an original corner (e.g. (1, 1, 1)) sit on
+        # the outer hull, so their normals point away from the origin there
+        board = tetrahedron_frame_board(5, 2)
+        corner = (1.0, 1.0, 1.0)
+        outer = [
+            p for p in board.polygons.values()
+            if any(tuple(round(c, 6) for c in v) == corner for v in p)
+        ]
+        assert outer
+        for polygon in outer:
+            centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+            assert sum(n * c for n, c in zip(newell_normal(polygon), centroid)) > 0
 
 
 class TestSteppedCube:
