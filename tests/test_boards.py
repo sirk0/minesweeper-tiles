@@ -24,6 +24,7 @@ from minesweeper.boards import (
     cylinder_board,
     cylinder_hex_board,
     cylinder_triangle_board,
+    hat_board,
     hex_board,
     hexhex_board,
     mobius_board,
@@ -50,6 +51,7 @@ ALL_BOARDS = [
     hex_board(5, 6, 4),
     hexhex_board(3, 5),
     penrose_board(3, 9),
+    hat_board(2, 10, keep=48),
     sphere_board(7),
     c80_board(5),
     c180_board(10),
@@ -164,6 +166,16 @@ class TestCellCounts:
         assert len(penrose_board(4, 25).adjacency) == 160
         assert len(penrose_board(5, 70).adjacency) == 430
 
+    def test_penrose_keep_crops_to_a_denser_square_block(self):
+        full = penrose_board(5, 25)
+        cropped = penrose_board(5, 25, keep=160)
+        assert len(cropped.adjacency) == 160
+        assert cropped.width / cropped.height < 1.3  # roughly square
+        # the square crop fills its bounding box better than the round wheel
+        full_density = len(full.adjacency) / (full.width * full.height)
+        crop_density = len(cropped.adjacency) / (cropped.width * cropped.height)
+        assert crop_density > full_density
+
     def test_penrose_thick_outnumber_thin_by_phi(self):
         board = penrose_board(5, 70)
         thin = sum(1 for cell in board.adjacency if cell[0] == 0)
@@ -223,6 +235,52 @@ class TestPolygonShapes:
         assert all(len(p) == 6 for p in hex_board(3, 3, 2).polygons.values())
         assert all(len(p) == 5 for p in sphere_board(7).polygons.values())
         assert all(len(p) == 4 for p in torus_board(8, 5, 4).polygons.values())
+
+
+class TestHat:
+    def test_cell_counts(self):
+        # a single H seed inflated N times; keep trims to the count
+        assert len(hat_board(1, 5).adjacency) == 25
+        assert len(hat_board(2, 28).adjacency) == 169
+        assert len(hat_board(2, 10, keep=64).adjacency) == 64
+        assert len(hat_board(3, 65, keep=430).adjacency) == 430
+
+    def test_every_cell_is_the_same_tridecagon(self):
+        # a monotile: every cell is one congruent 13-sided hat
+        board = hat_board(2, 10)
+        multisets = set()
+        for polygon in board.polygons.values():
+            assert len(polygon) == 13
+            edges = tuple(sorted(
+                round(((polygon[i][0] - polygon[(i + 1) % 13][0]) ** 2
+                       + (polygon[i][1] - polygon[(i + 1) % 13][1]) ** 2) ** 0.5, 3)
+                for i in range(13)))
+            multisets.add(edges)
+        assert len(multisets) == 1  # all hats congruent
+
+    def test_reflected_hats_are_a_minority(self):
+        # the hat tiling forces in mirror-image hats (label 'H1'), roughly
+        # one in seven, but always a strict minority
+        board = hat_board(2, 28)
+        reflected = sum(1 for cell in board.adjacency if cell[0] == "H1")
+        assert 0 < reflected < len(board.adjacency) * 0.2
+
+    def test_vertices_are_exact(self):
+        # exact Eisenstein-integer ids: distinct keys are a full lattice
+        # unit apart, so there are no floating-point near-duplicates
+        board = hat_board(2, 10, keep=48)
+        points = sorted({p for polygon in board.polygons.values() for p in polygon})
+        min_gap = min(
+            ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+            for i, (ax, ay) in enumerate(points)
+            for bx, by in points[i + 1:i + 30]
+        )
+        shortest_edge = min(
+            ((polygon[i][0] - polygon[(i + 1) % 13][0]) ** 2
+             + (polygon[i][1] - polygon[(i + 1) % 13][1]) ** 2) ** 0.5
+            for polygon in board.polygons.values() for i in range(13)
+        )
+        assert min_gap > shortest_edge * 0.5
 
 
 class TestNeighborCounts:

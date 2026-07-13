@@ -18,8 +18,10 @@ Pick a surface, then a tiling:
 
 - **Flat surface** — classic squares (8 neighbors), a big triangle
   subdivided into small triangles (12), a triangle grid (12), hexagons
-  (6), a big hexagon composed of small hexagons (6), an aperiodic
-  Penrose tiling (P3 rhombi), and the six Archimedean tilings with two
+  (6), a big hexagon composed of small hexagons (6), two aperiodic
+  tilings — a Penrose mosaic (P3 rhombi) and "the hat", the single
+  tridecagon monotile that tiles only aperiodically — and the six
+  Archimedean tilings with two
   tile shapes: elongated triangular 3.3.3.4.4, snub square 3.3.4.3.4,
   trihexagonal/kagome 3.6.3.6, snub hexagonal 3.3.3.3.6, truncated
   square 4.8.8, and truncated hexagonal 3.12.12
