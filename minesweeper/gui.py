@@ -554,6 +554,21 @@ def _render_icon(key: str) -> pygame.Surface:
             ]
             _icon_shape(s, points, width=4)
         _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.06, d * 0.84, d * 0.6))
+    elif key == "hat":
+        # a single hat monotile silhouette (the aperiodic tridecagon)
+        hr3 = math.sqrt(3) / 2
+        ab = [(0, 0), (-1, -1), (0, -2), (2, -2), (2, -1), (4, -2), (5, -1),
+              (4, 0), (3, 0), (2, 2), (0, 3), (0, 2), (-1, 2)]
+        raw = [(a + 0.5 * b, hr3 * b) for a, b in ab]
+        xs = [p[0] for p in raw]
+        ys = [p[1] for p in raw]
+        span = max(max(xs) - min(xs), max(ys) - min(ys))
+        sc = d * 0.82 / span
+        ox = (d - (max(xs) - min(xs)) * sc) / 2
+        oy = (d - (max(ys) - min(ys)) * sc) / 2
+        pts = [(ox + (x - min(xs)) * sc, oy + (max(ys) - y) * sc) for x, y in raw]
+        _icon_shape(s, pts, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.06, d * 0.8, d * 0.55))
     elif key == "elongated":
         # a square row under a triangle row
         _icon_shape(s, [(d * 0.12, d * 0.5), (d * 0.5, d * 0.5),
