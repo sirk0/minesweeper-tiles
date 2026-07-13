@@ -89,3 +89,12 @@ pygame.image.save(surface, "shot.png")
 Note: the saved image is the 2x supersampled canvas; the real window
 shows it downscaled by `UI_SCALE`. To preview what the user sees,
 `pygame.transform.smoothscale` it to half size first.
+
+## Pull requests
+
+When a PR adds a new level/board or changes the UI, include a screenshot
+of the result in the PR description. Generate it locally and headless
+(see "Screenshots" above, smooth-scaled to half size to match what the
+user sees) and attach it to the PR description — do not commit PR
+screenshots to `docs/screenshots/` (that folder holds only the curated
+README shots).
