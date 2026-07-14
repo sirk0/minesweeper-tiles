@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import math
+import os
 import sys
 import time
 
@@ -265,22 +266,52 @@ def mat_apply(m, v):
     return tuple(sum(m[i][k] * v[k] for k in range(3)) for i in range(3))
 
 
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "assets", "fonts")
+
+
 class FontCache:
+    """Caches ``pygame.font.Font`` objects, keyed by pixel size.
+
+    Text is drawn from TTFs vendored in ``assets/fonts`` so the game looks
+    identical on desktop and in the browser (pygbag has no system fonts, so
+    ``SysFont`` there silently fell back to pygame's generic default).
+    ``get`` returns the UI face (Rubik, already bold); ``counter`` returns
+    the segmented-LCD face (DSEG7) used for the mine/timer counters.
+    ``FAMILY`` is only a last-resort fallback if a bundled file is missing.
+    """
+
     FAMILY = "menlo, couriernew, monospace"
+    _UI_FILE = os.path.join(_FONT_DIR, "Rubik-Bold.ttf")
+    _COUNTER_FILE = os.path.join(_FONT_DIR, "DSEG7Classic-Bold.ttf")
 
     def __init__(self) -> None:
         pygame.font.init()
-        self._fonts: dict[int, pygame.font.Font] = {}
+        self._ui: dict[int, pygame.font.Font] = {}
+        self._counter: dict[int, pygame.font.Font] = {}
 
     def get(self, size: int) -> pygame.font.Font:
-        if size not in self._fonts:
-            try:
-                font = pygame.font.SysFont(self.FAMILY, size, bold=True)
-            except Exception:  # no system fonts in the browser (pygbag)
-                font = pygame.font.Font(None, size)
-                font.set_bold(True)
-            self._fonts[size] = font
-        return self._fonts[size]
+        """The UI/label/tile-number face."""
+        if size not in self._ui:
+            self._ui[size] = self._load(self._UI_FILE, size)
+        return self._ui[size]
+
+    def counter(self, size: int) -> pygame.font.Font:
+        """The 7-segment LCD face for the mine/timer counters."""
+        if size not in self._counter:
+            self._counter[size] = self._load(self._COUNTER_FILE, size)
+        return self._counter[size]
+
+    def _load(self, path: str, size: int) -> pygame.font.Font:
+        try:
+            return pygame.font.Font(path, size)
+        except (OSError, pygame.error):
+            pass  # bundled file missing/unreadable; fall back to a system face
+        try:
+            font = pygame.font.SysFont(self.FAMILY, size, bold=True)
+        except Exception:  # no system fonts in the browser (pygbag)
+            font = pygame.font.Font(None, size)
+            font.set_bold(True)
+        return font
 
 
 # -- glyphs ------------------------------------------------------------------
@@ -988,7 +1019,7 @@ class BaseGameScreen:
         self.draw_counter(surface, fonts, counter, x=rect.right + 8 * S)
 
         timer = f"{self.elapsed:03d}"
-        timer_width = fonts.get(24 * S).size(timer)[0] + 20 * S
+        timer_width = fonts.counter(24 * S).size(timer)[0] + 20 * S
         self.draw_counter(surface, fonts, timer, x=width - MARGIN - timer_width)
 
         face = self.face_rect
@@ -997,7 +1028,7 @@ class BaseGameScreen:
         surface.blit(sprite, sprite.get_rect(center=face.center))
 
     def draw_counter(self, surface, fonts: FontCache, value: str, *, x: int) -> None:
-        text = fonts.get(24 * S).render(value, True, COUNTER_FG)
+        text = fonts.counter(24 * S).render(value, True, COUNTER_FG)
         box = pygame.Rect(x, MARGIN + 4 * S, text.get_width() + 20 * S, 36 * S)
         pygame.draw.rect(surface, PANEL, box, border_radius=6 * S)
         surface.blit(text, text.get_rect(center=box.center))
