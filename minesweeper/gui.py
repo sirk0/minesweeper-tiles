@@ -108,10 +108,34 @@ LIGHT = (0.37, 0.46, 0.81)  # normalized light direction for 3D shading
 TILE_LIGHT_DIR = (-0.55, -0.83)  # screen-space light for the tile bevels
 
 
+# Factor that turns a window/display mouse coordinate into a canvas
+# coordinate. SDL reports mouse positions in the resolution the display was
+# opened at, which is not a fixed multiple of the canvas: a high-DPI desktop
+# window uses logical points, and the browser build uses a device-pixel
+# framebuffer sized to the page. The active presenter keeps this in sync each
+# frame (see ``_DesktopPresenter`` / ``_WebPresenter``); it defaults to the
+# supersampling factor so headless code and tests behave as before.
+_MOUSE_TO_CANVAS: tuple[float, float] = (float(S), float(S))
+
+
 def canvas_mouse() -> tuple[int, int]:
     """Mouse position in canvas coordinates."""
     x, y = pygame.mouse.get_pos()
-    return (x * S, y * S)
+    sx, sy = _MOUSE_TO_CANVAS
+    return (round(x * sx), round(y * sy))
+
+
+def _set_mouse_scale(
+    canvas_size: tuple[int, int], display_size: tuple[int, int]
+) -> None:
+    """Record how SDL's mouse coordinates (reported in ``display_size``) map
+    onto the canvas, so click positions stay accurate whatever resolution the
+    window/framebuffer was opened at."""
+    global _MOUSE_TO_CANVAS
+    _MOUSE_TO_CANVAS = (
+        canvas_size[0] / display_size[0],
+        canvas_size[1] / display_size[1],
+    )
 
 
 # -- geometry helpers -------------------------------------------------------
@@ -1344,20 +1368,127 @@ class MenuScreen:
 
 def _scale_mouse_event(event: pygame.event.Event) -> pygame.event.Event:
     """Translate a window-space mouse event into canvas coordinates."""
+    sx, sy = _MOUSE_TO_CANVAS
     if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
         return pygame.event.Event(
             event.type,
-            pos=(event.pos[0] * S, event.pos[1] * S),
+            pos=(round(event.pos[0] * sx), round(event.pos[1] * sy)),
             button=event.button,
         )
     if event.type == pygame.MOUSEMOTION:
         return pygame.event.Event(
             event.type,
-            pos=(event.pos[0] * S, event.pos[1] * S),
-            rel=(event.rel[0] * S, event.rel[1] * S),
+            pos=(round(event.pos[0] * sx), round(event.pos[1] * sy)),
+            rel=(round(event.rel[0] * sx), round(event.rel[1] * sy)),
             buttons=event.buttons,
         )
     return event
+
+
+class _DesktopPresenter:
+    """Presents the supersampled canvas in a high-DPI (Retina) window.
+
+    The window is created at the logical point size (``canvas / S``) with
+    ``allow_high_dpi`` so macOS gives it a backing store at the display's
+    native pixel density -- twice the points on a Retina panel. We render
+    through an ``_sdl2`` renderer/texture whose output is that full physical
+    buffer, so the frame lands 1:1 on the device pixels instead of being a
+    low-resolution surface the OS then upscales. On a 2x display the physical
+    buffer equals the canvas size exactly, so the frame is presented with no
+    resampling at all; on a 1x display it is smooth-downscaled (the same
+    supersampling antialiasing as before)."""
+
+    def __init__(self, icon: pygame.Surface) -> None:
+        from pygame._sdl2 import video  # desktop only; absent in the wasm build
+
+        self._video = video
+        self._icon = icon
+        self._window: object | None = None
+        self._renderer: object | None = None
+        self._points: tuple[int, int] | None = None
+        self._drawable: tuple[int, int] = (0, 0)
+
+    def ensure(self, canvas_size: tuple[int, int]) -> None:
+        points = (canvas_size[0] // S, canvas_size[1] // S)
+        if points == self._points:
+            return
+        self._points = points
+        if self._window is None:
+            self._window = self._video.Window(
+                "Minesweeper", size=points, allow_high_dpi=True
+            )
+            self._window.set_icon(self._icon)
+            self._renderer = self._video.Renderer(self._window)
+        else:
+            self._window.size = points
+        # the renderer output is the physical (Retina) pixel size of the window
+        self._drawable = tuple(self._renderer.get_viewport().size)
+        # SDL reports mouse events in the window's logical points, not pixels
+        _set_mouse_scale(canvas_size, points)
+
+    def present(self, canvas: pygame.Surface) -> None:
+        self.ensure(canvas.get_size())
+        frame = (
+            canvas
+            if self._drawable == canvas.get_size()
+            else pygame.transform.smoothscale(canvas, self._drawable)
+        )
+        texture = self._video.Texture.from_surface(self._renderer, frame)
+        self._renderer.clear()
+        texture.draw()
+        self._renderer.present()
+
+    def close(self) -> None:
+        if self._window is not None:
+            self._window.destroy()
+
+
+class _WebPresenter:
+    """Presents the canvas in the browser at the device's true pixel density.
+
+    pygbag's template sizes the canvas element once at boot and never revisits
+    it, so previously the fixed-resolution frame was stretched by CSS to
+    whatever the page happened to be -- blurry, and a different scale on every
+    screen. Instead we fit the board into the browser window ourselves and set
+    the pygame framebuffer to that CSS box times ``devicePixelRatio``, giving
+    the HTML canvas a backing store that matches the physical pixels 1:1 (so a
+    Retina/HiDPI browser gets the extra sharpness) while the CSS box keeps the
+    on-screen size and aspect ratio."""
+
+    def __init__(self) -> None:
+        import platform  # pygbag's platform module exposes the DOM
+
+        self._dom = platform.window
+        self._display: pygame.Surface | None = None
+        self._phys: tuple[int, int] = (0, 0)
+        self._state: object = None
+
+    def ensure(self, canvas_size: tuple[int, int]) -> None:
+        points = (canvas_size[0] // S, canvas_size[1] // S)
+        dom = self._dom
+        dpr = getattr(dom, "devicePixelRatio", 1) or 1
+        scale = min(dom.innerWidth / points[0], dom.innerHeight / points[1])
+        css_w, css_h = int(points[0] * scale), int(points[1] * scale)
+        phys = (max(1, round(css_w * dpr)), max(1, round(css_h * dpr)))
+        state = (phys, css_w, css_h)
+        if state == self._state:
+            return
+        self._state = state
+        self._phys = phys
+        self._display = pygame.display.set_mode(phys)
+        style = dom.canvas.style
+        style.width = f"{css_w}px"
+        style.height = f"{css_h}px"
+        # emscripten reports mouse events in the framebuffer's pixels
+        _set_mouse_scale(canvas_size, phys)
+
+    def present(self, canvas: pygame.Surface) -> None:
+        self.ensure(canvas.get_size())
+        pygame.transform.smoothscale(canvas, self._phys, self._display)
+        pygame.display.flip()
+
+    def close(self) -> None:
+        pass
 
 
 class App:
@@ -1372,9 +1503,14 @@ class App:
         event loop every frame; on the desktop it runs under asyncio.run."""
         pygame.init()
         pygame.display.set_caption("Minesweeper")
-        pygame.display.set_icon(make_icon())
-        window_size = (self.screen.size[0] // S, self.screen.size[1] // S)
-        window = pygame.display.set_mode(window_size)
+        if sys.platform == "emscripten":
+            presenter: _WebPresenter | _DesktopPresenter = _WebPresenter()
+        else:
+            presenter = _DesktopPresenter(make_icon())
+        # open the display before allocating the canvas so the canvas inherits
+        # the display's pixel format -- otherwise the browser build's first
+        # frames come out with red/blue swapped until the next set_mode
+        presenter.ensure(self.screen.size)
         canvas = pygame.Surface(self.screen.size)
         fonts = FontCache()
         clock = pygame.time.Clock()
@@ -1392,43 +1528,14 @@ class App:
                     self.screen = make_screen(result[1], self.menu.difficulty)
             if not running:
                 break
-            wanted = (self.screen.size[0] // S, self.screen.size[1] // S)
-            if window.get_size() != wanted:
-                window = pygame.display.set_mode(wanted)
             if canvas.get_size() != self.screen.size:
                 canvas = pygame.Surface(self.screen.size)
-            self._fit_web_canvas(window.get_size())
             self.screen.draw(canvas, fonts)
-            pygame.transform.smoothscale(canvas, window.get_size(), window)
-            pygame.display.flip()
+            presenter.present(canvas)
             await asyncio.sleep(0)  # hand control back to the browser
             clock.tick(30)
+        presenter.close()
         pygame.quit()
-
-    _web_canvas_state = None
-
-    def _fit_web_canvas(self, size: tuple[int, int]) -> None:
-        """In the browser, pygbag's template sizes the canvas element once
-        at boot and never revisits it; after any set_mode with a different
-        aspect ratio the image would be stretched. Resize the canvas CSS
-        box ourselves whenever the window size (or the browser window)
-        changes, preserving the aspect ratio."""
-        if sys.platform != "emscripten":
-            return
-        import platform  # pygbag's platform module exposes the DOM
-
-        dom_window = platform.window
-        state = (size, dom_window.innerWidth, dom_window.innerHeight)
-        if state == self._web_canvas_state:
-            return
-        self._web_canvas_state = state
-        width, height = size
-        scale = min(
-            dom_window.innerWidth / width, dom_window.innerHeight / height
-        )
-        style = dom_window.canvas.style
-        style.width = f"{int(width * scale)}px"
-        style.height = f"{int(height * scale)}px"
 
     def run(self) -> None:
         asyncio.run(self.run_async())
