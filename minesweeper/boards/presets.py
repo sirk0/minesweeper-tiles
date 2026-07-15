@@ -1,16 +1,35 @@
+"""Difficulty presets and the build_board entry point.
+
+The regular tilings and one-off solids keep an explicit preset per
+mode. The Archimedean tilings are declared once in the ARCH_PRESETS
+table (tiling -> surface -> difficulty -> builder args) and their
+_PRESETS lambdas are generated from it -- adding an Archimedean
+tiling is one ARCH_PRESETS row. See AGENTS.md.
+"""
+
 from __future__ import annotations
 
 from minesweeper.boards.core import Board, Board3D, DIFFICULTIES, ROOT3
-from minesweeper.boards.tilings import archimedean_board, hex_board, hexhex_board, square_board, triangle_board, triangle_grid_board
+from minesweeper.boards.catalog import mode_for
+from minesweeper.boards.tilings import (
+    archimedean_board, hex_board, hexhex_board, square_board,
+    triangle_board, triangle_grid_board,
+)
 from minesweeper.boards.aperiodic import hat_board, penrose_board
-from minesweeper.boards.solids import c180_board, c80_board, cube_board, cube_frame_board, snub_dodecahedron_board, sphere_board, sphere_triangle_board, stepped_bipyramid_board, tetrahedron_board, tetrahedron_frame_board
-from minesweeper.boards.surfaces import arch_cylinder_board, arch_mobius_board, arch_torus_board, cylinder_board, cylinder_hex_board, cylinder_triangle_board, mobius_board, mobius_hex_board, mobius_triangle_board, torus_board, torus_hex_board, torus_triangle_board
+from minesweeper.boards.solids import (
+    c180_board, c80_board, cube_board, cube_frame_board,
+    snub_dodecahedron_board, sphere_board, sphere_triangle_board,
+    stepped_bipyramid_board, tetrahedron_board, tetrahedron_frame_board,
+)
+from minesweeper.boards.surfaces import (
+    arch_cylinder_board, arch_mobius_board, arch_torus_board,
+    cylinder_board, cylinder_hex_board, cylinder_triangle_board,
+    mobius_board, mobius_hex_board, mobius_triangle_board,
+    torus_board, torus_hex_board, torus_triangle_board,
+)
 
 
-
-
-# -- presets ---------------------------------------------------------------
-
+# Explicit presets for the regular tilings and the one-off boards.
 _PRESETS = {
     "square": {
         "easy": lambda: square_board(9, 9, 10, scale=32),
@@ -46,49 +65,6 @@ _PRESETS = {
         "easy": lambda: hat_board(2, 10, keep=64, scale=12),
         "medium": lambda: hat_board(3, 28, keep=150, scale=9.5),
         "hard": lambda: hat_board(3, 65, keep=430, scale=7),
-    },
-    # Flat Archimedean tilings: a roughly nx x ny domain
-    # rectangle centred on a rotation centre of the tiling -- a clean,
-    # symmetric block (see archimedean_board), rather than a round disc.
-    "elongated": {
-        "easy": lambda: archimedean_board("elongated", 7, 2, 14, scale=57),
-        "medium": lambda: archimedean_board("elongated", 10, 3, 30, scale=43),
-        "hard": lambda: archimedean_board("elongated", 14, 4, 67, scale=30),
-    },
-    "snubsquare": {
-        "easy": lambda: archimedean_board("snubsquare", 4, 4, 15, scale=54),
-        "medium": lambda: archimedean_board("snubsquare", 5, 5, 26, scale=45),
-        "hard": lambda: archimedean_board("snubsquare", 7, 7, 57, scale=33),
-    },
-    "kagome": {
-        "easy": lambda: archimedean_board("kagome", 5, 3, 14, scale=40),
-        "medium": lambda: archimedean_board("kagome", 7, 4, 30, scale=30),
-        "hard": lambda: archimedean_board("kagome", 9, 6, 65, scale=22),
-    },
-    "snubhex": {
-        "easy": lambda: archimedean_board("snubhex", 3, 2, 16, scale=44),
-        "medium": lambda: archimedean_board("snubhex", 4, 2, 24, scale=39),
-        "hard": lambda: archimedean_board("snubhex", 5, 3, 50, scale=32),
-    },
-    "truncsquare": {
-        "easy": lambda: archimedean_board("truncsquare", 6, 6, 12, scale=29),
-        "medium": lambda: archimedean_board("truncsquare", 9, 9, 29, scale=21),
-        "hard": lambda: archimedean_board("truncsquare", 13, 13, 68, scale=15),
-    },
-    "trunchex": {
-        "easy": lambda: archimedean_board("trunchex", 6, 3, 16, scale=19),
-        "medium": lambda: archimedean_board("trunchex", 8, 4, 33, scale=14),
-        "hard": lambda: archimedean_board("trunchex", 10, 6, 70, scale=11),
-    },
-    "rhombitrihex": {
-        "easy": lambda: archimedean_board("rhombitrihex", 4, 2, 15, scale=38),
-        "medium": lambda: archimedean_board("rhombitrihex", 5, 3, 30, scale=32),
-        "hard": lambda: archimedean_board("rhombitrihex", 7, 4, 65, scale=23),
-    },
-    "trunctrihex": {
-        "easy": lambda: archimedean_board("trunctrihex", 4, 2, 15, scale=21),
-        "medium": lambda: archimedean_board("trunctrihex", 5, 3, 30, scale=18),
-        "hard": lambda: archimedean_board("trunctrihex", 7, 4, 65, scale=13),
     },
     "sphere": {
         "easy": lambda: sphere_board(7),
@@ -185,133 +161,78 @@ _PRESETS = {
         "medium": lambda: cylinder_hex_board(16, 9, 24),
         "hard": lambda: cylinder_hex_board(20, 12, 46),
     },
-    "toruselongated": {
-        "easy": lambda: arch_torus_board("elongated", 12, 1, 9, 0.31),
-        "medium": lambda: arch_torus_board("elongated", 14, 2, 26, 0.53),
-        "hard": lambda: arch_torus_board("elongated", 20, 2, 48, 0.37),
+}
+
+
+# Archimedean presets: tiling -> surface -> difficulty -> builder args
+# (after the tiling name). flat: (nx, ny, mines, scale); torus:
+# (nx, ny, mines, tube_radius); cylinder: (ring, rows, mines[, cut]);
+# mobius: (ring, rows, mines). Hand-tuned so each board reads square
+# and its rims/seam land cleanly.
+ARCH_PRESETS = {
+    "elongated": {
+        "flat": {"easy": (7, 2, 14, 57), "medium": (10, 3, 30, 43), "hard": (14, 4, 67, 30)},
+        "torus": {"easy": (12, 1, 9, 0.31), "medium": (14, 2, 26, 0.53), "hard": (20, 2, 48, 0.37)},
+        "cylinder": {"easy": (10, 1 + 1 / (2 + ROOT3), 8, -0.5), "medium": (12, 2 + 1 / (2 + ROOT3), 24, -0.5), "hard": (15, 3 + 1 / (2 + ROOT3), 60, -0.5)},
+        "mobius": {"easy": (12, 1, 9), "medium": (12, 2, 22), "hard": (18, 2, 43)},
     },
-    "torussnubsquare": {
-        "easy": lambda: arch_torus_board("snubsquare", 5, 2, 8, 0.40),
-        "medium": lambda: arch_torus_board("snubsquare", 7, 3, 19, 0.43),
-        "hard": lambda: arch_torus_board("snubsquare", 10, 4, 48, 0.40),
+    "snubsquare": {
+        "flat": {"easy": (4, 4, 15, 54), "medium": (5, 5, 26, 45), "hard": (7, 7, 57, 33)},
+        "torus": {"easy": (5, 2, 8, 0.40), "medium": (7, 3, 19, 0.43), "hard": (10, 4, 48, 0.40)},
+        "cylinder": {"easy": (5, 2, 8), "medium": (7, 3, 19), "hard": (9, 5, 57)},
+        "mobius": {"easy": (13, 2, 10), "medium": (15, 3, 20), "hard": (17, 4, 41)},
     },
-    "toruskagome": {
-        "easy": lambda: arch_torus_board("kagome", 8, 2, 12, 0.43),
-        "medium": lambda: arch_torus_board("kagome", 10, 2, 18, 0.35),
-        "hard": lambda: arch_torus_board("kagome", 12, 3, 43, 0.43),
+    "kagome": {
+        "flat": {"easy": (5, 3, 14, 40), "medium": (7, 4, 30, 30), "hard": (9, 6, 65, 22)},
+        "torus": {"easy": (8, 2, 12, 0.43), "medium": (10, 2, 18, 0.35), "hard": (12, 3, 43, 0.43)},
+        "cylinder": {"easy": (6, 2, 9, ROOT3 / 2), "medium": (9, 3, 24, ROOT3 / 2), "hard": (11, 4, 55, ROOT3 / 2)},
+        "mobius": {"easy": (12, 1, 9), "medium": (12, 2, 22), "hard": (18, 2, 43)},
     },
-    "torussnubhex": {
-        "easy": lambda: arch_torus_board("snubhex", 4, 1, 9, 0.43),
-        "medium": lambda: arch_torus_board("snubhex", 6, 1, 16, 0.29),
-        "hard": lambda: arch_torus_board("snubhex", 7, 2, 50, 0.49),
+    "snubhex": {
+        "flat": {"easy": (3, 2, 16, 44), "medium": (4, 2, 24, 39), "hard": (5, 3, 50, 32)},
+        "torus": {"easy": (4, 1, 9, 0.43), "medium": (6, 1, 16, 0.29), "hard": (7, 2, 50, 0.49)},
+        "cylinder": {"easy": (4, 1, 9, 21**0.5 / 4), "medium": (5, 2, 27, 21**0.5 / 4), "hard": (7, 2, 53, 21**0.5 / 4)},
     },
-    "torustruncsquare": {
-        "easy": lambda: arch_torus_board("truncsquare", 9, 4, 9, 0.44),
-        "medium": lambda: arch_torus_board("truncsquare", 12, 6, 22, 0.50),
-        "hard": lambda: arch_torus_board("truncsquare", 16, 7, 45, 0.44),
+    "truncsquare": {
+        "flat": {"easy": (6, 6, 12, 29), "medium": (9, 9, 29, 21), "hard": (13, 13, 68, 15)},
+        "torus": {"easy": (9, 4, 9, 0.44), "medium": (12, 6, 22, 0.50), "hard": (16, 7, 45, 0.44)},
+        "cylinder": {"easy": (9, 3, 7), "medium": (12, 5, 18), "hard": (16, 7, 45)},
+        "mobius": {"easy": (12, 3, 9), "medium": (16, 4, 19), "hard": (22, 5, 44)},
     },
-    "torustrunchex": {
-        "easy": lambda: arch_torus_board("trunchex", 7, 2, 10, 0.49),
-        "medium": lambda: arch_torus_board("trunchex", 10, 2, 18, 0.35),
-        "hard": lambda: arch_torus_board("trunchex", 12, 3, 43, 0.43),
+    "trunchex": {
+        "flat": {"easy": (6, 3, 16, 19), "medium": (8, 4, 33, 14), "hard": (10, 6, 70, 11)},
+        "torus": {"easy": (7, 2, 10, 0.49), "medium": (10, 2, 18, 0.35), "hard": (12, 3, 43, 0.43)},
+        "cylinder": {"easy": (6, 2, 9, 0.5 + ROOT3 / 2), "medium": (8, 3, 22, 0.5 + ROOT3 / 2), "hard": (10, 4, 48, 0.5 + ROOT3 / 2)},
+        "mobius": {"easy": (9, 1, 7), "medium": (10, 2, 18), "hard": (12, 3, 43)},
     },
-    "torusrhombitrihex": {
-        "easy": lambda: arch_torus_board("rhombitrihex", 5, 2, 17, 0.40),
-        "medium": lambda: arch_torus_board("rhombitrihex", 7, 2, 26, 0.40),
-        "hard": lambda: arch_torus_board("rhombitrihex", 8, 3, 45, 0.43),
+    "rhombitrihex": {
+        "flat": {"easy": (4, 2, 15, 38), "medium": (5, 3, 30, 32), "hard": (7, 4, 65, 23)},
+        "torus": {"easy": (5, 2, 17, 0.40), "medium": (7, 2, 26, 0.40), "hard": (8, 3, 45, 0.43)},
+        "cylinder": {"easy": (4, 2, 14), "medium": (5, 3, 28), "hard": (7, 3, 40)},
+        "mobius": {"easy": (4, 2, 14), "medium": (6, 2, 22), "hard": (8, 3, 45)},
     },
-    "torustrunctrihex": {
-        "easy": lambda: arch_torus_board("trunctrihex", 5, 2, 17, 0.40),
-        "medium": lambda: arch_torus_board("trunctrihex", 7, 2, 26, 0.40),
-        "hard": lambda: arch_torus_board("trunctrihex", 8, 3, 45, 0.43),
-    },
-    "mobiuselongated": {
-        "easy": lambda: arch_mobius_board("elongated", 12, 1, 9),
-        "medium": lambda: arch_mobius_board("elongated", 12, 2, 22),
-        "hard": lambda: arch_mobius_board("elongated", 18, 2, 43),
-    },
-    "mobiussnubsquare": {
-        "easy": lambda: arch_mobius_board("snubsquare", 13, 2, 10),
-        "medium": lambda: arch_mobius_board("snubsquare", 15, 3, 20),
-        "hard": lambda: arch_mobius_board("snubsquare", 17, 4, 41),
-    },
-    "mobiuskagome": {
-        "easy": lambda: arch_mobius_board("kagome", 12, 1, 9),
-        "medium": lambda: arch_mobius_board("kagome", 12, 2, 22),
-        "hard": lambda: arch_mobius_board("kagome", 18, 2, 43),
-    },
-    "mobiustruncsquare": {
-        "easy": lambda: arch_mobius_board("truncsquare", 12, 3, 9),
-        "medium": lambda: arch_mobius_board("truncsquare", 16, 4, 19),
-        "hard": lambda: arch_mobius_board("truncsquare", 22, 5, 44),
-    },
-    "mobiustrunchex": {
-        "easy": lambda: arch_mobius_board("trunchex", 9, 1, 7),
-        "medium": lambda: arch_mobius_board("trunchex", 10, 2, 18),
-        "hard": lambda: arch_mobius_board("trunchex", 12, 3, 43),
-    },
-    "mobiusrhombitrihex": {
-        "easy": lambda: arch_mobius_board("rhombitrihex", 4, 2, 14),
-        "medium": lambda: arch_mobius_board("rhombitrihex", 6, 2, 22),
-        "hard": lambda: arch_mobius_board("rhombitrihex", 8, 3, 45),
-    },
-    "mobiustrunctrihex": {
-        "easy": lambda: arch_mobius_board("trunctrihex", 4, 2, 14),
-        "medium": lambda: arch_mobius_board("trunctrihex", 6, 2, 22),
-        "hard": lambda: arch_mobius_board("trunctrihex", 8, 3, 45),
-    },
-    # cylinder cuts: elongated ends on square rows (fractional rows adds
-    # the closing row), kagome cuts along its horizontal edge-line, the
-    # rest sit where their rims look best
-    "cylelongated": {
-        "easy": lambda: arch_cylinder_board(
-            "elongated", 10, 1 + 1 / (2 + ROOT3), 8, cut=-0.5),
-        "medium": lambda: arch_cylinder_board(
-            "elongated", 12, 2 + 1 / (2 + ROOT3), 24, cut=-0.5),
-        "hard": lambda: arch_cylinder_board(
-            "elongated", 15, 3 + 1 / (2 + ROOT3), 60, cut=-0.5),
-    },
-    "cylsnubsquare": {
-        "easy": lambda: arch_cylinder_board("snubsquare", 5, 2, 8),
-        "medium": lambda: arch_cylinder_board("snubsquare", 7, 3, 19),
-        "hard": lambda: arch_cylinder_board("snubsquare", 9, 5, 57),
-    },
-    "cylkagome": {
-        "easy": lambda: arch_cylinder_board("kagome", 6, 2, 9, cut=ROOT3 / 2),
-        "medium": lambda: arch_cylinder_board("kagome", 9, 3, 24, cut=ROOT3 / 2),
-        "hard": lambda: arch_cylinder_board("kagome", 11, 4, 55, cut=ROOT3 / 2),
-    },
-    "cylsnubhex": {
-        "easy": lambda: arch_cylinder_board("snubhex", 4, 1, 9, cut=21**0.5 / 4),
-        "medium": lambda: arch_cylinder_board("snubhex", 5, 2, 27, cut=21**0.5 / 4),
-        "hard": lambda: arch_cylinder_board("snubhex", 7, 2, 53, cut=21**0.5 / 4),
-    },
-    "cyltruncsquare": {
-        "easy": lambda: arch_cylinder_board("truncsquare", 9, 3, 7),
-        "medium": lambda: arch_cylinder_board("truncsquare", 12, 5, 18),
-        "hard": lambda: arch_cylinder_board("truncsquare", 16, 7, 45),
-    },
-    "cyltrunchex": {
-        "easy": lambda: arch_cylinder_board(
-            "trunchex", 6, 2, 9, cut=0.5 + ROOT3 / 2),
-        "medium": lambda: arch_cylinder_board(
-            "trunchex", 8, 3, 22, cut=0.5 + ROOT3 / 2),
-        "hard": lambda: arch_cylinder_board(
-            "trunchex", 10, 4, 48, cut=0.5 + ROOT3 / 2),
-    },
-    # the three-shape tilings have no full-width horizontal edge-line, so
-    # their cylinder rims are left as clean whole-cell zigzags (cut=0)
-    "cylrhombitrihex": {
-        "easy": lambda: arch_cylinder_board("rhombitrihex", 4, 2, 14),
-        "medium": lambda: arch_cylinder_board("rhombitrihex", 5, 3, 28),
-        "hard": lambda: arch_cylinder_board("rhombitrihex", 7, 3, 40),
-    },
-    "cyltrunctrihex": {
-        "easy": lambda: arch_cylinder_board("trunctrihex", 4, 2, 14),
-        "medium": lambda: arch_cylinder_board("trunctrihex", 5, 3, 28),
-        "hard": lambda: arch_cylinder_board("trunctrihex", 7, 3, 40),
+    "trunctrihex": {
+        "flat": {"easy": (4, 2, 15, 21), "medium": (5, 3, 30, 18), "hard": (7, 4, 65, 13)},
+        "torus": {"easy": (5, 2, 17, 0.40), "medium": (7, 2, 26, 0.40), "hard": (8, 3, 45, 0.43)},
+        "cylinder": {"easy": (4, 2, 14), "medium": (5, 3, 28), "hard": (7, 3, 40)},
+        "mobius": {"easy": (4, 2, 14), "medium": (6, 2, 22), "hard": (8, 3, 45)},
     },
 }
+
+_ARCH_BUILDERS = {
+    "flat": archimedean_board,
+    "torus": arch_torus_board,
+    "cylinder": arch_cylinder_board,
+    "mobius": arch_mobius_board,
+}
+
+for _tiling, _surfaces in ARCH_PRESETS.items():
+    for _surface, _by_difficulty in _surfaces.items():
+        _builder = _ARCH_BUILDERS[_surface]
+        _PRESETS[mode_for(_tiling, _surface)] = {
+            _difficulty: (lambda b=_builder, t=_tiling, p=_params: b(t, *p))
+            for _difficulty, _params in _by_difficulty.items()
+        }
 
 
 def build_board(mode: str, difficulty: str) -> Board | Board3D:
