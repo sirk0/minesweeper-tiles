@@ -71,12 +71,20 @@ ALL_BOARDS = [
     cylinder_triangle_board(16, 6, 11),
     cylinder_hex_board(12, 6, 9),
     snub_dodecahedron_board(10),
-    archimedean_board("elongated", 4, 11),
-    archimedean_board("snubsquare", 4, 11),
-    archimedean_board("kagome", 5.5, 11),
-    archimedean_board("snubhex", 4.2, 12),
-    archimedean_board("truncsquare", 8, 10),
-    archimedean_board("trunchex", 11, 13),
+    archimedean_board("elongated", 5, 2, 11),
+    archimedean_board("snubsquare", 3, 3, 11),
+    archimedean_board("kagome", 4, 2, 11),
+    archimedean_board("snubhex", 3, 2, 12),
+    archimedean_board("truncsquare", 5, 5, 10),
+    archimedean_board("trunchex", 4, 2, 13),
+    archimedean_board("rhombitrihex", 4, 2, 11),
+    archimedean_board("trunctrihex", 4, 2, 11),
+    arch_torus_board("rhombitrihex", 4, 2, 9),
+    arch_torus_board("trunctrihex", 4, 2, 9),
+    arch_cylinder_board("rhombitrihex", 5, 2, 9),
+    arch_cylinder_board("trunctrihex", 5, 2, 9),
+    arch_mobius_board("rhombitrihex", 6, 2, 9),
+    arch_mobius_board("trunctrihex", 6, 2, 9),
     arch_torus_board("elongated", 12, 1, 9),
     arch_torus_board("snubsquare", 5, 2, 8),
     arch_torus_board("kagome", 8, 2, 12),
@@ -408,12 +416,13 @@ class TestNeighborCounts:
 
 
 class TestArchimedean:
-    """The six semiregular tilings with two tile shapes."""
+    """The eight non-regular Archimedean tilings (six with two tile
+    shapes, plus 3.4.6.4 and 4.6.12 with three)."""
 
     @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
     def test_has_exactly_the_two_configured_shapes(self, mode):
         config, _ = _ARCH_CONFIGS[mode]
-        board = archimedean_board(mode, 6, 5)
+        board = archimedean_board(mode, 5, 5, 5)
         assert {len(p) for p in board.polygons.values()} == set(config)
 
     @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
@@ -421,7 +430,7 @@ class TestArchimedean:
         """Around every interior vertex the tile sizes must match the
         tiling's vertex configuration (e.g. 3.3.4.3.4)."""
         config, _ = _ARCH_CONFIGS[mode]
-        board = archimedean_board(mode, 6, 5)
+        board = archimedean_board(mode, 5, 5, 5)
         at_vertex = defaultdict(list)
         for polygon in board.polygons.values():
             n = len(polygon)
@@ -447,7 +456,7 @@ class TestArchimedean:
     @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
     def test_no_overlapping_tiles(self, mode):
         # any edge shared by more than two tiles means overlap
-        board = archimedean_board(mode, 6, 5)
+        board = archimedean_board(mode, 5, 5, 5)
         edge_count = defaultdict(int)
         for polygon in board.polygons.values():
             n = len(polygon)
@@ -456,6 +465,57 @@ class TestArchimedean:
                 b = (round(polygon[(i + 1) % n][0], 6), round(polygon[(i + 1) % n][1], 6))
                 edge_count[frozenset((a, b))] += 1
         assert all(count <= 2 for count in edge_count.values())
+
+    # the reflective tilings (cmm / p4m / p6m) get a plain mirror; the
+    # chiral snub tilings (p4g glide, p6) can only manage the pinwheel
+    # rotation
+    REFLECTIVE = {"elongated", "kagome", "truncsquare", "trunchex",
+                  "rhombitrihex", "trunctrihex"}
+
+    @staticmethod
+    def _symmetry(board, reflect):
+        """The largest fraction of tiles that map onto another tile when
+        the board is reflected/rotated about a centre. A true symmetry
+        centre sits at a largest-tile centroid, so scanning those finds
+        the best axis without guessing."""
+        polygons = list(board.polygons.values())
+        centroids = [(sum(x for x, _ in p) / len(p),
+                      sum(y for _, y in p) / len(p)) for p in polygons]
+        biggest = max(len(p) for p in polygons)
+        tol = 0.2 * min(math.dist(p[i], p[(i + 1) % len(p)])
+                        for p in polygons for i in range(len(p)))
+        grid = defaultdict(list)
+        for x, y in centroids:
+            grid[(round(x / tol), round(y / tol))].append((x, y))
+
+        def present(rx, ry):
+            gx, gy = round(rx / tol), round(ry / tol)
+            return any(abs(px - rx) < tol and abs(py - ry) < tol
+                       for i in (-1, 0, 1) for j in (-1, 0, 1)
+                       for px, py in grid.get((gx + i, gy + j), ()))
+
+        best = 0.0
+        for cx, cy in (c for p, c in zip(polygons, centroids)
+                       if len(p) == biggest):
+            hits = sum(1 for x, y in centroids if present(*reflect(cx, cy, x, y)))
+            best = max(best, hits / len(centroids))
+        return best
+
+    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_flat_board_is_symmetric(self, mode, difficulty):
+        """A symmetric tiling must give a symmetric board: no stray tiles
+        poking out one side."""
+        board = build_board(mode, difficulty)
+        # a rectangular window on a hexagonal tiling can leave a few edge
+        # tiles unpaired, so the bar is well clear of a ragged disc (which
+        # scores ~0.3) rather than a perfect 1.0
+        rotation = self._symmetry(board, lambda cx, cy, x, y: (2 * cx - x, 2 * cy - y))
+        assert rotation >= 0.85
+        if mode in self.REFLECTIVE:
+            lr = self._symmetry(board, lambda cx, cy, x, y: (2 * cx - x, y))
+            tb = self._symmetry(board, lambda cx, cy, x, y: (x, 2 * cy - y))
+            assert max(lr, tb) >= 0.9
 
     def test_snub_dodecahedron_is_12_pentagons_80_triangles(self):
         board = snub_dodecahedron_board(10)
@@ -661,7 +721,7 @@ def _boundary_components(board):
 
 
 class TestWrappedArchimedean:
-    """The two-shape tilings wrapped onto the donut, cylinder and
+    """The Archimedean tilings wrapped onto the donut, cylinder and
     Möbius strip."""
 
     WRAPPED = [
@@ -732,6 +792,12 @@ class TestWrappedArchimedean:
             "mobiuskagome": (72, 144, 216),
             "mobiustruncsquare": (72, 128, 220),
             "mobiustrunchex": (54, 120, 216),
+            "torusrhombitrihex": (120, 168, 288),
+            "torustrunctrihex": (120, 168, 288),
+            "cylrhombitrihex": (96, 180, 252),
+            "cyltrunctrihex": (96, 180, 252),
+            "mobiusrhombitrihex": (96, 144, 288),
+            "mobiustrunctrihex": (96, 144, 288),
         }
         assert sorted(counts) == sorted(self.WRAPPED)
         for mode, expected in counts.items():

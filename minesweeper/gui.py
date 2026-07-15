@@ -678,6 +678,22 @@ def _render_icon(key: str) -> pygame.Surface:
         _icon_shape(s, _ngon_points(d * 0.86, d * 0.82, d * 0.13, 3, -90),
                     fill=ICON_BLUE_LIGHT, width=4)
         _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.8))
+    elif key == "rhombitrihex":
+        # a hexagon with a square on top and a triangle in a corner
+        _icon_shape(s, _hexagon_points(c, c + d * 0.06, d * 0.28, 0), width=4)
+        _icon_shape(s, _ngon_points(c, d * 0.2, d * 0.13, 4, 45),
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_shape(s, _ngon_points(d * 0.84, d * 0.8, d * 0.12, 3, 30),
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.7))
+    elif key == "trunctrihex":
+        # a dodecagon flanked by a hexagon and a square badge
+        _icon_shape(s, _ngon_points(c, c, d * 0.42, 12, 15), width=4)
+        _icon_shape(s, _hexagon_points(d * 0.83, d * 0.83, d * 0.13, 0),
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_shape(s, _ngon_points(d * 0.17, d * 0.83, d * 0.11, 4, 45),
+                    fill=ICON_BLUE_LIGHT, width=3)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.8))
     elif key in ("sphere", "c80", "c180", "spheretri", "snubdodec"):
         fill_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.44), 4)

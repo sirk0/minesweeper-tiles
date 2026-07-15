@@ -11,11 +11,21 @@ tetrahedron, donut, Möbius strip, cylinder). Python 3.13 (see
 - `minesweeper/boards.py` — board builders. Cells are polygons whose
   vertices have exact hashable ids (integer lattice points in 2D,
   symbolic/barycentric keys in 3D); two cells are neighbors when they
-  share a vertex. The two-shape Archimedean tilings wrap onto the
+  share a vertex. The eight non-regular Archimedean tilings (six with two
+  tile shapes, plus 3.4.6.4 and 4.6.12 with three) wrap onto the
   donut/cylinder/Möbius via `_ArchTemplate` (one rectangular periodic
   domain + modular seam gluing; snub hexagonal is chiral, so no Möbius).
   Presets per mode/difficulty in `_PRESETS`; `GROUPS`/`TILINGS`/
-  `SURFACE_LABELS` catalog the menu.
+  `SURFACE_LABELS` catalog the menu. Board-shape convention (applies to
+  all future flat boards): a finite flat board should read as a roughly
+  *square* rectangle, not a round disc, and a symmetric tiling should give
+  a symmetric board. For periodic tilings take a rectangular window of
+  whole periods centred on a rotation centre (`archimedean_board` keeps an
+  `nx`×`ny` domain block of the `_ArchTemplate` centred on the tiling's
+  biggest tile, so the window maps onto itself under the tiling's point
+  group); for aperiodic ones (`penrose_board`, `hat_board`) grow
+  generously and trim to the `keep` centremost cells by Chebyshev distance
+  (`max(|dx|, |dy|)`). See the `AGENT NOTE` in `boards.py`.
 - `minesweeper/gui.py` — pygame UI. `MenuScreen` (group → tiling →
   surface pages), `GameScreen` (flat), `GameScreen3D` (orthographic
   projection, back-face culling or two-sided, depth sort, drag to
