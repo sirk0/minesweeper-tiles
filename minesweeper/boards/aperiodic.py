@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import math
 
-from minesweeper.boards.core import Board, Cell, ROOT3, _finalize_flat
-
-
-
+from minesweeper.boards.core import ROOT3, Board, Cell, _finalize_flat
 
 # -- Penrose tiling (P3, rhombi) ---------------------------------------------
 #

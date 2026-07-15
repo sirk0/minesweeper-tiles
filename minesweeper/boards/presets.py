@@ -9,25 +9,43 @@ tiling is one ARCH_PRESETS row. See AGENTS.md.
 
 from __future__ import annotations
 
-from minesweeper.boards.core import Board, Board3D, DIFFICULTIES, ROOT3
-from minesweeper.boards.catalog import mode_for
-from minesweeper.boards.tilings import (
-    archimedean_board, hex_board, hexhex_board, square_board,
-    triangle_board, triangle_grid_board,
-)
 from minesweeper.boards.aperiodic import hat_board, penrose_board
+from minesweeper.boards.catalog import mode_for
+from minesweeper.boards.core import DIFFICULTIES, ROOT3, Board, Board3D
 from minesweeper.boards.solids import (
-    c180_board, c80_board, cube_board, cube_frame_board,
-    snub_dodecahedron_board, sphere_board, sphere_triangle_board,
-    stepped_bipyramid_board, tetrahedron_board, tetrahedron_frame_board,
+    c80_board,
+    c180_board,
+    cube_board,
+    cube_frame_board,
+    snub_dodecahedron_board,
+    sphere_board,
+    sphere_triangle_board,
+    stepped_bipyramid_board,
+    tetrahedron_board,
+    tetrahedron_frame_board,
 )
 from minesweeper.boards.surfaces import (
-    arch_cylinder_board, arch_mobius_board, arch_torus_board,
-    cylinder_board, cylinder_hex_board, cylinder_triangle_board,
-    mobius_board, mobius_hex_board, mobius_triangle_board,
-    torus_board, torus_hex_board, torus_triangle_board,
+    arch_cylinder_board,
+    arch_mobius_board,
+    arch_torus_board,
+    cylinder_board,
+    cylinder_hex_board,
+    cylinder_triangle_board,
+    mobius_board,
+    mobius_hex_board,
+    mobius_triangle_board,
+    torus_board,
+    torus_hex_board,
+    torus_triangle_board,
 )
-
+from minesweeper.boards.tilings import (
+    archimedean_board,
+    hex_board,
+    hexhex_board,
+    square_board,
+    triangle_board,
+    triangle_grid_board,
+)
 
 # Explicit presets for the regular tilings and the one-off boards.
 _PRESETS = {

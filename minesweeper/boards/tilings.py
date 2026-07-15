@@ -5,10 +5,14 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Callable
 
-from minesweeper.boards.core import Board, LatticePoint, ROOT3, _HEX_VERTEX_OFFSETS, _build, _finalize_flat
-
-
-
+from minesweeper.boards.core import (
+    _HEX_VERTEX_OFFSETS,
+    ROOT3,
+    Board,
+    LatticePoint,
+    _build,
+    _finalize_flat,
+)
 
 # -- 2D builders (cells keyed by (row, index)) ------------------------------
 #
@@ -102,21 +106,17 @@ def hexhex_board(radius: int, mine_count: int, scale: float = 20) -> Board:
 # Each of the eight non-regular uniform tilings is declared once in the
 # ARCH_TILINGS registry at the bottom of this file (key, menu label,
 # vertex configuration, number of distinct edge directions, template
-# factory), from which _ARCH_CONFIGS and _ARCH_TEMPLATES are derived.
-# To add an Archimedean tiling, write a _<name>_template() below and add
-# one ARCH_TILINGS row -- see AGENTS.md. Six of the eight have two tile
-# shapes; the last two (3.4.6.4 and 4.6.12) have three. Every flat and 3D
-# Archimedean board is assembled from one rectangular periodic domain
-# (the ``_ArchTemplate`` builders far below).
-
-
-# -- Archimedean tilings on wrapped surfaces ---------------------------------
+# factory), from which _ARCH_CONFIGS and _ARCH_TEMPLATES are derived. To
+# add an Archimedean tiling, write a _<name>_template() below and add one
+# ARCH_TILINGS row -- see AGENTS.md. Six of the eight have two tile
+# shapes; the last two (3.4.6.4 and 4.6.12) have three.
 #
-# Each Archimedean tiling is reduced to one rectangular fundamental domain
-# (a template): vertices canonicalized into the domain, cells as references
-# into this or neighboring domain copies. Wrapping is then the same modular
-# arithmetic the square/triangle/hex surface boards use, with the whole
-# template as the repeating unit.
+# Every flat and 3D Archimedean board is assembled from one rectangular
+# fundamental domain (an _ArchTemplate): vertices canonicalized into the
+# domain, cells as references into this or neighboring domain copies.
+# Wrapping onto a surface (surfaces.py) is then the same modular
+# arithmetic the square/triangle/hex boards use, with the whole template
+# as the repeating unit.
 
 
 @dataclass(frozen=True)

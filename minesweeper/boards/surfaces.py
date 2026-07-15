@@ -17,15 +17,14 @@ from __future__ import annotations
 import math
 
 from minesweeper.boards.core import (
-    Board3D,
-    ROOT3,
-    Vec3,
     _HEX_VERTEX_OFFSETS,
+    ROOT3,
+    Board3D,
+    Vec3,
     _orient_outward,
     _shared_vertex_adjacency,
 )
 from minesweeper.boards.tilings import _arch_template, _triangle_vertices
-
 
 # -- immersions: one point of a surface from its parameters ------------------
 

@@ -4,9 +4,18 @@ import math
 from collections import defaultdict
 from typing import Hashable
 
-from minesweeper.boards.core import Board3D, Cell, ROOT3, Vec3, _dot, _normalize, _orient_outward, _shared_vertex_adjacency, _tangent_order, newell_normal
-
-
+from minesweeper.boards.core import (
+    ROOT3,
+    Board3D,
+    Cell,
+    Vec3,
+    _dot,
+    _normalize,
+    _orient_outward,
+    _shared_vertex_adjacency,
+    _tangent_order,
+    newell_normal,
+)
 
 
 def _icosahedron() -> tuple[list[Vec3], list[tuple[int, int, int]]]:

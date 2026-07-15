@@ -91,15 +91,25 @@ def mode_for(tiling: str, surface: str) -> str:
     return TILINGS_BY_KEY[tiling].mode(SURFACES[surface])
 
 
+_MODE_SURFACE = {
+    tiling.mode(surface): surface
+    for tiling in TILING_SPECS
+    for surface in SURFACE_SPECS
+    if tiling.allows(surface)
+}
+
+
+def surface_of(mode: str) -> SurfaceSpec | None:
+    """The SurfaceSpec a periodic (tiling x surface) mode lives on, or
+    None for the one-off solids/aperiodic/shaped modes."""
+    return _MODE_SURFACE.get(mode)
+
+
 def view_hint(mode: str) -> float | None:
     """GameScreen3D initial x-rotation for a wrapped mode, or None if the
-    mode is not a periodic surface (solids set their own view)."""
-    for tiling in TILING_SPECS:
-        for surface in SURFACE_SPECS:
-            if surface.is_3d and tiling.allows(surface) \
-                    and tiling.mode(surface) == mode:
-                return surface.tilt
-    return None
+    mode is flat or a one-off solid (which set their own view)."""
+    surface = surface_of(mode)
+    return surface.tilt if surface else None
 
 
 # tiling -> (label, {surface: mode}); the menu surface page reads this.

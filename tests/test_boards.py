@@ -1,7 +1,7 @@
-import pytest
-
 import math
 from collections import Counter, defaultdict
+
+import pytest
 
 from minesweeper.boards import (
     _ARCH_CONFIGS,
@@ -11,15 +11,10 @@ from minesweeper.boards import (
     MODES_3D,
     SURFACE_LABELS,
     TILINGS,
-    boundary_components as _boundary_components,
-    corner_fans as _corner_fans,
-    euler_characteristic as _euler_characteristic,
-    arch_cylinder_board,
     arch_mobius_board,
     arch_torus_board,
     archimedean_board,
     build_board,
-    snub_dodecahedron_board,
     c80_board,
     c180_board,
     cube_board,
@@ -35,10 +30,12 @@ from minesweeper.boards import (
     mobius_triangle_board,
     newell_normal,
     penrose_board,
+    snub_dodecahedron_board,
     sphere_board,
     sphere_triangle_board,
     square_board,
     stepped_bipyramid_board,
+    surface_of,
     tetrahedron_board,
     tetrahedron_frame_board,
     torus_board,
@@ -47,64 +44,28 @@ from minesweeper.boards import (
     triangle_board,
     triangle_grid_board,
 )
+from minesweeper.boards import (
+    boundary_components as _boundary_components,
+)
+from minesweeper.boards import (
+    corner_fans as _corner_fans,
+)
+from minesweeper.boards import (
+    euler_characteristic as _euler_characteristic,
+)
 
-ALL_BOARDS = [
+# Every registered mode (easy preset) so the invariant suite below covers
+# any tiling or surface the moment it is added to the catalog. A few
+# extra-small hand-built boards exercise seam edge cases the easy presets
+# are too large to reach.
+ALL_BOARDS = [build_board(mode, "easy") for mode in sorted(MODE_LABELS)] + [
     square_board(5, 5, 3),
-    triangle_board(6, 4),
-    triangle_grid_board(5, 9, 4),
-    hex_board(5, 6, 4),
-    hexhex_board(3, 5),
-    penrose_board(3, 9),
-    hat_board(2, 10, keep=48),
-    sphere_board(7),
-    c80_board(5),
-    c180_board(10),
-    sphere_triangle_board(10),
-    cube_board(4, 12),
-    tetrahedron_board(8, 4),
-    cube_frame_board(6, 2, 40),
-    stepped_bipyramid_board(6, 3, 20),
     torus_board(12, 6, 9),
-    torus_triangle_board(10, 5, 12),
-    torus_hex_board(6, 12, 9),
     mobius_board(20, 4, 10),
-    mobius_triangle_board(14, 4, 13),
     mobius_hex_board(14, 3, 6),
-    cylinder_board(12, 7, 10),
     cylinder_triangle_board(16, 6, 11),
-    cylinder_hex_board(12, 6, 9),
-    snub_dodecahedron_board(10),
-    archimedean_board("elongated", 5, 2, 11),
-    archimedean_board("snubsquare", 3, 3, 11),
-    archimedean_board("kagome", 4, 2, 11),
-    archimedean_board("snubhex", 3, 2, 12),
-    archimedean_board("truncsquare", 5, 5, 10),
-    archimedean_board("trunchex", 4, 2, 13),
-    archimedean_board("rhombitrihex", 4, 2, 11),
-    archimedean_board("trunctrihex", 4, 2, 11),
-    arch_torus_board("rhombitrihex", 4, 2, 9),
-    arch_torus_board("trunctrihex", 4, 2, 9),
-    arch_cylinder_board("rhombitrihex", 5, 2, 9),
-    arch_cylinder_board("trunctrihex", 5, 2, 9),
-    arch_mobius_board("rhombitrihex", 6, 2, 9),
-    arch_mobius_board("trunctrihex", 6, 2, 9),
-    arch_torus_board("elongated", 12, 1, 9),
-    arch_torus_board("snubsquare", 5, 2, 8),
-    arch_torus_board("kagome", 8, 2, 12),
-    arch_torus_board("snubhex", 4, 1, 9),
-    arch_torus_board("truncsquare", 9, 4, 9),
-    arch_torus_board("trunchex", 7, 2, 10),
-    arch_cylinder_board("elongated", 10, 1, 8),
-    arch_cylinder_board("snubsquare", 5, 2, 8),
-    arch_cylinder_board("kagome", 6, 2, 9),
-    arch_cylinder_board("snubhex", 4, 1, 9),
-    arch_cylinder_board("truncsquare", 9, 3, 7),
-    arch_cylinder_board("trunchex", 6, 2, 9),
-    arch_mobius_board("elongated", 12, 1, 9),
     arch_mobius_board("snubsquare", 13, 2, 10),
-    arch_mobius_board("kagome", 12, 1, 9),
-    arch_mobius_board("truncsquare", 12, 3, 9),
-    arch_mobius_board("trunchex", 9, 1, 7),
+    archimedean_board("snubhex", 3, 2, 12),
 ]
 
 
@@ -734,12 +695,10 @@ class TestWrappedArchimedean:
     @pytest.mark.parametrize("mode", sorted(WRAPPED))
     def test_boundary_circles_match_the_surface(self, mode):
         """The seam gluing is what distinguishes the surfaces: a torus is
-        closed, a cylinder has two rims, a Möbius strip has one."""
+        closed, a cylinder has two rims, a Möbius strip has one. Each
+        surface's expected count is declared once on its SurfaceSpec."""
         board = build_board(mode, "easy")
-        want = {"torus": 0, "cyl": 2, "mobius": 1}[
-            next(p for p in ("torus", "mobius", "cyl") if mode.startswith(p))
-        ]
-        assert _boundary_components(board) == want
+        assert _boundary_components(board) == surface_of(mode).boundary_components
 
     def test_cell_counts(self):
         counts = {

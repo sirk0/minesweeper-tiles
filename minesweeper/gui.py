@@ -19,12 +19,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib
 import math
 import os
 import sys
 import time
-
-import importlib
 
 import pygame
 
