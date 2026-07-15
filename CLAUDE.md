@@ -11,7 +11,8 @@ tetrahedron, donut, Möbius strip, cylinder). Python 3.13 (see
 - `minesweeper/boards.py` — board builders. Cells are polygons whose
   vertices have exact hashable ids (integer lattice points in 2D,
   symbolic/barycentric keys in 3D); two cells are neighbors when they
-  share a vertex. The two-shape Archimedean tilings wrap onto the
+  share a vertex. The eight non-regular Archimedean tilings (six with two
+  tile shapes, plus 3.4.6.4 and 4.6.12 with three) wrap onto the
   donut/cylinder/Möbius via `_ArchTemplate` (one rectangular periodic
   domain + modular seam gluing; snub hexagonal is chiral, so no Möbius).
   Presets per mode/difficulty in `_PRESETS`; `GROUPS`/`TILINGS`/

@@ -38,6 +38,8 @@ MODE_LABELS = {
     "snubhex": "Snub hexagonal",
     "truncsquare": "Truncated square",
     "trunchex": "Truncated hexagonal",
+    "rhombitrihex": "Rhombitrihexagonal",
+    "trunctrihex": "Truncated trihexagonal",
     "sphere": "60 pentagons",
     "c80": "C80 fullerene",
     "c180": "C180 fullerene",
@@ -57,6 +59,8 @@ MODE_LABELS = {
     "torussnubhex": "Snub hexagonal",
     "torustruncsquare": "Truncated square",
     "torustrunchex": "Truncated hexagonal",
+    "torusrhombitrihex": "Rhombitrihexagonal",
+    "torustrunctrihex": "Truncated trihexagonal",
     "mobius": "Squares",
     "mobiustri": "Triangles",
     "mobiushex": "Hexagons",
@@ -65,6 +69,8 @@ MODE_LABELS = {
     "mobiuskagome": "Kagome",
     "mobiustruncsquare": "Truncated square",
     "mobiustrunchex": "Truncated hexagonal",
+    "mobiusrhombitrihex": "Rhombitrihexagonal",
+    "mobiustrunctrihex": "Truncated trihexagonal",
     "cylinder": "Squares",
     "cyltri": "Triangles",
     "cylhex": "Hexagons",
@@ -74,6 +80,8 @@ MODE_LABELS = {
     "cylsnubhex": "Snub hexagonal",
     "cyltruncsquare": "Truncated square",
     "cyltrunchex": "Truncated hexagonal",
+    "cylrhombitrihex": "Rhombitrihexagonal",
+    "cyltrunctrihex": "Truncated trihexagonal",
 }
 
 # The menu picks a group, then a tiling, then — for the periodic
@@ -136,6 +144,16 @@ TILINGS = {  # tiling -> (label, {surface: mode})
         "Truncated hexagonal",
         {"flat": "trunchex", "torus": "torustrunchex",
          "cylinder": "cyltrunchex", "mobius": "mobiustrunchex"},
+    ),
+    "rhombitrihex": (
+        "Rhombitrihexagonal",
+        {"flat": "rhombitrihex", "torus": "torusrhombitrihex",
+         "cylinder": "cylrhombitrihex", "mobius": "mobiusrhombitrihex"},
+    ),
+    "trunctrihex": (
+        "Truncated trihexagonal",
+        {"flat": "trunctrihex", "torus": "torustrunctrihex",
+         "cylinder": "cyltrunctrihex", "mobius": "mobiustrunctrihex"},
     ),
 }
 
@@ -722,12 +740,13 @@ def hat_board(
 
 # -- Archimedean (semiregular) tilings ---------------------------------------
 #
-# Each of the six uniform tilings with two tile shapes, as (vertex
+# Each of the eight non-regular uniform tilings, as (vertex
 # configuration, number of distinct edge directions) -- e.g. snub square
-# is 3.3.4.3.4 with edges every 30 degrees (12 directions). Every flat and
-# 3D Archimedean board is assembled from one rectangular periodic domain
-# (the ``_ArchTemplate`` builders far below); this table is the shape
-# catalogue the tests validate the built tilings against.
+# is 3.3.4.3.4 with edges every 30 degrees (12 directions). Six have two
+# tile shapes; the last two (3.4.6.4 and 4.6.12) have three. Every flat
+# and 3D Archimedean board is assembled from one rectangular periodic
+# domain (the ``_ArchTemplate`` builders far below); this table is the
+# shape catalogue the tests validate the built tilings against.
 
 _ARCH_CONFIGS = {
     "elongated": ((3, 3, 3, 4, 4), 12),
@@ -736,6 +755,8 @@ _ARCH_CONFIGS = {
     "snubhex": ((3, 3, 3, 3, 6), 12),
     "truncsquare": ((4, 8, 8), 8),
     "trunchex": ((3, 12, 12), 12),
+    "rhombitrihex": ((3, 4, 6, 4), 12),
+    "trunctrihex": ((4, 6, 12), 12),
 }
 
 
@@ -1573,7 +1594,7 @@ def cylinder_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
 
 # -- Archimedean tilings on wrapped surfaces ---------------------------------
 #
-# Each two-shape tiling is reduced to one rectangular fundamental domain
+# Each Archimedean tiling is reduced to one rectangular fundamental domain
 # (a template): vertices canonicalized into the domain, cells as references
 # into this or neighboring domain copies. Wrapping is then the same modular
 # arithmetic the square/triangle/hex surface boards use, with the whole
@@ -1801,6 +1822,110 @@ def _trunchex_template() -> _ArchTemplate:
     return _template((3, 12, 12), a, a * ROOT3, polygons)
 
 
+def _hex_lattice_polygons(centre_at, hexagon_at, decorate, width, height):
+    """Assemble one rectangular domain of a tiling built on a triangular
+    lattice of hexagon (or dodecagon) centres. ``hexagon_at(cx, cy)`` is
+    the central polygon around a lattice point and ``decorate(cx, cy)``
+    yields the polygons hung off it (shared with neighbours); everything
+    is deduplicated by rounded centroid and kept when its centroid lands
+    in [0, width) x [0, height)."""
+    def centroid(polygon):
+        return (sum(x for x, _ in polygon) / len(polygon),
+                sum(y for _, y in polygon) / len(polygon))
+
+    polygons = {}
+    for m in range(-2, 4):
+        for n in range(-2, 4):
+            cx, cy = centre_at(m, n)
+            for name, polygon in [("c", hexagon_at(cx, cy)), *decorate(cx, cy)]:
+                gx, gy = centroid(polygon)
+                if -1e-9 <= gx < width - 1e-9 and -1e-9 <= gy < height - 1e-9:
+                    polygons[(name, round(gx, 3), round(gy, 3))] = polygon
+    return [(f"{name}{i}", polygon)
+            for i, ((name, _, _), polygon) in enumerate(polygons.items())]
+
+
+def _regular_polygon(cx, cy, sides, circumradius, offset_deg):
+    return [(cx + circumradius * math.cos(math.radians(offset_deg + 360 * k / sides)),
+             cy + circumradius * math.sin(math.radians(offset_deg + 360 * k / sides)))
+            for k in range(sides)]
+
+
+def _square_on_edge(cx, cy, apothem, normal_deg):
+    """The unit square sitting outside the edge whose outward normal is
+    ``normal_deg`` at distance ``apothem`` from (cx, cy)."""
+    phi = math.radians(normal_deg)
+    ux, uy = math.cos(phi), math.sin(phi)
+    tx, ty = -uy, ux  # along the edge
+    mx, my = cx + apothem * ux, cy + apothem * uy
+    a = (mx + 0.5 * tx, my + 0.5 * ty)
+    b = (mx - 0.5 * tx, my - 0.5 * ty)
+    return [a, b, (b[0] + ux, b[1] + uy), (a[0] + ux, a[1] + uy)]
+
+
+def _rhombitrihex_template() -> _ArchTemplate:
+    """Rhombitrihexagonal (3.4.6.4): hexagons on a triangular lattice of
+    pitch 1+sqrt(3), a square shared across every hexagon edge and a
+    triangle in every gap between two squares. The rectangle holds two
+    hexagons, six squares and four triangles."""
+    a = 1 + ROOT3
+
+    def centre_at(m, n):
+        return (m * a + n * a / 2, n * a * ROOT3 / 2)
+
+    def hexagon_at(cx, cy):
+        return _regular_polygon(cx, cy, 6, 1.0, 30)  # vertices at 30, 90, ...
+
+    def decorate(cx, cy):
+        out = []
+        for k in range(6):
+            out.append(("sq", _square_on_edge(cx, cy, ROOT3 / 2, 60 * k)))
+            vx = cx + math.cos(math.radians(30 + 60 * k))
+            vy = cy + math.sin(math.radians(30 + 60 * k))
+            u1 = (math.cos(math.radians(60 * k)), math.sin(math.radians(60 * k)))
+            u2 = (math.cos(math.radians(60 * k + 60)), math.sin(math.radians(60 * k + 60)))
+            out.append(("tri", [(vx, vy), (vx + u1[0], vy + u1[1]),
+                                (vx + u2[0], vy + u2[1])]))
+        return out
+
+    width, height = a, a * ROOT3
+    polygons = _hex_lattice_polygons(centre_at, hexagon_at, decorate, width, height)
+    return _template((3, 4, 6, 4), width, height, polygons)
+
+
+def _trunctrihex_template() -> _ArchTemplate:
+    """Truncated trihexagonal (4.6.12): dodecagons on a triangular lattice
+    of pitch 3+sqrt(3), a square shared across every second dodecagon edge
+    (facing a neighbour) and a hexagon in each triangular gap between three
+    dodecagons. The rectangle holds two dodecagons, six squares and four
+    hexagons."""
+    a = 3 + ROOT3
+    r12 = (6**0.5 + 2**0.5) / 2  # dodecagon circumradius, side 1
+    apothem = (2 + ROOT3) / 2
+
+    def centre_at(m, n):
+        return (m * a + n * a / 2, n * a * ROOT3 / 2)
+
+    def dodecagon_at(cx, cy):
+        return _regular_polygon(cx, cy, 12, r12, 15)
+
+    def decorate(cx, cy):
+        # this dodecagon's lattice indices, to locate its triangular holes
+        n0 = round(cy / (a * ROOT3 / 2))
+        m0 = round((cx - n0 * a / 2) / a)
+        out = [("sq", _square_on_edge(cx, cy, apothem, 60 * k)) for k in range(6)]
+        for corners in [((0, 0), (1, 0), (0, 1)), ((1, 0), (0, 1), (1, 1))]:
+            centres = [centre_at(m0 + dm, n0 + dn) for dm, dn in corners]
+            hx = sum(p[0] for p in centres) / 3
+            hy = sum(p[1] for p in centres) / 3
+            out.append(("hex", _regular_polygon(hx, hy, 6, 1.0, 0)))
+        return out
+
+    width, height = a, a * ROOT3
+    polygons = _hex_lattice_polygons(centre_at, dodecagon_at, decorate, width, height)
+    return _template((4, 6, 12), width, height, polygons)
+
+
 _ARCH_TEMPLATES = {
     "elongated": _elongated_template,
     "snubsquare": _snubsquare_template,
@@ -1808,6 +1933,8 @@ _ARCH_TEMPLATES = {
     "snubhex": _snubhex_template,
     "truncsquare": _truncsquare_template,
     "trunchex": _trunchex_template,
+    "rhombitrihex": _rhombitrihex_template,
+    "trunctrihex": _trunctrihex_template,
 }
 
 
@@ -1835,7 +1962,7 @@ def _arch_cells(template, nx: int, ny: int, tiling: str, wrap_rows: bool = True)
 def archimedean_board(
     tiling: str, nx: int, ny: int, mine_count: int, scale: float = 40
 ) -> Board:
-    """A flat, roughly ``nx`` by ``ny`` domain rectangle of a two-shape
+    """A flat, roughly ``nx`` by ``ny`` domain rectangle of an
     Archimedean tiling, built from the tiling's periodic domain (the same
     ``_ArchTemplate`` that wraps the donut/cylinder/Mobius).
 
@@ -2083,7 +2210,7 @@ _PRESETS = {
         "medium": lambda: hat_board(3, 28, keep=150, scale=9.5),
         "hard": lambda: hat_board(3, 65, keep=430, scale=7),
     },
-    # Flat two-shape Archimedean tilings: a roughly nx x ny domain
+    # Flat Archimedean tilings: a roughly nx x ny domain
     # rectangle centred on a rotation centre of the tiling -- a clean,
     # symmetric block (see archimedean_board), rather than a round disc.
     "elongated": {
@@ -2115,6 +2242,16 @@ _PRESETS = {
         "easy": lambda: archimedean_board("trunchex", 6, 3, 16, scale=19),
         "medium": lambda: archimedean_board("trunchex", 8, 4, 33, scale=14),
         "hard": lambda: archimedean_board("trunchex", 10, 6, 70, scale=11),
+    },
+    "rhombitrihex": {
+        "easy": lambda: archimedean_board("rhombitrihex", 4, 2, 15, scale=38),
+        "medium": lambda: archimedean_board("rhombitrihex", 5, 3, 30, scale=32),
+        "hard": lambda: archimedean_board("rhombitrihex", 7, 4, 65, scale=23),
+    },
+    "trunctrihex": {
+        "easy": lambda: archimedean_board("trunctrihex", 4, 2, 15, scale=21),
+        "medium": lambda: archimedean_board("trunctrihex", 5, 3, 30, scale=18),
+        "hard": lambda: archimedean_board("trunctrihex", 7, 4, 65, scale=13),
     },
     "sphere": {
         "easy": lambda: sphere_board(7),
@@ -2241,6 +2378,16 @@ _PRESETS = {
         "medium": lambda: arch_torus_board("trunchex", 10, 2, 18, 0.35),
         "hard": lambda: arch_torus_board("trunchex", 12, 3, 43, 0.43),
     },
+    "torusrhombitrihex": {
+        "easy": lambda: arch_torus_board("rhombitrihex", 5, 2, 17, 0.40),
+        "medium": lambda: arch_torus_board("rhombitrihex", 7, 2, 26, 0.40),
+        "hard": lambda: arch_torus_board("rhombitrihex", 8, 3, 45, 0.43),
+    },
+    "torustrunctrihex": {
+        "easy": lambda: arch_torus_board("trunctrihex", 5, 2, 17, 0.40),
+        "medium": lambda: arch_torus_board("trunctrihex", 7, 2, 26, 0.40),
+        "hard": lambda: arch_torus_board("trunctrihex", 8, 3, 45, 0.43),
+    },
     "mobiuselongated": {
         "easy": lambda: arch_mobius_board("elongated", 12, 1, 9),
         "medium": lambda: arch_mobius_board("elongated", 12, 2, 22),
@@ -2265,6 +2412,16 @@ _PRESETS = {
         "easy": lambda: arch_mobius_board("trunchex", 9, 1, 7),
         "medium": lambda: arch_mobius_board("trunchex", 10, 2, 18),
         "hard": lambda: arch_mobius_board("trunchex", 12, 3, 43),
+    },
+    "mobiusrhombitrihex": {
+        "easy": lambda: arch_mobius_board("rhombitrihex", 4, 2, 14),
+        "medium": lambda: arch_mobius_board("rhombitrihex", 6, 2, 22),
+        "hard": lambda: arch_mobius_board("rhombitrihex", 8, 3, 45),
+    },
+    "mobiustrunctrihex": {
+        "easy": lambda: arch_mobius_board("trunctrihex", 4, 2, 14),
+        "medium": lambda: arch_mobius_board("trunctrihex", 6, 2, 22),
+        "hard": lambda: arch_mobius_board("trunctrihex", 8, 3, 45),
     },
     # cylinder cuts: elongated ends on square rows (fractional rows adds
     # the closing row), kagome cuts along its horizontal edge-line, the
@@ -2304,6 +2461,18 @@ _PRESETS = {
             "trunchex", 8, 3, 22, cut=0.5 + ROOT3 / 2),
         "hard": lambda: arch_cylinder_board(
             "trunchex", 10, 4, 48, cut=0.5 + ROOT3 / 2),
+    },
+    # the three-shape tilings have no full-width horizontal edge-line, so
+    # their cylinder rims are left as clean whole-cell zigzags (cut=0)
+    "cylrhombitrihex": {
+        "easy": lambda: arch_cylinder_board("rhombitrihex", 4, 2, 14),
+        "medium": lambda: arch_cylinder_board("rhombitrihex", 5, 3, 28),
+        "hard": lambda: arch_cylinder_board("rhombitrihex", 7, 3, 40),
+    },
+    "cyltrunctrihex": {
+        "easy": lambda: arch_cylinder_board("trunctrihex", 4, 2, 14),
+        "medium": lambda: arch_cylinder_board("trunctrihex", 5, 3, 28),
+        "hard": lambda: arch_cylinder_board("trunctrihex", 7, 3, 40),
     },
 }
 
