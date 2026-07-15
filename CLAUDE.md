@@ -70,6 +70,18 @@ make web-run   # builds, then serves at http://localhost:8000
 
 GUI tests run headless (SDL dummy driver, set in tests/test_gui.py).
 
+### Claude Code on the web (cloud sessions)
+
+`.claude/hooks/session-start.sh` (registered in `.claude/settings.json`)
+provisions `.venv` and installs `requirements-test.txt` at session start,
+so `make test`/`make lint` work without manual setup. It runs only when
+`CLAUDE_CODE_REMOTE=true`. The project targets Python 3.14
+(`.python-version`), but cloud egress blocks the github.com
+python-build-standalone downloads uv uses, so the hook prefers 3.14 and
+falls back to whatever interpreter uv already has (currently 3.13). The
+code uses no 3.14-only syntax, so the full suite passes on 3.13; test
+deps come from PyPI, which is reachable.
+
 ## Screenshots (headless)
 
 ```python
