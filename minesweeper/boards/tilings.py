@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 from functools import lru_cache
 
-from minesweeper.boards.core import Board, LatticePoint, ROOT3, _HEX_VERTEX_OFFSETS, _build, _shared_vertex_adjacency
+from minesweeper.boards.core import Board, LatticePoint, ROOT3, _HEX_VERTEX_OFFSETS, _build, _finalize_flat
 
 
 
@@ -521,15 +521,4 @@ def archimedean_board(
         and abs(centroid[cell][1] - cy) <= half_h + 1e-9
     }
 
-    adjacency = _shared_vertex_adjacency(cells)
-    xy = {key: position(key) for keys in cells.values() for key in keys}
-    min_x = min(x for x, _ in xy.values())
-    min_y = min(y for _, y in xy.values())
-    polygons = {
-        cell: [((x - min_x) * scale, (y - min_y) * scale)
-               for x, y in (xy[k] for k in keys)]
-        for cell, keys in cells.items()
-    }
-    width = max(x for polygon in polygons.values() for x, _ in polygon)
-    height = max(y for polygon in polygons.values() for _, y in polygon)
-    return Board(tiling, polygons, adjacency, mine_count, width, height)
+    return _finalize_flat(tiling, cells, position, mine_count, scale)

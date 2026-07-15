@@ -18,10 +18,14 @@ from minesweeper.boards.core import (  # noqa: F401
     _build,
     _cross,
     _dot,
+    _finalize_flat,
     _normalize,
     _orient_outward,
     _shared_vertex_adjacency,
     _tangent_order,
+    boundary_components,
+    corner_fans,
+    euler_characteristic,
     newell_normal,
 )
 from minesweeper.boards.catalog import (  # noqa: F401

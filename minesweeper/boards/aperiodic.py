@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from minesweeper.boards.core import Board, Cell, ROOT3, _shared_vertex_adjacency
+from minesweeper.boards.core import Board, Cell, ROOT3, _finalize_flat
 
 
 
@@ -111,21 +111,7 @@ def penrose_board(
             max(abs(centroid[cell][0] - gx), abs(centroid[cell][1] - gy)), cell))
         cells = {cell: cells[cell] for cell in kept[:keep]}
 
-    adjacency = _shared_vertex_adjacency(cells)
-    xy = {
-        key: _z_to_xy(key)
-        for quad in cells.values()
-        for key in quad
-    }
-    min_x = min(x for x, _ in xy.values())
-    min_y = min(y for _, y in xy.values())
-    polygons = {
-        cell: [((x - min_x) * scale, (y - min_y) * scale) for x, y in (xy[k] for k in quad)]
-        for cell, quad in cells.items()
-    }
-    width = max(x for polygon in polygons.values() for x, _ in polygon)
-    height = max(y for polygon in polygons.values() for _, y in polygon)
-    return Board("penrose", polygons, adjacency, mine_count, width, height)
+    return _finalize_flat("penrose", cells, _z_to_xy, mine_count, scale)
 
 
 # -- The Hat: an aperiodic monotile ------------------------------------------
@@ -415,15 +401,5 @@ def hat_board(
     cells: dict[Cell, list] = {
         (label, i): ids for i, (label, ids, _, _) in enumerate(rows)
     }
-    adjacency = _shared_vertex_adjacency(cells)
-    xy = {v: _hexpt(*v) for ids in cells.values() for v in ids}
-    min_x = min(x for x, _ in xy.values())
-    min_y = min(y for _, y in xy.values())
-    polygons = {
-        cell: [((x - min_x) * scale, (y - min_y) * scale)
-               for x, y in (xy[v] for v in ids)]
-        for cell, ids in cells.items()
-    }
-    width = max(x for polygon in polygons.values() for x, _ in polygon)
-    height = max(y for polygon in polygons.values() for _, y in polygon)
-    return Board("hat", polygons, adjacency, mine_count, width, height)
+    return _finalize_flat(
+        "hat", cells, lambda v: _hexpt(*v), mine_count, scale)

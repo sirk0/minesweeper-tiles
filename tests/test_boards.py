@@ -11,6 +11,9 @@ from minesweeper.boards import (
     MODES_3D,
     SURFACE_LABELS,
     TILINGS,
+    boundary_components as _boundary_components,
+    corner_fans as _corner_fans,
+    euler_characteristic as _euler_characteristic,
     arch_cylinder_board,
     arch_mobius_board,
     arch_torus_board,
@@ -683,41 +686,6 @@ class TestSteppedCube:
             stepped_bipyramid_board(4, 3, 5)  # apex 4 - 2*2 = 0: nothing left
 
 
-def _corner_fans(board):
-    """Cell sizes around each distinct polygon corner of a 3D board."""
-    at_vertex = defaultdict(list)
-    for polygon in board.polygons.values():
-        for point in polygon:
-            key = tuple(round(c, 6) for c in point)
-            at_vertex[key].append(len(polygon))
-    return at_vertex
-
-
-def _boundary_components(board):
-    """Connected components of the edges that belong to only one cell."""
-    count = defaultdict(int)
-    for polygon in board.polygons.values():
-        points = [tuple(round(c, 6) for c in p) for p in polygon]
-        for a, b in zip(points, points[1:] + points[:1]):
-            count[frozenset((a, b))] += 1
-    graph = defaultdict(set)
-    for edge, cells in count.items():
-        if cells == 1:
-            a, b = edge
-            graph[a].add(b)
-            graph[b].add(a)
-    seen, components = set(), 0
-    for start in graph:
-        if start in seen:
-            continue
-        components += 1
-        stack = [start]
-        while stack:
-            vertex = stack.pop()
-            if vertex not in seen:
-                seen.add(vertex)
-                stack.extend(graph[vertex] - seen)
-    return components
 
 
 class TestWrappedArchimedean:
@@ -837,17 +805,6 @@ class TestWrappedArchimedean:
                     board.mode,
                     cell,
                 )
-
-
-def _euler_characteristic(board):
-    """V - E + F over the board's polygon mesh (2 for sphere topology)."""
-    vertices = len(_corner_fans(board))
-    edges = set()
-    for polygon in board.polygons.values():
-        points = [tuple(round(c, 6) for c in p) for p in polygon]
-        for a, b in zip(points, points[1:] + points[:1]):
-            edges.add(frozenset((a, b)))
-    return vertices - len(edges) + len(board.polygons)
 
 
 class TestPolyhedra:
