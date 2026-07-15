@@ -1,7 +1,7 @@
 # Minesweeper (pygame)
 
 A minesweeper clone with flat and 3D boards (sphere, fullerenes, cube,
-tetrahedron, donut, Möbius strip, cylinder). Python 3.14 (see
+tetrahedron, donut, Möbius strip, cylinder). Python 3.13 (see
 `.python-version`), only dependency: `pygame-ce`.
 
 ## Architecture
@@ -69,6 +69,14 @@ make web-run   # builds, then serves at http://localhost:8000
 ```
 
 GUI tests run headless (SDL dummy driver, set in tests/test_gui.py).
+
+### Claude Code on the web (cloud sessions)
+
+`.claude/hooks/session-start.sh` (registered in `.claude/settings.json`)
+provisions `.venv` (Python 3.13, per `.python-version`) and installs
+`requirements-test.txt` at session start, so `make test`/`make lint` work
+without manual setup. It runs only when `CLAUDE_CODE_REMOTE=true`. Test
+deps come from PyPI, which is reachable from cloud sessions.
 
 ## Screenshots (headless)
 
