@@ -128,12 +128,19 @@ class _ArchTemplate:
     cells: tuple  # (name, ((tag, dm, dn), ...)); dm/dn = domain copy offset
     mirror: dict | None  # tag -> (tag, dm, dn) under y -> height - y
     glide: bool = False  # the mirror needs an extra width/2 x-shift (p4g)
+    centre: tuple[float, float] | None = None  # rotation centre (domain
+    #   coords) for the flat window; None => centre on the biggest tile.
+    #   Face-transitive (Laves) tilings whose highest rotation centre sits
+    #   on a vertex, not a tile centroid (e.g. pentagon tiles), set this.
 
 
-def _template(config, width, height, polygons, mirrored=True, glide=False):
+def _template(config, width, height, polygons, mirrored=True, glide=False,
+              centre=None):
     """Build a template from one domain's worth of cell polygons in float
     coordinates. Each vertex is canonicalized into [0, width) x [0, height);
-    the rounded canonical position doubles as its exact hashable tag."""
+    the rounded canonical position doubles as its exact hashable tag.
+    ``centre`` optionally pins the flat-window rotation centre in domain
+    coordinates (see _ArchTemplate.centre)."""
 
     def reduce(value: float, size: float) -> tuple[float, int]:
         # the slack absorbs tag rounding, so values that are exactly on a
@@ -183,7 +190,8 @@ def _template(config, width, height, polygons, mirrored=True, glide=False):
                 if distance(image, x, y) > 1e-4:
                     raise ValueError(f"mirror of {tag} is not a vertex")
             mirror[tag] = (image, dm, dn)
-    return _ArchTemplate(config, width, height, verts, tuple(cells), mirror, glide)
+    return _ArchTemplate(config, width, height, verts, tuple(cells), mirror,
+                         glide, centre)
 
 
 def _kagome_template() -> _ArchTemplate:
@@ -446,13 +454,21 @@ def _trunctrihex_template() -> _ArchTemplate:
 
 @dataclass(frozen=True)
 class ArchTiling:
-    """One Archimedean (semiregular) tiling. Declared once here; the menu
-    catalog, mode strings, presets and tests all derive from this list."""
+    """One template-based periodic tiling. The eight below are the
+    Archimedean (semiregular) tilings; their duals, the Laves (Catalan)
+    tilings, fit the same registry with ``vertex_transitive=False`` -- see
+    AGENTS.md. The menu catalog, mode strings, presets and tests all
+    derive from this list."""
     key: str                       # "kagome"
     label: str                     # menu label, "Kagome"
-    config: tuple[int, ...]        # vertex configuration, (3, 6, 3, 6)
+    config: tuple[int, ...]        # for a vertex-transitive tiling, the
+    #   vertex configuration (3, 6, 3, 6); for a face-transitive (Laves)
+    #   tiling, the configuration of its single tile shape.
     edge_directions: int           # distinct edge directions (12 or 8)
     template: Callable[[], "_ArchTemplate"]
+    vertex_transitive: bool = True  # Archimedean: every vertex identical.
+    #   Laves duals are face-transitive instead (every tile congruent), so
+    #   the vertex-configuration invariants do not apply to them.
 
 
 ARCH_TILINGS = (
@@ -521,12 +537,24 @@ def archimedean_board(
             [position(k) for k in keys])
         for cell, keys in grown.items()
     }
-    biggest = max(len(keys) for keys in grown.values())
     mid_x, mid_y = (nx + 2) * width_units / 2, (ny + 2) * height_units / 2
-    cx, cy = min(
-        (c for cell, c in centroid.items() if len(grown[cell]) == biggest),
-        key=lambda c: (c[0] - mid_x) ** 2 + (c[1] - mid_y) ** 2,
-    )
+    if template.centre is not None:
+        # centre on the copy of the template's declared rotation centre
+        # nearest the middle (Laves tilings whose centre is a vertex)
+        ccx, ccy = template.centre
+        cx, cy = min(
+            ((ccx + m * width_units, ccy + n * height_units)
+             for m in range(nx + 2) for n in range(ny + 2)),
+            key=lambda c: (c[0] - mid_x) ** 2 + (c[1] - mid_y) ** 2,
+        )
+    else:
+        # centre on the biggest tile nearest the middle (its centroid is a
+        # rotation centre for the vertex-transitive Archimedean tilings)
+        biggest = max(len(keys) for keys in grown.values())
+        cx, cy = min(
+            (c for cell, c in centroid.items() if len(grown[cell]) == biggest),
+            key=lambda c: (c[0] - mid_x) ** 2 + (c[1] - mid_y) ** 2,
+        )
     half_w, half_h = nx * width_units / 2, ny * height_units / 2
     cells = {
         cell: keys

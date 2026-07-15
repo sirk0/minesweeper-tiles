@@ -5,6 +5,7 @@ import pytest
 
 from minesweeper.boards import (
     _ARCH_CONFIGS,
+    ARCH_TILINGS,
     DIFFICULTIES,
     GROUPS,
     MODE_LABELS,
@@ -53,6 +54,34 @@ from minesweeper.boards import (
 from minesweeper.boards import (
     euler_characteristic as _euler_characteristic,
 )
+
+# Template tilings split by symmetry type. Archimedean tilings are
+# vertex-transitive (every vertex has the same configuration); their Laves
+# duals are face-transitive (every tile congruent) and get a different set
+# of invariants. Reflective tilings (a plain mirror, not just a glide or
+# pinwheel) additionally give left-right / top-bottom symmetric boards.
+_VERTEX_TRANSITIVE = [t.key for t in ARCH_TILINGS if t.vertex_transitive]
+_FACE_TRANSITIVE = [t.key for t in ARCH_TILINGS if not t.vertex_transitive]
+_REFLECTIVE = {
+    t.key for t in ARCH_TILINGS
+    if t.template().mirror is not None and not t.template().glide
+}
+
+
+def _tile_signature(polygon):
+    """A congruence signature: the multiset of edge lengths and interior
+    angles, rounded. Two tiles with equal signatures are congruent up to
+    rotation and reflection."""
+    n = len(polygon)
+    edges = sorted(round(math.dist(polygon[i], polygon[(i + 1) % n]), 4)
+                   for i in range(n))
+    angles = []
+    for i in range(n):
+        a, b, c = polygon[i - 1], polygon[i], polygon[(i + 1) % n]
+        v1, v2 = (a[0] - b[0], a[1] - b[1]), (c[0] - b[0], c[1] - b[1])
+        angles.append(round(abs(math.atan2(v1[0] * v2[1] - v1[1] * v2[0],
+                                            v1[0] * v2[0] + v1[1] * v2[1])), 4))
+    return (tuple(edges), tuple(sorted(angles)))
 
 # Every registered mode (easy preset) so the invariant suite below covers
 # any tiling or surface the moment it is added to the catalog. A few
@@ -383,16 +412,17 @@ class TestArchimedean:
     """The eight non-regular Archimedean tilings (six with two tile
     shapes, plus 3.4.6.4 and 4.6.12 with three)."""
 
-    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    @pytest.mark.parametrize("mode", sorted(_VERTEX_TRANSITIVE))
     def test_has_exactly_the_two_configured_shapes(self, mode):
         config, _ = _ARCH_CONFIGS[mode]
         board = archimedean_board(mode, 5, 5, 5)
         assert {len(p) for p in board.polygons.values()} == set(config)
 
-    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    @pytest.mark.parametrize("mode", sorted(_VERTEX_TRANSITIVE))
     def test_interior_vertex_configuration(self, mode):
         """Around every interior vertex the tile sizes must match the
-        tiling's vertex configuration (e.g. 3.3.4.3.4)."""
+        tiling's vertex configuration (e.g. 3.3.4.3.4). Vertex-transitive
+        (Archimedean) tilings only; Laves duals vary vertex by vertex."""
         config, _ = _ARCH_CONFIGS[mode]
         board = archimedean_board(mode, 5, 5, 5)
         at_vertex = defaultdict(list)
@@ -417,6 +447,16 @@ class TestArchimedean:
                 assert sorted(s for s, _ in entries) == sorted(config)
         assert interior > 10  # the check actually saw interior vertices
 
+    @pytest.mark.parametrize("mode", sorted(_FACE_TRANSITIVE))
+    def test_tiles_are_congruent(self, mode):
+        """A face-transitive (Laves) tiling is built from one congruent
+        tile: every polygon has the same sorted edge lengths and interior
+        angles (up to rotation/reflection). Empty until Laves tilings land;
+        it then covers each automatically."""
+        board = archimedean_board(mode, 5, 5, 5)
+        signatures = {_tile_signature(p) for p in board.polygons.values()}
+        assert len(signatures) == 1, f"{mode} has non-congruent tiles"
+
     @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
     def test_no_overlapping_tiles(self, mode):
         # any edge shared by more than two tiles means overlap
@@ -431,17 +471,17 @@ class TestArchimedean:
         assert all(count <= 2 for count in edge_count.values())
 
     # the reflective tilings (cmm / p4m / p6m) get a plain mirror; the
-    # chiral snub tilings (p4g glide, p6) can only manage the pinwheel
-    # rotation
-    REFLECTIVE = {"elongated", "kagome", "truncsquare", "trunchex",
-                  "rhombitrihex", "trunctrihex"}
+    # chiral/glide tilings (p4g glide, p6) can only manage the pinwheel
+    # rotation. Derived so a new tiling classifies itself.
+    REFLECTIVE = _REFLECTIVE
 
     @staticmethod
     def _symmetry(board, reflect):
         """The largest fraction of tiles that map onto another tile when
-        the board is reflected/rotated about a centre. A true symmetry
-        centre sits at a largest-tile centroid, so scanning those finds
-        the best axis without guessing."""
+        the board is reflected/rotated about a centre. A symmetry centre
+        sits at a largest-tile centroid (vertex-transitive tilings) or at
+        a vertex (some face-transitive Laves tilings), so scan both sets of
+        candidates and take the best."""
         polygons = list(board.polygons.values())
         centroids = [(sum(x for x, _ in p) / len(p),
                       sum(y for _, y in p) / len(p)) for p in polygons]
@@ -458,9 +498,18 @@ class TestArchimedean:
                        for i in (-1, 0, 1) for j in (-1, 0, 1)
                        for px, py in grid.get((gx + i, gy + j), ()))
 
+        board_cx = sum(x for x, _ in centroids) / len(centroids)
+        board_cy = sum(y for _, y in centroids) / len(centroids)
+        vertices = {(round(x, 6), round(y, 6))
+                    for p in polygons for x, y in p}
+        # candidate centres near the middle: biggest-tile centroids and
+        # vertices (a rotation centre lies on one of them)
+        candidates = [c for p, c in zip(polygons, centroids)
+                      if len(p) == biggest]
+        candidates += sorted(vertices, key=lambda v: (v[0] - board_cx) ** 2
+                             + (v[1] - board_cy) ** 2)[:12]
         best = 0.0
-        for cx, cy in (c for p, c in zip(polygons, centroids)
-                       if len(p) == biggest):
+        for cx, cy in candidates:
             hits = sum(1 for x, y in centroids if present(*reflect(cx, cy, x, y)))
             best = max(best, hits / len(centroids))
         return best
@@ -660,7 +709,13 @@ class TestWrappedArchimedean:
         and any(mode.endswith(tiling) for tiling in _ARCH_CONFIGS)
     ]
 
-    @pytest.mark.parametrize("tiling", sorted(_ARCH_CONFIGS))
+    # only the vertex-transitive (Archimedean) tilings have a single vertex
+    # configuration to check; Laves duals vary vertex by vertex.
+    WRAPPED_VERTEX_TRANSITIVE = [
+        m for m in WRAPPED if any(m.endswith(t) for t in _VERTEX_TRANSITIVE)
+    ]
+
+    @pytest.mark.parametrize("tiling", sorted(_VERTEX_TRANSITIVE))
     def test_torus_vertex_configuration_everywhere(self, tiling):
         """A torus has no boundary, so every single vertex must show the
         tiling's full vertex configuration."""
@@ -669,7 +724,7 @@ class TestWrappedArchimedean:
         for fan in _corner_fans(board).values():
             assert sorted(fan) == config
 
-    @pytest.mark.parametrize("mode", sorted(WRAPPED))
+    @pytest.mark.parametrize("mode", sorted(WRAPPED_VERTEX_TRANSITIVE))
     def test_vertices_are_full_or_boundary(self, mode):
         """On the open surfaces every vertex fan is the configuration or
         a part of it (boundary vertices)."""

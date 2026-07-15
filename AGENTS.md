@@ -64,6 +64,47 @@ board-shape convention (a flat board must read as a roughly *square*
 rectangle, symmetric if the tiling is) is load-bearing: see the
 `AGENT NOTE` comment in `tilings.py` and `archimedean_board`'s docstring.
 
+## Recipe: add a Laves (dual / Catalan) tiling
+
+Laves tilings are the **duals** of the Archimedean tilings: put a vertex
+at each Archimedean tile centre and join centres of adjacent tiles. They
+are periodic and edge-to-edge, so they use the *same* `ARCH_TILINGS`
+registry, `_ArchTemplate` system, wrapping, presets and menu derivation
+as the Archimedean tilings. Two things differ, and the architecture
+already accounts for both:
+
+- A Laves tiling is **face-transitive** (one congruent tile shape, but
+  vertices of several kinds) rather than vertex-transitive. Declare it
+  with `vertex_transitive=False` on its `ArchTiling` row. The
+  vertex-configuration tests then skip it automatically, and
+  `TestArchimedean.test_tiles_are_congruent` covers it instead (it checks
+  every tile has the same edge/angle signature). `config` on the row
+  should describe the single tile shape.
+- Some Laves tilings' highest rotation centre sits on a **vertex**, not a
+  tile centroid — pentagon-tiled ones (Cairo, floret, prismatic
+  pentagonal) have no 2-fold centre inside a tile. For those, pass
+  `centre=(x, y)` (domain coordinates of that rotation centre) to
+  `_template(...)`; `archimedean_board` then centres its window there so
+  the flat board comes out symmetric. Reflective vs chiral is derived from
+  the template's mirror/glide, so no test list needs editing.
+
+Steps:
+
+1. Write `_foo_template()` in `tilings.py` giving one fundamental domain
+   of the Laves tile polygons (optionally with `centre=`). You can derive
+   the polygons by dualising the corresponding Archimedean template (tile
+   centroids become vertices), or lay them out directly.
+2. Add an `ArchTiling("foo", "Foo label", tile_config, edge_directions,
+   _foo_template, vertex_transitive=False)` row to `ARCH_TILINGS`.
+3. Add a `"foo"` block to `ARCH_PRESETS` (skip `mobius` if chiral — the
+   floret pentagonal is).
+4. Add the tiling's wrapped cell counts to
+   `TestWrappedArchimedean.test_cell_counts` (that test asserts the count
+   table matches the set of wrapped modes, so it fails until you do).
+
+Everything else — menu, mode strings, `MODES_3D`, chirality gating,
+symmetry and congruence invariants — derives automatically.
+
 ## Recipe: add an aperiodic / shaped / solid board
 
 These are one-offs, not tiling×surface products.
