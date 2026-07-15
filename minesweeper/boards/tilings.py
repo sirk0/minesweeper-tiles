@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Callable
 
 from minesweeper.boards.core import Board, LatticePoint, ROOT3, _HEX_VERTEX_OFFSETS, _build, _finalize_flat
 
@@ -98,24 +99,15 @@ def hexhex_board(radius: int, mine_count: int, scale: float = 20) -> Board:
 
 # -- Archimedean (semiregular) tilings ---------------------------------------
 #
-# Each of the eight non-regular uniform tilings, as (vertex
-# configuration, number of distinct edge directions) -- e.g. snub square
-# is 3.3.4.3.4 with edges every 30 degrees (12 directions). Six have two
-# tile shapes; the last two (3.4.6.4 and 4.6.12) have three. Every flat
-# and 3D Archimedean board is assembled from one rectangular periodic
-# domain (the ``_ArchTemplate`` builders far below); this table is the
-# shape catalogue the tests validate the built tilings against.
-
-_ARCH_CONFIGS = {
-    "elongated": ((3, 3, 3, 4, 4), 12),
-    "snubsquare": ((3, 3, 4, 3, 4), 12),
-    "kagome": ((3, 6, 3, 6), 12),
-    "snubhex": ((3, 3, 3, 3, 6), 12),
-    "truncsquare": ((4, 8, 8), 8),
-    "trunchex": ((3, 12, 12), 12),
-    "rhombitrihex": ((3, 4, 6, 4), 12),
-    "trunctrihex": ((4, 6, 12), 12),
-}
+# Each of the eight non-regular uniform tilings is declared once in the
+# ARCH_TILINGS registry at the bottom of this file (key, menu label,
+# vertex configuration, number of distinct edge directions, template
+# factory), from which _ARCH_CONFIGS and _ARCH_TEMPLATES are derived.
+# To add an Archimedean tiling, write a _<name>_template() below and add
+# one ARCH_TILINGS row -- see AGENTS.md. Six of the eight have two tile
+# shapes; the last two (3.4.6.4 and 4.6.12) have three. Every flat and 3D
+# Archimedean board is assembled from one rectangular periodic domain
+# (the ``_ArchTemplate`` builders far below).
 
 
 # -- Archimedean tilings on wrapped surfaces ---------------------------------
@@ -452,16 +444,38 @@ def _trunctrihex_template() -> _ArchTemplate:
     return _template((4, 6, 12), width, height, polygons)
 
 
-_ARCH_TEMPLATES = {
-    "elongated": _elongated_template,
-    "snubsquare": _snubsquare_template,
-    "kagome": _kagome_template,
-    "snubhex": _snubhex_template,
-    "truncsquare": _truncsquare_template,
-    "trunchex": _trunchex_template,
-    "rhombitrihex": _rhombitrihex_template,
-    "trunctrihex": _trunctrihex_template,
-}
+@dataclass(frozen=True)
+class ArchTiling:
+    """One Archimedean (semiregular) tiling. Declared once here; the menu
+    catalog, mode strings, presets and tests all derive from this list."""
+    key: str                       # "kagome"
+    label: str                     # menu label, "Kagome"
+    config: tuple[int, ...]        # vertex configuration, (3, 6, 3, 6)
+    edge_directions: int           # distinct edge directions (12 or 8)
+    template: Callable[[], "_ArchTemplate"]
+
+
+ARCH_TILINGS = (
+    ArchTiling("elongated", "Elongated triangular", (3, 3, 3, 4, 4), 12,
+               _elongated_template),
+    ArchTiling("snubsquare", "Snub square", (3, 3, 4, 3, 4), 12,
+               _snubsquare_template),
+    ArchTiling("kagome", "Kagome", (3, 6, 3, 6), 12, _kagome_template),
+    ArchTiling("snubhex", "Snub hexagonal", (3, 3, 3, 3, 6), 12,
+               _snubhex_template),
+    ArchTiling("truncsquare", "Truncated square", (4, 8, 8), 8,
+               _truncsquare_template),
+    ArchTiling("trunchex", "Truncated hexagonal", (3, 12, 12), 12,
+               _trunchex_template),
+    ArchTiling("rhombitrihex", "Rhombitrihexagonal", (3, 4, 6, 4), 12,
+               _rhombitrihex_template),
+    ArchTiling("trunctrihex", "Truncated trihexagonal", (4, 6, 12), 12,
+               _trunctrihex_template),
+)
+
+# Backward-compatible views derived from the single registry above.
+_ARCH_TEMPLATES = {t.key: t.template for t in ARCH_TILINGS}
+_ARCH_CONFIGS = {t.key: (t.config, t.edge_directions) for t in ARCH_TILINGS}
 
 
 @lru_cache(maxsize=None)

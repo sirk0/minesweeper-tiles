@@ -1,141 +1,116 @@
+"""The menu catalog, derived from two small registries.
+
+Everything the menu and CLI need -- MODE_LABELS, TILINGS, SURFACE_LABELS,
+GROUPS, MODES_3D -- is *derived* here from SURFACE_SPECS and TILING_SPECS
+rather than hand-listed. Adding a periodic tiling means adding one
+ArchTiling row (in tilings.py) and one ARCH_PRESETS row (in presets.py);
+adding a surface means adding one SurfaceSpec here plus a builder. See
+AGENTS.md. A mode string is always ``surface.prefix + tiling.key`` unless
+the tiling overrides it (a few legacy names do).
+"""
+
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
+from minesweeper.boards.tilings import ARCH_TILINGS
 
 
-MODE_LABELS = {
-    "square": "Squares",
-    "triangle": "Triangle of triangles",
-    "trigrid": "Triangle grid",
-    "hex": "Hexagons",
-    "hexhex": "Hexagon of hexagons",
-    "penrose": "Penrose rhombi",
-    "hat": "The Hat",
-    "elongated": "Elongated triangular",
-    "snubsquare": "Snub square",
-    "kagome": "Kagome",
-    "snubhex": "Snub hexagonal",
-    "truncsquare": "Truncated square",
-    "trunchex": "Truncated hexagonal",
-    "rhombitrihex": "Rhombitrihexagonal",
-    "trunctrihex": "Truncated trihexagonal",
-    "sphere": "60 pentagons",
-    "c80": "C80 fullerene",
-    "c180": "C180 fullerene",
-    "spheretri": "Triangles",
-    "snubdodec": "Snub dodecahedron",
-    "cube": "Cube",
-    "tetrahedron": "Tetrahedron",
-    "tetraframe": "Tetrahedron frame",
-    "cubeframe": "Cube frame",
-    "steppedbipyramid": "Stepped bipyramid",
-    "torus": "Squares",
-    "torustri": "Triangles",
-    "torushex": "Hexagons",
-    "toruselongated": "Elongated triangular",
-    "torussnubsquare": "Snub square",
-    "toruskagome": "Kagome",
-    "torussnubhex": "Snub hexagonal",
-    "torustruncsquare": "Truncated square",
-    "torustrunchex": "Truncated hexagonal",
-    "torusrhombitrihex": "Rhombitrihexagonal",
-    "torustrunctrihex": "Truncated trihexagonal",
-    "mobius": "Squares",
-    "mobiustri": "Triangles",
-    "mobiushex": "Hexagons",
-    "mobiuselongated": "Elongated triangular",
-    "mobiussnubsquare": "Snub square",
-    "mobiuskagome": "Kagome",
-    "mobiustruncsquare": "Truncated square",
-    "mobiustrunchex": "Truncated hexagonal",
-    "mobiusrhombitrihex": "Rhombitrihexagonal",
-    "mobiustrunctrihex": "Truncated trihexagonal",
-    "cylinder": "Squares",
-    "cyltri": "Triangles",
-    "cylhex": "Hexagons",
-    "cylelongated": "Elongated triangular",
-    "cylsnubsquare": "Snub square",
-    "cylkagome": "Kagome",
-    "cylsnubhex": "Snub hexagonal",
-    "cyltruncsquare": "Truncated square",
-    "cyltrunchex": "Truncated hexagonal",
-    "cylrhombitrihex": "Rhombitrihexagonal",
-    "cyltrunctrihex": "Truncated trihexagonal",
+@dataclass(frozen=True)
+class SurfaceSpec:
+    key: str                          # "flat" | "torus" | "cylinder" | "mobius"
+    label: str                        # menu label, "Donut"
+    prefix: str                       # mode = prefix + tiling.key by default
+    is_3d: bool                       # rendered by GameScreen3D
+    needs_mirror: bool                # seam reverses orientation: excludes
+    #                                   chiral tilings (snub hexagonal)
+    boundary_components: int | None   # topological invariant; None for flat
+    tilt: float | None = None         # GameScreen3D initial x-rotation
+
+
+# The menu picks a group, then a tiling, then -- for the periodic tilings
+# -- a surface. Every periodic tiling wraps every surface, with one
+# exception: 3.3.3.3.6 (snub hexagonal) is chiral (p6, no mirror or
+# glide), so the orientation-reversing Mobius seam cannot glue it to
+# itself (needs_mirror gates it out). The sphere is its own group: none
+# of these periodic patterns can tile it (Euler's formula forces
+# curvature in), so it offers spherical tilings instead. To add a surface
+# (e.g. the Klein bottle) add a SurfaceSpec here and wire its builders.
+SURFACE_SPECS = (
+    SurfaceSpec("flat", "Flat", "", is_3d=False, needs_mirror=False,
+                boundary_components=None),
+    SurfaceSpec("torus", "Donut", "torus", is_3d=True, needs_mirror=False,
+                boundary_components=0, tilt=-1.0),
+    SurfaceSpec("cylinder", "Cylinder", "cyl", is_3d=True, needs_mirror=False,
+                boundary_components=2, tilt=-0.35),
+    SurfaceSpec("mobius", "Möbius strip", "mobius", is_3d=True,
+                needs_mirror=True, boundary_components=1, tilt=-0.8),
+)
+SURFACES = {s.key: s for s in SURFACE_SPECS}
+SURFACE_LABELS = {s.key: s.label for s in SURFACE_SPECS}
+
+
+@dataclass(frozen=True)
+class TilingSpec:
+    """A periodic tiling as the menu sees it. Regular tilings (square,
+    triangle, hexagon) are declared explicitly below; Archimedean ones
+    are lifted from tilings.ARCH_TILINGS."""
+    key: str
+    label: str
+    chiral: bool = False                 # no mirror/glide -> no Mobius seam
+    mode_overrides: dict = field(default_factory=dict)  # surface -> mode string
+
+    def mode(self, surface: SurfaceSpec) -> str:
+        return self.mode_overrides.get(surface.key, surface.prefix + self.key)
+
+    def allows(self, surface: SurfaceSpec) -> bool:
+        return not (surface.needs_mirror and self.chiral)
+
+
+# The three regular tilings keep their legacy mode names: the square
+# tiling's wrapped boards are just the bare surface names, and the flat
+# triangle grid is "trigrid".
+REGULAR_TILINGS = (
+    TilingSpec("square", "Squares", mode_overrides={
+        "torus": "torus", "cylinder": "cylinder", "mobius": "mobius"}),
+    TilingSpec("tri", "Triangles", mode_overrides={"flat": "trigrid"}),
+    TilingSpec("hex", "Hexagons"),
+)
+
+TILING_SPECS = REGULAR_TILINGS + tuple(
+    TilingSpec(t.key, t.label, chiral=t.template().mirror is None)
+    for t in ARCH_TILINGS
+)
+TILINGS_BY_KEY = {t.key: t for t in TILING_SPECS}
+
+
+def mode_for(tiling: str, surface: str) -> str:
+    """The mode string for a (tiling, surface) pair, e.g.
+    ('kagome', 'torus') -> 'toruskagome'. The one place the naming
+    convention lives; the wrap builders and presets go through it."""
+    return TILINGS_BY_KEY[tiling].mode(SURFACES[surface])
+
+
+def view_hint(mode: str) -> float | None:
+    """GameScreen3D initial x-rotation for a wrapped mode, or None if the
+    mode is not a periodic surface (solids set their own view)."""
+    for tiling in TILING_SPECS:
+        for surface in SURFACE_SPECS:
+            if surface.is_3d and tiling.allows(surface) \
+                    and tiling.mode(surface) == mode:
+                return surface.tilt
+    return None
+
+
+# tiling -> (label, {surface: mode}); the menu surface page reads this.
+TILINGS = {
+    t.key: (t.label, {s.key: t.mode(s) for s in SURFACE_SPECS if t.allows(s)})
+    for t in TILING_SPECS
 }
 
-# The menu picks a group, then a tiling, then — for the periodic
-# tilings — a surface. Every periodic tiling wraps every surface, with
-# one exception: 3.3.3.3.6 (snub hexagonal) is chiral (p6, no mirror or
-# glide), so the orientation-reversing Möbius seam cannot glue it to
-# itself; the menu shows that surface disabled. The sphere is its own
-# group: none of these periodic patterns can tile it (Euler's formula
-# forces curvature in), so it offers spherical tilings instead.
-
-SURFACE_LABELS = {
-    "flat": "Flat",
-    "torus": "Donut",
-    "cylinder": "Cylinder",
-    "mobius": "Möbius strip",
-}
-
-TILINGS = {  # tiling -> (label, {surface: mode})
-    "square": (
-        "Squares",
-        {"flat": "square", "torus": "torus",
-         "cylinder": "cylinder", "mobius": "mobius"},
-    ),
-    "tri": (
-        "Triangles",
-        {"flat": "trigrid", "torus": "torustri",
-         "cylinder": "cyltri", "mobius": "mobiustri"},
-    ),
-    "hex": (
-        "Hexagons",
-        {"flat": "hex", "torus": "torushex",
-         "cylinder": "cylhex", "mobius": "mobiushex"},
-    ),
-    "elongated": (
-        "Elongated triangular",
-        {"flat": "elongated", "torus": "toruselongated",
-         "cylinder": "cylelongated", "mobius": "mobiuselongated"},
-    ),
-    "snubsquare": (
-        "Snub square",
-        {"flat": "snubsquare", "torus": "torussnubsquare",
-         "cylinder": "cylsnubsquare", "mobius": "mobiussnubsquare"},
-    ),
-    "kagome": (
-        "Kagome",
-        {"flat": "kagome", "torus": "toruskagome",
-         "cylinder": "cylkagome", "mobius": "mobiuskagome"},
-    ),
-    "snubhex": (
-        "Snub hexagonal",
-        {"flat": "snubhex", "torus": "torussnubhex",
-         "cylinder": "cylsnubhex"},  # chiral: no Möbius strip
-    ),
-    "truncsquare": (
-        "Truncated square",
-        {"flat": "truncsquare", "torus": "torustruncsquare",
-         "cylinder": "cyltruncsquare", "mobius": "mobiustruncsquare"},
-    ),
-    "trunchex": (
-        "Truncated hexagonal",
-        {"flat": "trunchex", "torus": "torustrunchex",
-         "cylinder": "cyltrunchex", "mobius": "mobiustrunchex"},
-    ),
-    "rhombitrihex": (
-        "Rhombitrihexagonal",
-        {"flat": "rhombitrihex", "torus": "torusrhombitrihex",
-         "cylinder": "cylrhombitrihex", "mobius": "mobiusrhombitrihex"},
-    ),
-    "trunctrihex": (
-        "Truncated trihexagonal",
-        {"flat": "trunctrihex", "torus": "torustrunctrihex",
-         "cylinder": "cyltrunctrihex", "mobius": "mobiustrunctrihex"},
-    ),
-}
-
-GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
+# group -> (label, modes); the periodic group routes through TILINGS, the
+# rest list their one-off modes directly.
+GROUPS = {
     "periodic": ("Periodic tilings", ()),
     "aperiodic": ("Aperiodic", ("penrose", "hat")),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
@@ -146,8 +121,36 @@ GROUPS = {  # group -> (label, modes); the periodic group goes via TILINGS
     "shaped": ("Shaped boards", ("triangle", "hexhex")),
 }
 
+# Labels for the non-periodic (one-off) modes listed in GROUPS.
+SOLO_LABELS = {
+    "penrose": "Penrose rhombi",
+    "hat": "The Hat",
+    "sphere": "60 pentagons",
+    "c80": "C80 fullerene",
+    "c180": "C180 fullerene",
+    "spheretri": "Triangles",
+    "snubdodec": "Snub dodecahedron",
+    "cube": "Cube",
+    "tetrahedron": "Tetrahedron",
+    "tetraframe": "Tetrahedron frame",
+    "cubeframe": "Cube frame",
+    "steppedbipyramid": "Stepped bipyramid",
+    "triangle": "Triangle of triangles",
+    "hexhex": "Hexagon of hexagons",
+}
+
+# mode -> label. Periodic modes take the tiling's label; the flat triangle
+# grid keeps its own historical CLI label.
+MODE_LABELS = {
+    **{t.mode(s): t.label
+       for t in TILING_SPECS for s in SURFACE_SPECS if t.allows(s)},
+    "trigrid": "Triangle grid",
+    **SOLO_LABELS,
+}
+
+_SOLID_MODES = frozenset(GROUPS["sphere"][1]) | frozenset(GROUPS["polyhedra"][1])
 MODES_3D = frozenset(
-    {"sphere", "c80", "c180", "spheretri", "snubdodec", "cube", "tetrahedron",
-     "tetraframe", "cubeframe", "steppedbipyramid"}
-    | {mode for mode in MODE_LABELS if mode.startswith(("torus", "mobius", "cyl"))}
+    _SOLID_MODES
+    | {t.mode(s) for t in TILING_SPECS for s in SURFACE_SPECS
+       if s.is_3d and t.allows(s)}
 )
