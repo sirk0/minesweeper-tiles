@@ -18,7 +18,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["minesweeper"]
+packages = ["minesweeper", "minesweeper.boards"]
 
 [tool.setuptools.package-data]
 minesweeper = ["assets/fonts/*.ttf", "assets/fonts/*.txt"]
@@ -26,3 +26,13 @@ minesweeper = ["assets/fonts/*.ttf", "assets/fonts/*.txt"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+# Dense geometry code and the preset/label tables run long on purpose;
+# wrapping them hurts more than it helps.
+ignore = ["E501"]

@@ -1,22 +1,21 @@
-import pytest
-
 import math
 from collections import Counter, defaultdict
 
+import pytest
+
 from minesweeper.boards import (
     _ARCH_CONFIGS,
+    ARCH_TILINGS,
     DIFFICULTIES,
     GROUPS,
     MODE_LABELS,
     MODES_3D,
     SURFACE_LABELS,
     TILINGS,
-    arch_cylinder_board,
     arch_mobius_board,
     arch_torus_board,
     archimedean_board,
     build_board,
-    snub_dodecahedron_board,
     c80_board,
     c180_board,
     cube_board,
@@ -32,10 +31,12 @@ from minesweeper.boards import (
     mobius_triangle_board,
     newell_normal,
     penrose_board,
+    snub_dodecahedron_board,
     sphere_board,
     sphere_triangle_board,
     square_board,
     stepped_bipyramid_board,
+    surface_of,
     tetrahedron_board,
     tetrahedron_frame_board,
     torus_board,
@@ -44,64 +45,56 @@ from minesweeper.boards import (
     triangle_board,
     triangle_grid_board,
 )
+from minesweeper.boards import (
+    boundary_components as _boundary_components,
+)
+from minesweeper.boards import (
+    corner_fans as _corner_fans,
+)
+from minesweeper.boards import (
+    euler_characteristic as _euler_characteristic,
+)
 
-ALL_BOARDS = [
+# Template tilings split by symmetry type. Archimedean tilings are
+# vertex-transitive (every vertex has the same configuration); their Laves
+# duals are face-transitive (every tile congruent) and get a different set
+# of invariants. Reflective tilings (a plain mirror, not just a glide or
+# pinwheel) additionally give left-right / top-bottom symmetric boards.
+_VERTEX_TRANSITIVE = [t.key for t in ARCH_TILINGS if t.vertex_transitive]
+_FACE_TRANSITIVE = [t.key for t in ARCH_TILINGS if not t.vertex_transitive]
+_REFLECTIVE = {
+    t.key for t in ARCH_TILINGS
+    if t.template().mirror is not None and not t.template().glide
+}
+
+
+def _tile_signature(polygon):
+    """A congruence signature: the multiset of edge lengths and interior
+    angles, rounded. Two tiles with equal signatures are congruent up to
+    rotation and reflection."""
+    n = len(polygon)
+    edges = sorted(round(math.dist(polygon[i], polygon[(i + 1) % n]), 4)
+                   for i in range(n))
+    angles = []
+    for i in range(n):
+        a, b, c = polygon[i - 1], polygon[i], polygon[(i + 1) % n]
+        v1, v2 = (a[0] - b[0], a[1] - b[1]), (c[0] - b[0], c[1] - b[1])
+        angles.append(round(abs(math.atan2(v1[0] * v2[1] - v1[1] * v2[0],
+                                            v1[0] * v2[0] + v1[1] * v2[1])), 4))
+    return (tuple(edges), tuple(sorted(angles)))
+
+# Every registered mode (easy preset) so the invariant suite below covers
+# any tiling or surface the moment it is added to the catalog. A few
+# extra-small hand-built boards exercise seam edge cases the easy presets
+# are too large to reach.
+ALL_BOARDS = [build_board(mode, "easy") for mode in sorted(MODE_LABELS)] + [
     square_board(5, 5, 3),
-    triangle_board(6, 4),
-    triangle_grid_board(5, 9, 4),
-    hex_board(5, 6, 4),
-    hexhex_board(3, 5),
-    penrose_board(3, 9),
-    hat_board(2, 10, keep=48),
-    sphere_board(7),
-    c80_board(5),
-    c180_board(10),
-    sphere_triangle_board(10),
-    cube_board(4, 12),
-    tetrahedron_board(8, 4),
-    cube_frame_board(6, 2, 40),
-    stepped_bipyramid_board(6, 3, 20),
     torus_board(12, 6, 9),
-    torus_triangle_board(10, 5, 12),
-    torus_hex_board(6, 12, 9),
     mobius_board(20, 4, 10),
-    mobius_triangle_board(14, 4, 13),
     mobius_hex_board(14, 3, 6),
-    cylinder_board(12, 7, 10),
     cylinder_triangle_board(16, 6, 11),
-    cylinder_hex_board(12, 6, 9),
-    snub_dodecahedron_board(10),
-    archimedean_board("elongated", 5, 2, 11),
-    archimedean_board("snubsquare", 3, 3, 11),
-    archimedean_board("kagome", 4, 2, 11),
-    archimedean_board("snubhex", 3, 2, 12),
-    archimedean_board("truncsquare", 5, 5, 10),
-    archimedean_board("trunchex", 4, 2, 13),
-    archimedean_board("rhombitrihex", 4, 2, 11),
-    archimedean_board("trunctrihex", 4, 2, 11),
-    arch_torus_board("rhombitrihex", 4, 2, 9),
-    arch_torus_board("trunctrihex", 4, 2, 9),
-    arch_cylinder_board("rhombitrihex", 5, 2, 9),
-    arch_cylinder_board("trunctrihex", 5, 2, 9),
-    arch_mobius_board("rhombitrihex", 6, 2, 9),
-    arch_mobius_board("trunctrihex", 6, 2, 9),
-    arch_torus_board("elongated", 12, 1, 9),
-    arch_torus_board("snubsquare", 5, 2, 8),
-    arch_torus_board("kagome", 8, 2, 12),
-    arch_torus_board("snubhex", 4, 1, 9),
-    arch_torus_board("truncsquare", 9, 4, 9),
-    arch_torus_board("trunchex", 7, 2, 10),
-    arch_cylinder_board("elongated", 10, 1, 8),
-    arch_cylinder_board("snubsquare", 5, 2, 8),
-    arch_cylinder_board("kagome", 6, 2, 9),
-    arch_cylinder_board("snubhex", 4, 1, 9),
-    arch_cylinder_board("truncsquare", 9, 3, 7),
-    arch_cylinder_board("trunchex", 6, 2, 9),
-    arch_mobius_board("elongated", 12, 1, 9),
     arch_mobius_board("snubsquare", 13, 2, 10),
-    arch_mobius_board("kagome", 12, 1, 9),
-    arch_mobius_board("truncsquare", 12, 3, 9),
-    arch_mobius_board("trunchex", 9, 1, 7),
+    archimedean_board("snubhex", 3, 2, 12),
 ]
 
 
@@ -419,16 +412,17 @@ class TestArchimedean:
     """The eight non-regular Archimedean tilings (six with two tile
     shapes, plus 3.4.6.4 and 4.6.12 with three)."""
 
-    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    @pytest.mark.parametrize("mode", sorted(_VERTEX_TRANSITIVE))
     def test_has_exactly_the_two_configured_shapes(self, mode):
         config, _ = _ARCH_CONFIGS[mode]
         board = archimedean_board(mode, 5, 5, 5)
         assert {len(p) for p in board.polygons.values()} == set(config)
 
-    @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
+    @pytest.mark.parametrize("mode", sorted(_VERTEX_TRANSITIVE))
     def test_interior_vertex_configuration(self, mode):
         """Around every interior vertex the tile sizes must match the
-        tiling's vertex configuration (e.g. 3.3.4.3.4)."""
+        tiling's vertex configuration (e.g. 3.3.4.3.4). Vertex-transitive
+        (Archimedean) tilings only; Laves duals vary vertex by vertex."""
         config, _ = _ARCH_CONFIGS[mode]
         board = archimedean_board(mode, 5, 5, 5)
         at_vertex = defaultdict(list)
@@ -453,6 +447,16 @@ class TestArchimedean:
                 assert sorted(s for s, _ in entries) == sorted(config)
         assert interior > 10  # the check actually saw interior vertices
 
+    @pytest.mark.parametrize("mode", sorted(_FACE_TRANSITIVE))
+    def test_tiles_are_congruent(self, mode):
+        """A face-transitive (Laves) tiling is built from one congruent
+        tile: every polygon has the same sorted edge lengths and interior
+        angles (up to rotation/reflection). Empty until Laves tilings land;
+        it then covers each automatically."""
+        board = archimedean_board(mode, 5, 5, 5)
+        signatures = {_tile_signature(p) for p in board.polygons.values()}
+        assert len(signatures) == 1, f"{mode} has non-congruent tiles"
+
     @pytest.mark.parametrize("mode", sorted(_ARCH_CONFIGS))
     def test_no_overlapping_tiles(self, mode):
         # any edge shared by more than two tiles means overlap
@@ -467,17 +471,17 @@ class TestArchimedean:
         assert all(count <= 2 for count in edge_count.values())
 
     # the reflective tilings (cmm / p4m / p6m) get a plain mirror; the
-    # chiral snub tilings (p4g glide, p6) can only manage the pinwheel
-    # rotation
-    REFLECTIVE = {"elongated", "kagome", "truncsquare", "trunchex",
-                  "rhombitrihex", "trunctrihex"}
+    # chiral/glide tilings (p4g glide, p6) can only manage the pinwheel
+    # rotation. Derived so a new tiling classifies itself.
+    REFLECTIVE = _REFLECTIVE
 
     @staticmethod
     def _symmetry(board, reflect):
         """The largest fraction of tiles that map onto another tile when
-        the board is reflected/rotated about a centre. A true symmetry
-        centre sits at a largest-tile centroid, so scanning those finds
-        the best axis without guessing."""
+        the board is reflected/rotated about a centre. A symmetry centre
+        sits at a largest-tile centroid (vertex-transitive tilings) or at
+        a vertex (some face-transitive Laves tilings), so scan both sets of
+        candidates and take the best."""
         polygons = list(board.polygons.values())
         centroids = [(sum(x for x, _ in p) / len(p),
                       sum(y for _, y in p) / len(p)) for p in polygons]
@@ -494,9 +498,18 @@ class TestArchimedean:
                        for i in (-1, 0, 1) for j in (-1, 0, 1)
                        for px, py in grid.get((gx + i, gy + j), ()))
 
+        board_cx = sum(x for x, _ in centroids) / len(centroids)
+        board_cy = sum(y for _, y in centroids) / len(centroids)
+        vertices = {(round(x, 6), round(y, 6))
+                    for p in polygons for x, y in p}
+        # candidate centres near the middle: biggest-tile centroids and
+        # vertices (a rotation centre lies on one of them)
+        candidates = [c for p, c in zip(polygons, centroids)
+                      if len(p) == biggest]
+        candidates += sorted(vertices, key=lambda v: (v[0] - board_cx) ** 2
+                             + (v[1] - board_cy) ** 2)[:12]
         best = 0.0
-        for cx, cy in (c for p, c in zip(polygons, centroids)
-                       if len(p) == biggest):
+        for cx, cy in candidates:
             hits = sum(1 for x, y in centroids if present(*reflect(cx, cy, x, y)))
             best = max(best, hits / len(centroids))
         return best
@@ -683,41 +696,6 @@ class TestSteppedCube:
             stepped_bipyramid_board(4, 3, 5)  # apex 4 - 2*2 = 0: nothing left
 
 
-def _corner_fans(board):
-    """Cell sizes around each distinct polygon corner of a 3D board."""
-    at_vertex = defaultdict(list)
-    for polygon in board.polygons.values():
-        for point in polygon:
-            key = tuple(round(c, 6) for c in point)
-            at_vertex[key].append(len(polygon))
-    return at_vertex
-
-
-def _boundary_components(board):
-    """Connected components of the edges that belong to only one cell."""
-    count = defaultdict(int)
-    for polygon in board.polygons.values():
-        points = [tuple(round(c, 6) for c in p) for p in polygon]
-        for a, b in zip(points, points[1:] + points[:1]):
-            count[frozenset((a, b))] += 1
-    graph = defaultdict(set)
-    for edge, cells in count.items():
-        if cells == 1:
-            a, b = edge
-            graph[a].add(b)
-            graph[b].add(a)
-    seen, components = set(), 0
-    for start in graph:
-        if start in seen:
-            continue
-        components += 1
-        stack = [start]
-        while stack:
-            vertex = stack.pop()
-            if vertex not in seen:
-                seen.add(vertex)
-                stack.extend(graph[vertex] - seen)
-    return components
 
 
 class TestWrappedArchimedean:
@@ -731,7 +709,13 @@ class TestWrappedArchimedean:
         and any(mode.endswith(tiling) for tiling in _ARCH_CONFIGS)
     ]
 
-    @pytest.mark.parametrize("tiling", sorted(_ARCH_CONFIGS))
+    # only the vertex-transitive (Archimedean) tilings have a single vertex
+    # configuration to check; Laves duals vary vertex by vertex.
+    WRAPPED_VERTEX_TRANSITIVE = [
+        m for m in WRAPPED if any(m.endswith(t) for t in _VERTEX_TRANSITIVE)
+    ]
+
+    @pytest.mark.parametrize("tiling", sorted(_VERTEX_TRANSITIVE))
     def test_torus_vertex_configuration_everywhere(self, tiling):
         """A torus has no boundary, so every single vertex must show the
         tiling's full vertex configuration."""
@@ -740,7 +724,7 @@ class TestWrappedArchimedean:
         for fan in _corner_fans(board).values():
             assert sorted(fan) == config
 
-    @pytest.mark.parametrize("mode", sorted(WRAPPED))
+    @pytest.mark.parametrize("mode", sorted(WRAPPED_VERTEX_TRANSITIVE))
     def test_vertices_are_full_or_boundary(self, mode):
         """On the open surfaces every vertex fan is the configuration or
         a part of it (boundary vertices)."""
@@ -766,12 +750,10 @@ class TestWrappedArchimedean:
     @pytest.mark.parametrize("mode", sorted(WRAPPED))
     def test_boundary_circles_match_the_surface(self, mode):
         """The seam gluing is what distinguishes the surfaces: a torus is
-        closed, a cylinder has two rims, a Möbius strip has one."""
+        closed, a cylinder has two rims, a Möbius strip has one. Each
+        surface's expected count is declared once on its SurfaceSpec."""
         board = build_board(mode, "easy")
-        want = {"torus": 0, "cyl": 2, "mobius": 1}[
-            next(p for p in ("torus", "mobius", "cyl") if mode.startswith(p))
-        ]
-        assert _boundary_components(board) == want
+        assert _boundary_components(board) == surface_of(mode).boundary_components
 
     def test_cell_counts(self):
         counts = {
@@ -837,17 +819,6 @@ class TestWrappedArchimedean:
                     board.mode,
                     cell,
                 )
-
-
-def _euler_characteristic(board):
-    """V - E + F over the board's polygon mesh (2 for sphere topology)."""
-    vertices = len(_corner_fans(board))
-    edges = set()
-    for polygon in board.polygons.values():
-        points = [tuple(round(c, 6) for c in p) for p in polygon]
-        for a, b in zip(points, points[1:] + points[:1]):
-            edges.add(frozenset((a, b)))
-    return vertices - len(edges) + len(board.polygons)
 
 
 class TestPolyhedra:
