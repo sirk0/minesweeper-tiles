@@ -37,6 +37,7 @@ from minesweeper.boards import (
     TILINGS,
     build_board,
     newell_normal,
+    view_hint,
 )
 from minesweeper.game import CellState, Game, GameState
 
@@ -1098,7 +1099,6 @@ class GameScreen3D(BaseGameScreen):
 
     VIEWPORT = 540 * S
     ROTATE_SPEED = 0.008 / S  # radians per canvas pixel of drag
-    TILT = {"torus": -1.0, "mobius": -0.8, "cyl": -0.35}  # by mode prefix
 
     def _initial_rotation(self):
         # flat-faced solids show only one face head-on; a 3/4 turn reveals
@@ -1109,10 +1109,10 @@ class GameScreen3D(BaseGameScreen):
         # turn to a vertex-first 3/4 view so the frame's gaps read clearly
         if self.mode == "tetraframe":
             return mat_mul(rot_x(-0.62), rot_y(0.45))
-        for prefix, angle in self.TILT.items():
-            if self.mode.startswith(prefix):
-                return rot_x(angle)
-        return IDENTITY
+        # wrapped surfaces tilt by their SurfaceSpec hint (donut, cylinder,
+        # Möbius strip); everything else faces straight on
+        tilt = view_hint(self.mode)
+        return rot_x(tilt) if tilt is not None else IDENTITY
 
     def _setup_geometry(self) -> None:
         self.rotation = self._initial_rotation()
@@ -1246,11 +1246,17 @@ class MenuScreen:
         self.group: str | None = None  # None = group page
         self.tiling: str | None = None  # periodic group: tiling page done
 
+    def _via_tilings(self) -> bool:
+        """Whether the current group navigates tiling -> surface. Signalled
+        by an empty mode list in GROUPS (the periodic group routes through
+        TILINGS); the others list their modes directly."""
+        return self.group is not None and not GROUPS[self.group][1]
+
     def _items(self) -> list[tuple[str, str, bool]]:
         """(key, label, enabled) rows for the current page."""
         if self.group is None:
             return [(key, label, True) for key, (label, _) in GROUPS.items()]
-        if self.group == "periodic":
+        if self._via_tilings():
             if self.tiling is None:
                 return [(key, label, True) for key, (label, _) in TILINGS.items()]
             surfaces = TILINGS[self.tiling][1]
@@ -1265,9 +1271,9 @@ class MenuScreen:
     def _subtitle(self) -> str:
         if self.group is None:
             return "choose a board"
-        if self.group == "periodic":
+        if self._via_tilings():
             if self.tiling is None:
-                return "Periodic tilings — choose a tiling"
+                return GROUPS[self.group][0] + " — choose a tiling"
             return TILINGS[self.tiling][0] + " — choose a surface"
         return GROUPS[self.group][0] + " — choose a tiling"
 
@@ -1348,9 +1354,9 @@ class MenuScreen:
                     return None
                 if self.group is None:
                     self.group = key
-                elif self.group == "periodic" and self.tiling is None:
+                elif self._via_tilings() and self.tiling is None:
                     self.tiling = key
-                elif self.group == "periodic":
+                elif self._via_tilings():
                     return ("start", TILINGS[self.tiling][1][key])
                 else:
                     return ("start", key)
