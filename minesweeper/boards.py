@@ -209,6 +209,16 @@ def _build(
 
 
 # -- 2D builders (cells keyed by (row, index)) ------------------------------
+#
+# AGENT NOTE (convention for all future flat boards): a finite flat board
+# should read as a roughly *square* block, never a round disc. When a
+# tiling has no natural rectangular extent (aperiodic patches, the
+# two-shape Archimedean tilings), grow it generously and then trim to the
+# ``keep`` centremost cells by Chebyshev distance from the centroid --
+# ``max(|dx|, |dy|)`` -- which carves out a square. See penrose_board,
+# hat_board and archimedean_board (all take a ``keep`` count) for the
+# pattern; filtering by Euclidean ``dx^2 + dy^2 <= r^2`` instead leaves a
+# circle and should be avoided for player-facing boards.
 
 
 def square_board(rows: int, cols: int, mine_count: int, scale: float = 32) -> Board:
@@ -926,10 +936,16 @@ def _snubhex_patch(radius: float) -> tuple[dict, callable]:
 
 
 def archimedean_board(
-    mode: str, radius: float, mine_count: int, scale: float = 40
+    mode: str, radius: float, mine_count: int, scale: float = 40,
+    keep: int | None = None,
 ) -> Board:
-    """A disc of an Archimedean tiling: all tiles whose center lies
-    within ``radius`` edge lengths of the seed vertex."""
+    """A patch of an Archimedean tiling: all tiles whose center lies
+    within ``radius`` edge lengths of the seed vertex. ``keep`` then
+    trims that disc to its ``keep`` centremost tiles by Chebyshev
+    distance -- a roughly square block rather than a round wheel, like
+    penrose_board and hat_board (``radius`` must be generous enough to
+    grow a disc that comfortably contains the square); ``None`` keeps the
+    whole disc."""
     if mode == "snubhex":
         cells, position = _snubhex_patch(radius)
     else:
@@ -943,6 +959,17 @@ def archimedean_board(
             cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
             if cx * cx + cy * cy <= radius * radius:
                 cells[(size, index)] = points
+
+    if keep is not None and keep < len(cells):
+        centroid = {}
+        for cell, keys in cells.items():
+            xs, ys = zip(*(position(k) for k in keys))
+            centroid[cell] = (sum(xs) / len(xs), sum(ys) / len(ys))
+        gx = sum(c[0] for c in centroid.values()) / len(centroid)
+        gy = sum(c[1] for c in centroid.values()) / len(centroid)
+        kept = sorted(cells, key=lambda cell: (
+            max(abs(centroid[cell][0] - gx), abs(centroid[cell][1] - gy)), cell))
+        cells = {cell: cells[cell] for cell in kept[:keep]}
 
     adjacency = _shared_vertex_adjacency(cells)
     xy = {key: position(key) for quad in cells.values() for key in quad}
@@ -2234,35 +2261,38 @@ _PRESETS = {
         "medium": lambda: hat_board(3, 28, keep=150, scale=9.5),
         "hard": lambda: hat_board(3, 65, keep=430, scale=7),
     },
+    # Flat two-shape Archimedean tilings are trimmed to a roughly square
+    # block (keep=centremost N tiles), like the Penrose and Hat boards,
+    # rather than left as a round disc.
     "elongated": {
-        "easy": lambda: archimedean_board("elongated", 4, 11, scale=62),
-        "medium": lambda: archimedean_board("elongated", 5.8, 27, scale=41),
-        "hard": lambda: archimedean_board("elongated", 8.2, 63, scale=29),
+        "easy": lambda: archimedean_board("elongated", 6.0, 11, scale=65, keep=78),
+        "medium": lambda: archimedean_board("elongated", 8.7, 27, scale=43, keep=169),
+        "hard": lambda: archimedean_board("elongated", 12.3, 63, scale=32, keep=339),
     },
     "snubsquare": {
-        "easy": lambda: archimedean_board("snubsquare", 4, 11, scale=59),
-        "medium": lambda: archimedean_board("snubsquare", 5.8, 28, scale=41),
-        "hard": lambda: archimedean_board("snubsquare", 8.2, 62, scale=29),
+        "easy": lambda: archimedean_board("snubsquare", 6.0, 11, scale=57, keep=82),
+        "medium": lambda: archimedean_board("snubsquare", 8.7, 28, scale=43, keep=172),
+        "hard": lambda: archimedean_board("snubsquare", 12.3, 62, scale=31, keep=336),
     },
     "kagome": {
-        "easy": lambda: archimedean_board("kagome", 5.5, 11, scale=45),
-        "medium": lambda: archimedean_board("kagome", 8.5, 30, scale=29),
-        "hard": lambda: archimedean_board("kagome", 11.5, 65, scale=21),
+        "easy": lambda: archimedean_board("kagome", 8.2, 11, scale=44, keep=76),
+        "medium": lambda: archimedean_board("kagome", 12.8, 30, scale=30, keep=190),
+        "hard": lambda: archimedean_board("kagome", 17.2, 65, scale=23, keep=352),
     },
     "snubhex": {
-        "easy": lambda: archimedean_board("snubhex", 4.2, 12, scale=52),
-        "medium": lambda: archimedean_board("snubhex", 6.3, 30, scale=38),
-        "hard": lambda: archimedean_board("snubhex", 8.6, 64, scale=27),
+        "easy": lambda: archimedean_board("snubhex", 6.3, 12, scale=54, keep=85),
+        "medium": lambda: archimedean_board("snubhex", 9.4, 30, scale=39, keep=186),
+        "hard": lambda: archimedean_board("snubhex", 12.9, 64, scale=29, keep=347),
     },
     "truncsquare": {
-        "easy": lambda: archimedean_board("truncsquare", 8, 10, scale=31),
-        "medium": lambda: archimedean_board("truncsquare", 13, 29, scale=19),
-        "hard": lambda: archimedean_board("truncsquare", 17.5, 61, scale=14),
+        "easy": lambda: archimedean_board("truncsquare", 12.0, 10, scale=32, keep=69),
+        "medium": lambda: archimedean_board("truncsquare", 19.5, 29, scale=20, keep=179),
+        "hard": lambda: archimedean_board("truncsquare", 26.2, 61, scale=15, keep=330),
     },
     "trunchex": {
-        "easy": lambda: archimedean_board("trunchex", 11, 13, scale=20.5),
-        "medium": lambda: archimedean_board("trunchex", 16, 32, scale=15),
-        "hard": lambda: archimedean_board("trunchex", 21, 64, scale=11.5),
+        "easy": lambda: archimedean_board("trunchex", 16.5, 13, scale=23, keep=94),
+        "medium": lambda: archimedean_board("trunchex", 24.0, 32, scale=16, keep=201),
+        "hard": lambda: archimedean_board("trunchex", 31.5, 64, scale=12, keep=344),
     },
     "sphere": {
         "easy": lambda: sphere_board(7),

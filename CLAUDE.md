@@ -15,7 +15,13 @@ tetrahedron, donut, Möbius strip, cylinder). Python 3.13 (see
   donut/cylinder/Möbius via `_ArchTemplate` (one rectangular periodic
   domain + modular seam gluing; snub hexagonal is chiral, so no Möbius).
   Presets per mode/difficulty in `_PRESETS`; `GROUPS`/`TILINGS`/
-  `SURFACE_LABELS` catalog the menu.
+  `SURFACE_LABELS` catalog the menu. Board-shape convention (applies to
+  all future flat boards): a finite flat board should read as a roughly
+  *square* block, not a round disc — when a tiling has no natural
+  rectangular extent, grow it generously and trim to the `keep` centremost
+  cells by Chebyshev distance (`max(|dx|, |dy|)`), as `penrose_board`,
+  `hat_board` and `archimedean_board` do. See the `AGENT NOTE` in
+  `boards.py`.
 - `minesweeper/gui.py` — pygame UI. `MenuScreen` (group → tiling →
   surface pages), `GameScreen` (flat), `GameScreen3D` (orthographic
   projection, back-face culling or two-sided, depth sort, drag to
