@@ -1,22 +1,93 @@
+"""Wrapping flat tilings onto 3D surfaces (donut, cylinder, Möbius strip).
+
+Every wrapped board is built the same way: pick vertex keys on an integer
+grid, glue them at the seam, map each key onto the surface with an
+*immersion* ( _torus_point / _cylinder_point / _mobius_point ), then hand
+the cells to _assemble, which shares the adjacency / polygon / Board3D
+tail and the outward-orientation (closed) vs two-sided (open) choice.
+
+To add a surface (e.g. a Klein bottle) write one immersion point
+function and a wrap builder next to arch_torus_board / arch_mobius_board,
+then register a SurfaceSpec in catalog.py and presets in presets.py.
+See AGENTS.md.
+"""
+
 from __future__ import annotations
 
 import math
 
-from minesweeper.boards.core import Board3D, LatticePoint, ROOT3, Vec3, _HEX_VERTEX_OFFSETS, _orient_outward, _shared_vertex_adjacency
+from minesweeper.boards.core import (
+    Board3D,
+    ROOT3,
+    Vec3,
+    _HEX_VERTEX_OFFSETS,
+    _orient_outward,
+    _shared_vertex_adjacency,
+)
 from minesweeper.boards.tilings import _arch_template, _triangle_vertices
 
 
+# -- immersions: one point of a surface from its parameters ------------------
 
 
-def _torus_position(i: float, j: float, ring: int, tube: int, tube_radius: float) -> Vec3:
-    theta = 2 * math.pi * i / ring
-    phi = 2 * math.pi * j / tube
+def _torus_point(theta: float, phi: float, tube_radius: float) -> Vec3:
+    """A donut point at angle ``theta`` round the ring and ``phi`` round
+    the tube (radians)."""
     radial = 1.0 + tube_radius * math.cos(phi)
-    return (
-        radial * math.cos(theta),
-        radial * math.sin(theta),
-        tube_radius * math.sin(phi),
-    )
+    return (radial * math.cos(theta), radial * math.sin(theta),
+            tube_radius * math.sin(phi))
+
+
+def _cylinder_point(theta: float, height: float) -> Vec3:
+    """A unit-radius cylinder point at angle ``theta`` (radians) round the
+    axis, ``height`` up it in world units."""
+    return (math.cos(theta), height, math.sin(theta))
+
+
+def _mobius_point(u: float, v: float) -> Vec3:
+    """A Möbius-strip point: ``u`` is the angle round the loop (radians),
+    ``v`` the signed offset across the half-twisting band."""
+    radial = 1.0 + v * math.cos(u / 2)
+    return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
+
+
+# -- assembly: shared tail for every wrapped board ---------------------------
+
+
+def _orient_from_ring(polygon: list[Vec3]) -> list[Vec3]:
+    """Wind a polygon outward, away from the ring circle through the tube
+    centre (the outside of a closed torus)."""
+    centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
+    ring_scale = math.hypot(centroid[0], centroid[1])
+    ring_point = (centroid[0] / ring_scale, centroid[1] / ring_scale, 0.0)
+    outward = tuple(c - p for c, p in zip(centroid, ring_point))
+    return _orient_outward(polygon, outward)
+
+
+def _assemble(mode, cells, point, mine_count, *, two_sided, radius) -> Board3D:
+    """Position every vertex key with ``point(key)``, build adjacency and
+    polygons, and wrap it in a Board3D. Closed surfaces (``two_sided``
+    False) orient each face outward from the ring; open or non-orientable
+    ones keep both sides. ``radius`` is a value or a callable of the
+    positions dict."""
+    positions = {key: point(key) for keys in cells.values() for key in keys}
+    adjacency = _shared_vertex_adjacency(cells)
+    if two_sided:
+        polygons = {cell: [positions[k] for k in keys]
+                    for cell, keys in cells.items()}
+    else:
+        polygons = {cell: _orient_from_ring([positions[k] for k in keys])
+                    for cell, keys in cells.items()}
+    r = radius(positions) if callable(radius) else radius
+    return Board3D(mode, polygons, adjacency, mine_count, radius=r,
+                   two_sided=two_sided)
+
+
+def _max_radius(positions) -> float:
+    return max(math.hypot(*p) for p in positions.values())
+
+
+# -- the donut ---------------------------------------------------------------
 
 
 def torus_board(
@@ -24,39 +95,19 @@ def torus_board(
 ) -> Board3D:
     """A donut tiled with ``ring * tube`` quadrilaterals. The grid wraps
     in both directions, so every cell has exactly 8 neighbors."""
-    positions = {
-        (i, j): _torus_position(i, j, ring, tube, tube_radius)
-        for i in range(ring)
-        for j in range(tube)
-    }
+    def point(key):
+        i, j = key
+        return _torus_point(2 * math.pi * i / ring,
+                            2 * math.pi * j / tube, tube_radius)
+
     cells = {
-        (i, j): [
-            (i, j),
-            ((i + 1) % ring, j),
-            ((i + 1) % ring, (j + 1) % tube),
-            (i, (j + 1) % tube),
-        ]
+        (i, j): [(i, j), ((i + 1) % ring, j),
+                 ((i + 1) % ring, (j + 1) % tube), (i, (j + 1) % tube)]
         for i in range(ring)
         for j in range(tube)
     }
-    return _torus_oriented(
-        "torus", positions, cells, mine_count, radius=1.0 + tube_radius
-    )
-
-
-def _torus_oriented(mode, positions, cells, mine_count, radius) -> Board3D:
-    """Assemble a torus board, orienting each polygon outward (away from
-    the ring circle through the tube center)."""
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {}
-    for cell, keys in cells.items():
-        polygon = [positions[key] for key in keys]
-        centroid = tuple(sum(c) / len(polygon) for c in zip(*polygon))
-        ring_scale = math.hypot(centroid[0], centroid[1])
-        ring_point = (centroid[0] / ring_scale, centroid[1] / ring_scale, 0.0)
-        outward = tuple(c - p for c, p in zip(centroid, ring_point))
-        polygons[cell] = _orient_outward(polygon, outward)
-    return Board3D(mode, polygons, adjacency, mine_count, radius=radius)
+    return _assemble("torus", cells, point, mine_count,
+                     two_sided=False, radius=1.0 + tube_radius)
 
 
 def torus_triangle_board(
@@ -64,23 +115,20 @@ def torus_triangle_board(
 ) -> Board3D:
     """A donut tiled with triangles: each quad of the torus grid is
     split along a diagonal, giving ``2 * ring * tube`` cells."""
-    positions = {
-        (i, j): _torus_position(i, j, ring, tube, tube_radius)
-        for i in range(ring)
-        for j in range(tube)
-    }
+    def point(key):
+        i, j = key
+        return _torus_point(2 * math.pi * i / ring,
+                            2 * math.pi * j / tube, tube_radius)
+
     cells = {}
     for i in range(ring):
         for j in range(tube):
-            a = (i, j)
-            b = ((i + 1) % ring, j)
-            c = ((i + 1) % ring, (j + 1) % tube)
-            d = (i, (j + 1) % tube)
+            a, b = (i, j), ((i + 1) % ring, j)
+            c, d = ((i + 1) % ring, (j + 1) % tube), (i, (j + 1) % tube)
             cells[(i, j, 0)] = [a, b, c]
             cells[(i, j, 1)] = [a, c, d]
-    return _torus_oriented(
-        "torustri", positions, cells, mine_count, radius=1.0 + tube_radius
-    )
+    return _assemble("torustri", cells, point, mine_count,
+                     two_sided=False, radius=1.0 + tube_radius)
 
 
 def torus_hex_board(
@@ -94,33 +142,22 @@ def torus_hex_board(
         raise ValueError("rows must be even so the offset lattice wraps")
     kx_period, ky_period = 2 * cols, 3 * rows
 
-    def position(kx: int, ky: int) -> Vec3:
-        theta = 2 * math.pi * kx / kx_period  # around the ring
-        phi = 2 * math.pi * ky / ky_period  # around the tube
-        radial = 1.0 + tube_radius * math.cos(phi)
-        return (
-            radial * math.cos(theta),
-            radial * math.sin(theta),
-            tube_radius * math.sin(phi),
-        )
+    def point(key):
+        kx, ky = key
+        return _torus_point(2 * math.pi * kx / kx_period,
+                            2 * math.pi * ky / ky_period, tube_radius)
 
     cells = {}
-    positions = {}
     for r in range(rows):
         for c in range(cols):
-            kx = 2 * c + (r % 2) + 1
-            ky = 3 * r + 2
-            keys = [
-                ((kx + ox) % kx_period, (ky + oy) % ky_period)
-                for ox, oy in _HEX_VERTEX_OFFSETS
-            ]
-            cells[(r, c)] = keys
-            for key in keys:
-                if key not in positions:
-                    positions[key] = position(*key)
-    return _torus_oriented(
-        "torushex", positions, cells, mine_count, radius=1.0 + tube_radius
-    )
+            kx, ky = 2 * c + (r % 2) + 1, 3 * r + 2
+            cells[(r, c)] = [((kx + ox) % kx_period, (ky + oy) % ky_period)
+                             for ox, oy in _HEX_VERTEX_OFFSETS]
+    return _assemble("torushex", cells, point, mine_count,
+                     two_sided=False, radius=1.0 + tube_radius)
+
+
+# -- the Möbius strip --------------------------------------------------------
 
 
 def mobius_board(ring: int, width_cells: int, mine_count: int) -> Board3D:
@@ -129,48 +166,21 @@ def mobius_board(ring: int, width_cells: int, mine_count: int) -> Board3D:
     so column ``ring`` glues to column 0 upside down."""
     half_width = min(0.7, math.pi * width_cells / ring / 2)
 
-    def vertex_key(i: int, j: int) -> LatticePoint:
-        if i >= ring:  # the seam: glue to the start, flipped
-            return (i - ring, width_cells - j)
-        return (i, j)
+    def key(i, j):
+        return (i - ring, width_cells - j) if i >= ring else (i, j)
 
-    def position(i: int, j: int) -> Vec3:
-        u = 2 * math.pi * i / ring
-        v = half_width * (2 * j / width_cells - 1)
-        radial = 1.0 + v * math.cos(u / 2)
-        return (
-            radial * math.cos(u),
-            radial * math.sin(u),
-            v * math.sin(u / 2),
-        )
+    def point(k):
+        i, j = k
+        return _mobius_point(2 * math.pi * i / ring,
+                             half_width * (2 * j / width_cells - 1))
 
-    positions = {
-        (i, j): position(i, j)
-        for i in range(ring)
-        for j in range(width_cells + 1)
-    }
     cells = {
-        (i, j): [
-            vertex_key(i, j),
-            vertex_key(i + 1, j),
-            vertex_key(i + 1, j + 1),
-            vertex_key(i, j + 1),
-        ]
+        (i, j): [key(i, j), key(i + 1, j), key(i + 1, j + 1), key(i, j + 1)]
         for i in range(ring)
         for j in range(width_cells)
     }
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {
-        cell: [positions[key] for key in keys] for cell, keys in cells.items()
-    }
-    return Board3D(
-        "mobius",
-        polygons,
-        adjacency,
-        mine_count,
-        radius=1.0 + half_width,
-        two_sided=True,  # non-orientable: no consistent outside
-    )
+    return _assemble("mobius", cells, point, mine_count,
+                     two_sided=True, radius=1.0 + half_width)
 
 
 def mobius_triangle_board(ring: int, width_cells: int, mine_count: int) -> Board3D:
@@ -178,39 +188,23 @@ def mobius_triangle_board(ring: int, width_cells: int, mine_count: int) -> Board
     split along a diagonal, giving ``2 * ring * width_cells`` cells."""
     half_width = min(0.7, math.pi * width_cells / ring / 2)
 
-    def vertex_key(i: int, j: int):
-        if i >= ring:
-            return (i - ring, width_cells - j)
-        return (i, j)
+    def key(i, j):
+        return (i - ring, width_cells - j) if i >= ring else (i, j)
 
-    def position(i: int, j: int) -> Vec3:
-        u = 2 * math.pi * i / ring
-        v = half_width * (2 * j / width_cells - 1)
-        radial = 1.0 + v * math.cos(u / 2)
-        return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
+    def point(k):
+        i, j = k
+        return _mobius_point(2 * math.pi * i / ring,
+                             half_width * (2 * j / width_cells - 1))
 
-    positions = {
-        (i, j): position(i, j)
-        for i in range(ring)
-        for j in range(width_cells + 1)
-    }
     cells = {}
     for i in range(ring):
         for j in range(width_cells):
-            a = vertex_key(i, j)
-            b = vertex_key(i + 1, j)
-            c = vertex_key(i + 1, j + 1)
-            d = vertex_key(i, j + 1)
+            a, b = key(i, j), key(i + 1, j)
+            c, d = key(i + 1, j + 1), key(i, j + 1)
             cells[(i, j, 0)] = [a, b, c]
             cells[(i, j, 1)] = [a, c, d]
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {
-        cell: [positions[key] for key in keys] for cell, keys in cells.items()
-    }
-    return Board3D(
-        "mobiustri", polygons, adjacency, mine_count,
-        radius=1.0 + half_width, two_sided=True,
-    )
+    return _assemble("mobiustri", cells, point, mine_count,
+                     two_sided=True, radius=1.0 + half_width)
 
 
 def mobius_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
@@ -223,36 +217,25 @@ def mobius_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
     ky_top = 3 * rows + 1  # the flip mirrors ky about the strip center
     half_width = min(0.7, math.pi * rows / ring)
 
-    def canonical(kx: int, ky: int):
-        if kx >= kx_period:
-            return (kx - kx_period, ky_top - ky)
-        return (kx, ky)
+    def key(kx, ky):
+        return (kx - kx_period, ky_top - ky) if kx >= kx_period else (kx, ky)
 
-    def position(kx: int, ky: int) -> Vec3:
-        u = 2 * math.pi * kx / kx_period
-        v = half_width * (2 * ky / ky_top - 1)
-        radial = 1.0 + v * math.cos(u / 2)
-        return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
+    def point(k):
+        kx, ky = k
+        return _mobius_point(2 * math.pi * kx / kx_period,
+                             half_width * (2 * ky / ky_top - 1))
 
     cells = {}
-    positions = {}
     for c in range(ring):
         for r in range(rows):
-            kx = 2 * c + (r % 2) + 1
-            ky = 3 * r + 2
-            keys = [canonical(kx + ox, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS]
-            cells[(r, c)] = keys
-            for key in keys:
-                if key not in positions:
-                    positions[key] = position(*key)
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {
-        cell: [positions[key] for key in keys] for cell, keys in cells.items()
-    }
-    return Board3D(
-        "mobiushex", polygons, adjacency, mine_count,
-        radius=1.0 + half_width, two_sided=True,
-    )
+            kx, ky = 2 * c + (r % 2) + 1, 3 * r + 2
+            cells[(r, c)] = [key(kx + ox, ky + oy)
+                             for ox, oy in _HEX_VERTEX_OFFSETS]
+    return _assemble("mobiushex", cells, point, mine_count,
+                     two_sided=True, radius=1.0 + half_width)
+
+
+# -- the cylinder ------------------------------------------------------------
 
 
 def cylinder_board(ring: int, rows: int, mine_count: int) -> Board3D:
@@ -262,35 +245,18 @@ def cylinder_board(ring: int, rows: int, mine_count: int) -> Board3D:
     row_height = 2 * math.pi / ring * 0.9  # near-square tiles
     height = rows * row_height
 
-    def position(i: int, j: int) -> Vec3:
-        theta = 2 * math.pi * i / ring
-        return (math.cos(theta), j * row_height - height / 2, math.sin(theta))
+    def point(k):
+        i, j = k
+        return _cylinder_point(2 * math.pi * i / ring,
+                               j * row_height - height / 2)
 
-    positions = {
-        (i, j): position(i, j) for i in range(ring) for j in range(rows + 1)
-    }
     cells = {
-        (i, j): [
-            (i, j),
-            ((i + 1) % ring, j),
-            ((i + 1) % ring, j + 1),
-            (i, j + 1),
-        ]
+        (i, j): [(i, j), ((i + 1) % ring, j), ((i + 1) % ring, j + 1), (i, j + 1)]
         for i in range(ring)
         for j in range(rows)
     }
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {
-        cell: [positions[key] for key in keys] for cell, keys in cells.items()
-    }
-    return Board3D(
-        "cylinder",
-        polygons,
-        adjacency,
-        mine_count,
-        radius=math.hypot(1.0, height / 2),
-        two_sided=True,  # open ends: the inner surface is visible
-    )
+    return _assemble("cylinder", cells, point, mine_count,
+                     two_sided=True, radius=math.hypot(1.0, height / 2))
 
 
 def cylinder_triangle_board(ring: int, rows: int, mine_count: int) -> Board3D:
@@ -303,30 +269,18 @@ def cylinder_triangle_board(ring: int, rows: int, mine_count: int) -> Board3D:
     row_height = 2 * math.pi / ring * ROOT3 * 0.9
     height = rows * row_height
 
-    def position(kx: int, ky: int) -> Vec3:
-        theta = 2 * math.pi * kx / ring
-        return (math.cos(theta), ky * row_height - height / 2, math.sin(theta))
+    def point(k):
+        kx, ky = k
+        return _cylinder_point(2 * math.pi * kx / ring,
+                               ky * row_height - height / 2)
 
     cells = {}
-    positions = {}
     for r in range(rows):
         for i in range(ring):
-            keys = [
-                (kx % ring, ky)
-                for kx, ky in _triangle_vertices(i, r, up=(r + i) % 2 == 0)
-            ]
-            cells[(r, i)] = keys
-            for key in keys:
-                if key not in positions:
-                    positions[key] = position(*key)
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {
-        cell: [positions[key] for key in keys] for cell, keys in cells.items()
-    }
-    return Board3D(
-        "cyltri", polygons, adjacency, mine_count,
-        radius=math.hypot(1.0, height / 2), two_sided=True,
-    )
+            cells[(r, i)] = [(kx % ring, ky) for kx, ky
+                             in _triangle_vertices(i, r, up=(r + i) % 2 == 0)]
+    return _assemble("cyltri", cells, point, mine_count,
+                     two_sided=True, radius=math.hypot(1.0, height / 2))
 
 
 def cylinder_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
@@ -338,31 +292,22 @@ def cylinder_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
     ky_unit = 2 * math.pi / kx_period / ROOT3
     height = (3 * rows + 1) * ky_unit
 
-    def position(kx: int, ky: int) -> Vec3:
-        theta = 2 * math.pi * kx / kx_period
-        return (math.cos(theta), ky * ky_unit - height / 2, math.sin(theta))
+    def point(k):
+        kx, ky = k
+        return _cylinder_point(2 * math.pi * kx / kx_period,
+                               ky * ky_unit - height / 2)
 
     cells = {}
-    positions = {}
     for r in range(rows):
         for c in range(ring):
-            kx = 2 * c + (r % 2) + 1
-            ky = 3 * r + 2
-            keys = [
-                ((kx + ox) % kx_period, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS
-            ]
-            cells[(r, c)] = keys
-            for key in keys:
-                if key not in positions:
-                    positions[key] = position(*key)
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {
-        cell: [positions[key] for key in keys] for cell, keys in cells.items()
-    }
-    return Board3D(
-        "cylhex", polygons, adjacency, mine_count,
-        radius=math.hypot(1.0, height / 2), two_sided=True,
-    )
+            kx, ky = 2 * c + (r % 2) + 1, 3 * r + 2
+            cells[(r, c)] = [((kx + ox) % kx_period, ky + oy)
+                             for ox, oy in _HEX_VERTEX_OFFSETS]
+    return _assemble("cylhex", cells, point, mine_count,
+                     two_sided=True, radius=math.hypot(1.0, height / 2))
+
+
+# -- Archimedean tilings wrapped onto the same surfaces ----------------------
 
 
 def _arch_cells(template, nx: int, ny: int, tiling: str, wrap_rows: bool = True):
@@ -390,32 +335,16 @@ def arch_torus_board(
     ring = nx * template.width
     tube = ny * template.height
 
-    def position(m: int, n: int, tag) -> Vec3:
+    def point(key):
+        m, n, tag = key
         vx, vy = template.verts[tag]
-        theta = 2 * math.pi * (m * template.width + vx) / ring
-        phi = 2 * math.pi * (n * template.height + vy) / tube
-        radial = 1.0 + tube_radius * math.cos(phi)
-        return (
-            radial * math.cos(theta),
-            radial * math.sin(theta),
-            tube_radius * math.sin(phi),
-        )
+        return _torus_point(2 * math.pi * (m * template.width + vx) / ring,
+                            2 * math.pi * (n * template.height + vy) / tube,
+                            tube_radius)
 
     cells = _arch_cells(template, nx, ny, tiling)
-    positions = {key: position(*key) for keys in cells.values() for key in keys}
-    return _torus_oriented(
-        "torus" + tiling, positions, cells, mine_count, radius=1.0 + tube_radius
-    )
-
-
-def _assemble_two_sided(mode, cells, positions, mine_count, radius) -> Board3D:
-    adjacency = _shared_vertex_adjacency(cells)
-    polygons = {
-        cell: [positions[key] for key in keys] for cell, keys in cells.items()
-    }
-    return Board3D(
-        mode, polygons, adjacency, mine_count, radius=radius, two_sided=True
-    )
+    return _assemble("torus" + tiling, cells, point, mine_count,
+                     two_sided=False, radius=1.0 + tube_radius)
 
 
 def arch_cylinder_board(
@@ -432,14 +361,11 @@ def arch_cylinder_board(
     unit = 2 * math.pi / (ring * template.width)  # arc length of one edge unit
     middle = rows * height / 2 + cut
 
-    def position(m: int, n: int, tag) -> Vec3:
+    def point(key):
+        m, n, tag = key
         vx, vy = template.verts[tag]
-        theta = (m * template.width + vx) * unit
-        return (
-            math.cos(theta),
-            (n * height + vy - middle) * unit,
-            math.sin(theta),
-        )
+        return _cylinder_point((m * template.width + vx) * unit,
+                               (n * height + vy - middle) * unit)
 
     centroids = {
         name: sum(dn * height + template.verts[tag][1] for tag, _, dn in refs)
@@ -456,11 +382,8 @@ def arch_cylinder_board(
                 if len(set(keys)) < len(keys):
                     raise ValueError(f"ring {ring} is too small for {tiling}")
                 cells[(m, n, name)] = keys
-    positions = {key: position(*key) for keys in cells.values() for key in keys}
-    return _assemble_two_sided(
-        "cyl" + tiling, cells, positions, mine_count,
-        radius=max(math.hypot(*p) for p in positions.values()),
-    )
+    return _assemble("cyl" + tiling, cells, point, mine_count,
+                     two_sided=True, radius=_max_radius)
 
 
 def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Board3D:
@@ -499,12 +422,12 @@ def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Boa
             tag, mi, ni = flipped(mi + q + odd, ni, tag)
         return (mi, ni, tag)
 
-    def position(mi: int, ni: int, tag) -> Vec3:
+    def point(key):
+        mi, ni, tag = key
         vx, vy = template.verts[tag]
         u = 2 * math.pi * (mi * width + vx) / length
         v = half_width * (2 * (ni * height + vy) / strip - 1)
-        radial = 1.0 + v * math.cos(u / 2)
-        return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
+        return _mobius_point(u, v)
 
     centroids = {
         name: sum(dm * width + template.verts[tag][0] for tag, dm, _ in refs)
@@ -521,8 +444,5 @@ def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Boa
                 if len(set(keys)) < len(keys):
                     raise ValueError(f"ring {ring} is too small for {tiling}")
                 cells[(m, n, name)] = keys
-    positions = {key: position(*key) for keys in cells.values() for key in keys}
-    return _assemble_two_sided(
-        "mobius" + tiling, cells, positions, mine_count,
-        radius=max(math.hypot(*p) for p in positions.values()),
-    )
+    return _assemble("mobius" + tiling, cells, point, mine_count,
+                     two_sided=True, radius=_max_radius)

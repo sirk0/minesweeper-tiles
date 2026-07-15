@@ -124,9 +124,10 @@ from minesweeper.boards.solids import (  # noqa: F401
 )
 from minesweeper.boards.surfaces import (  # noqa: F401
     _arch_cells,
-    _assemble_two_sided,
-    _torus_oriented,
-    _torus_position,
+    _assemble,
+    _cylinder_point,
+    _mobius_point,
+    _torus_point,
     arch_cylinder_board,
     arch_mobius_board,
     arch_torus_board,
