@@ -14,16 +14,10 @@ cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}"
 VENV=.venv
 
 # Create the virtualenv if it isn't there yet. The project targets Python
-# 3.14 (.python-version), so prefer it. In cloud sessions the
-# python-build-standalone tarballs are fetched from github.com, which the
-# egress policy may block (HTTP 403); fall back to the newest interpreter uv
-# can find so tests can still run. The code uses no 3.14-only syntax, so the
-# suite passes on 3.13.
+# 3.13 (.python-version), which cloud images already ship, so no interpreter
+# download is needed.
 if [ ! -x "$VENV/bin/python" ]; then
-  if ! uv venv --python 3.14 "$VENV" 2>/dev/null; then
-    echo "session-start: Python 3.14 unavailable, falling back to 3.13" >&2
-    uv venv --python 3.13 "$VENV"
-  fi
+  uv venv --python 3.13 "$VENV"
 fi
 
 # Install the test + lint dependencies (pytest, ruff, pygame-ce) from the
