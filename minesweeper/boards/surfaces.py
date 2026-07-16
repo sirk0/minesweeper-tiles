@@ -50,6 +50,28 @@ def _mobius_point(u: float, v: float) -> Vec3:
     return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
 
 
+def _klein_point(u: float, v: float, tube: float = 1.0) -> Vec3:
+    """A point on the classic self-intersecting Klein *bottle*. ``u`` runs
+    the profile round the ring -- up the body, over the top, down and
+    *through* the neck, closing after a full loop with a reflection of the
+    cross-section (``v`` -> ``pi - v``); ``v`` runs round the circular
+    cross-section (both radians). ``tube`` scales the tube thickness. This
+    reads as the familiar bottle (unlike the figure-8 immersion, which
+    looks like a twisted donut); the price is the honest self-intersection
+    where the neck passes through the body wall -- every immersion of the
+    Klein bottle in 3-space must self-intersect somewhere. Returned in the
+    parametrization's own frame; ``klein_board`` recentres it."""
+    cu, su, cv = math.cos(u), math.sin(u), math.cos(v)
+    r = tube * (2.5 - 1.5 * cu)  # tube radius: thin at the neck, fat at the belly
+    if u < math.pi:              # body: the tube is swept around the profile
+        x = 3.0 * cu * (1.0 + su) + r * cu * cv
+        y = 8.0 * su + r * su * cv
+    else:                        # neck: a straight tube diving through the body
+        x = 3.0 * cu * (1.0 + su) - r * cv
+        y = 8.0 * su
+    return (x, y, r * math.sin(v))
+
+
 # -- assembly: shared tail for every wrapped board ---------------------------
 
 
@@ -63,12 +85,14 @@ def _orient_from_ring(polygon: list[Vec3]) -> list[Vec3]:
     return _orient_outward(polygon, outward)
 
 
-def _assemble(mode, cells, point, mine_count, *, two_sided, radius) -> Board3D:
+def _assemble(mode, cells, point, mine_count, *, two_sided, radius,
+              cell_cycle=None) -> Board3D:
     """Position every vertex key with ``point(key)``, build adjacency and
     polygons, and wrap it in a Board3D. Closed surfaces (``two_sided``
     False) orient each face outward from the ring; open or non-orientable
     ones keep both sides. ``radius`` is a value or a callable of the
-    positions dict."""
+    positions dict. ``cell_cycle`` is an optional one-step scroll
+    permutation carried through to the Board3D."""
     positions = {key: point(key) for keys in cells.values() for key in keys}
     adjacency = _shared_vertex_adjacency(cells)
     if two_sided:
@@ -79,7 +103,7 @@ def _assemble(mode, cells, point, mine_count, *, two_sided, radius) -> Board3D:
                     for cell, keys in cells.items()}
     r = radius(positions) if callable(radius) else radius
     return Board3D(mode, polygons, adjacency, mine_count, radius=r,
-                   two_sided=two_sided)
+                   two_sided=two_sided, cell_cycle=cell_cycle)
 
 
 def _max_radius(positions) -> float:
@@ -232,6 +256,71 @@ def mobius_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
                              for ox, oy in _HEX_VERTEX_OFFSETS]
     return _assemble("mobiushex", cells, point, mine_count,
                      two_sided=True, radius=1.0 + half_width)
+
+
+# -- the Klein bottle --------------------------------------------------------
+
+
+def klein_board(
+    ring: int, tube: int, mine_count: int, tube_scale: float = 1.0
+) -> Board3D:
+    """A Klein bottle tiled with ``ring * tube`` quadrilaterals, shaped as
+    the classic self-intersecting bottle. Like the torus the cross-section
+    (``tube``, must be even) wraps straight, but after a full loop round
+    the ring the tube seam glues *flipped* (``j`` -> ``tube/2 - j - 1``, the
+    reflection the bottle immersion makes at the seam), so the surface is
+    closed yet non-orientable. Every cell has exactly 8 neighbors.
+
+    The immersion self-intersects (the neck passes through the body), so
+    some faces sit hidden behind others; the returned board carries a
+    ``cell_cycle`` -- the one-step ring translation -- which lets the UI
+    scroll the cell contents along the ring to bring any hidden cell into
+    view without moving the geometry."""
+    if tube % 2:
+        raise ValueError("tube must be even so the seam reflection lands on cells")
+
+    def key(i, j):
+        if i >= ring:                      # crossed the ring seam: flip the tube
+            return (i - ring, (tube // 2 - j - 1) % tube)
+        return (i, j % tube)
+
+    def raw(k):
+        i, j = k
+        # half-cell offset in v keeps every vertex off the self-intersection
+        # circle (v = 0, pi), so no two distinct vertices coincide
+        return _klein_point(2 * math.pi * i / ring,
+                            2 * math.pi * (j + 0.5) / tube, tube_scale)
+
+    cells = {
+        (i, j): [key(i, j), key(i + 1, j),
+                 key(i + 1, j + 1), key(i, j + 1)]
+        for i in range(ring)
+        for j in range(tube)
+    }
+
+    # the bottle immersion is not centred on the origin; recentre so the
+    # 3D view frames it and rotation pivots in place (radius, and the view,
+    # both measure from the origin)
+    verts = {k for keys in cells.values() for k in keys}
+    raws = {k: raw(k) for k in verts}
+    centre = tuple(sum(c) / len(raws) for c in zip(*raws.values()))
+    positions = {k: tuple(c - o for c, o in zip(p, centre))
+                 for k, p in raws.items()}
+
+    # one step forward along the ring. A cell is indexed by its low-j corner,
+    # so at the seam the tube reflection maps the span [j, j+1] to
+    # [tube/2-j-2, tube/2-j-1] -- i.e. the cell flip is one below the vertex
+    # flip used in key().
+    def cell_shift(i, j):
+        if i + 1 >= ring:
+            return (0, (tube // 2 - j - 2) % tube)
+        return (i + 1, j)
+
+    cell_cycle = {(i, j): cell_shift(i, j)
+                  for i in range(ring) for j in range(tube)}
+
+    return _assemble("klein", cells, positions.__getitem__, mine_count,
+                     two_sided=True, radius=_max_radius, cell_cycle=cell_cycle)
 
 
 # -- the cylinder ------------------------------------------------------------

@@ -31,6 +31,7 @@ from minesweeper.boards.surfaces import (
     cylinder_board,
     cylinder_hex_board,
     cylinder_triangle_board,
+    klein_board,
     mobius_board,
     mobius_hex_board,
     mobius_triangle_board,
@@ -163,6 +164,11 @@ _PRESETS = {
         "easy": lambda: mobius_hex_board(14, 3, 6),
         "medium": lambda: mobius_hex_board(20, 5, 16),
         "hard": lambda: mobius_hex_board(26, 7, 34),
+    },
+    "klein": {
+        "easy": lambda: klein_board(12, 6, 9),
+        "medium": lambda: klein_board(16, 8, 20),
+        "hard": lambda: klein_board(24, 10, 48),
     },
     "cylinder": {
         "easy": lambda: cylinder_board(12, 7, 10),

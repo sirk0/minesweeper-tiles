@@ -518,6 +518,42 @@ def _hexagon_points(cx, cy, r, rotation=30):
     return _ngon_points(cx, cy, r, 6, rotation)
 
 
+def _smooth_curve(control, steps=8):
+    """A Catmull-Rom spline through ``control`` (endpoints duplicated), so
+    a few hand-placed points read as one smooth curve."""
+    pts = [control[0], *control, control[-1]]
+    out = []
+    for i in range(1, len(pts) - 2):
+        p0, p1, p2, p3 = pts[i - 1], pts[i], pts[i + 1], pts[i + 2]
+        for k in range(steps):
+            t = k / steps
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(
+                0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - dd) * t2
+                       + (-a + 3 * b - 3 * c + dd) * t3)
+                for a, b, c, dd in zip(p0, p1, p2, p3)
+            ))
+    out.append(control[-1])
+    return out
+
+
+def _tube_polygon(centerline, radius):
+    """A filled band of half-width ``radius`` running along ``centerline``
+    (a list of points): offset each point left and right by the local
+    normal and join the two sides into one closed polygon."""
+    n = len(centerline)
+    left, right = [], []
+    for i, (x, y) in enumerate(centerline):
+        ax, ay = centerline[max(0, i - 1)]
+        bx, by = centerline[min(n - 1, i + 1)]
+        tx, ty = bx - ax, by - ay
+        length = math.hypot(tx, ty) or 1.0
+        nx, ny = -ty / length, tx / length
+        left.append((x + nx * radius, y + ny * radius))
+        right.append((x - nx * radius, y - ny * radius))
+    return left + right[::-1]
+
+
 def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_BLUE_DARK, width=5):
     fill_polygon(surface, points, fill)
     pts = [(int(x), int(y)) for x, y in points]
@@ -938,6 +974,33 @@ def _render_icon(key: str) -> pygame.Surface:
         pygame.draw.ellipse(s, ICON_BLUE_LIGHT, top)
         pygame.draw.ellipse(s, ICON_BLUE_DARK, top, 4)
         _icon_gloss(s, pygame.Rect(d * 0.2, d * 0.26, d * 0.6, d * 0.5), 60)
+    elif key == "klein":
+        # the classic Klein bottle: a bulb whose neck arcs over the top and
+        # dives back in through the shoulder, opening into the interior
+        control = [
+            (d * 0.50, d * 0.64),   # the mouth, deep inside the bulb
+            (d * 0.50, d * 0.40),
+            (d * 0.52, d * 0.24),
+            (d * 0.62, d * 0.15),
+            (d * 0.75, d * 0.16),
+            (d * 0.84, d * 0.28),
+            (d * 0.82, d * 0.45),
+            (d * 0.70, d * 0.57),   # plunging back toward the bulb
+            (d * 0.58, d * 0.62),
+        ]
+        tube = _tube_polygon(_smooth_curve(control), d * 0.085)
+        _icon_shape(s, tube, width=4)
+        # the bulb, drawn over the neck's lower end so the neck dives behind
+        body = pygame.Rect(d * 0.12, d * 0.42, d * 0.54, d * 0.5)
+        pygame.draw.ellipse(s, ICON_BLUE, body)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, body, 4)
+        # the hole where the neck passes through the bulb's shoulder into the
+        # interior -- the Klein bottle's signature
+        hole = pygame.Rect(0, 0, d * 0.2, d * 0.14)
+        hole.center = (int(d * 0.5), int(d * 0.6))
+        pygame.draw.ellipse(s, (0, 0, 0, 0), hole)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, hole, 4)
+        _icon_gloss(s, pygame.Rect(d * 0.5, d * 0.12, d * 0.36, d * 0.32), 70)
     else:
         fill_circle(s, int(c), int(c), int(d * 0.4), ICON_BLUE)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.4), 2)
@@ -1064,9 +1127,14 @@ class BaseGameScreen:
             ):
                 return "menu"
             self._handle_mouse(event)
+        if event.type == pygame.MOUSEWHEEL:
+            self._handle_wheel(event)
         return None
 
     def _handle_key(self, event) -> None:
+        pass
+
+    def _handle_wheel(self, event) -> None:
         pass
 
     def _handle_mouse(self, event) -> None:
@@ -1234,6 +1302,10 @@ class GameScreen3D(BaseGameScreen):
         # turn to a vertex-first 3/4 view so the frame's gaps read clearly
         if self.mode == "tetraframe":
             return mat_mul(rot_x(-0.62), rot_y(0.45))
+        # the Klein bottle reads best from a 3/4 turn: the neck diving
+        # through the body (the self-intersection) is then plainly visible
+        if self.mode == "klein":
+            return mat_mul(rot_x(-0.4), rot_y(0.6))
         # wrapped surfaces tilt by their SurfaceSpec hint (donut, cylinder,
         # Möbius strip); everything else faces straight on
         tilt = view_hint(self.mode)
@@ -1245,6 +1317,15 @@ class GameScreen3D(BaseGameScreen):
         self._drag_from = None
         self._dragged = False
         self._frame = None  # projected geometry, rebuilt after rotation
+        # scroll-to-shift: only boards that expose a ring translation (the
+        # Klein bottle) support it. _remap sends each geometric face to the
+        # game cell currently painted on it; scrolling walks it along cycle.
+        self._cycle = self.board.cell_cycle
+        self._cycle_inv = (
+            {v: k for k, v in self._cycle.items()} if self._cycle else None
+        )
+        self._remap = {c: c for c in self.board.polygons}
+        self._scroll_accum = 0.0
 
     @property
     def natural_size(self) -> tuple[int, int]:
@@ -1305,6 +1386,29 @@ class GameScreen3D(BaseGameScreen):
                 return entry[1]
         return None
 
+    def _game_cell(self, geom):
+        """The game cell whose state is painted on geometric face ``geom``
+        (identity unless the board has been scrolled)."""
+        if geom is None:
+            return None
+        return self._remap.get(geom, geom)
+
+    def _handle_wheel(self, event) -> None:
+        """Scroll the cell contents one step along the ring per notch,
+        rotating cells hidden by the self-intersection into view. The
+        geometry never moves -- only which game cell each face shows."""
+        if not self._cycle:
+            return
+        # precise_y is smooth on a touchpad (two-finger scroll) and +-1 per
+        # notch on a wheel; step one cell each time a whole unit is crossed
+        self._scroll_accum += getattr(event, "precise_y", event.y)
+        while self._scroll_accum >= 1.0:
+            self._scroll_accum -= 1.0
+            self._remap = {g: self._cycle[c] for g, c in self._remap.items()}
+        while self._scroll_accum <= -1.0:
+            self._scroll_accum += 1.0
+            self._remap = {g: self._cycle_inv[c] for g, c in self._remap.items()}
+
     def _handle_key(self, event) -> None:
         step = 40 * S  # canvas-pixels-worth of rotation per key press
         if event.key == pygame.K_LEFT:
@@ -1325,7 +1429,7 @@ class GameScreen3D(BaseGameScreen):
                 self._drag_from = event.pos
                 self._dragged = False
             elif event.button == 3:
-                cell = self.cell_at(event.pos)
+                cell = self._game_cell(self.cell_at(event.pos))
                 if cell is not None:
                     self.game.toggle_flag(cell)
         elif event.type == pygame.MOUSEMOTION and self._drag_from is not None:
@@ -1341,7 +1445,7 @@ class GameScreen3D(BaseGameScreen):
             self.rotate(event.rel[0], -event.rel[1])
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._drag_from is not None and not self._dragged:
-                cell = self.cell_at(event.pos)
+                cell = self._game_cell(self.cell_at(event.pos))
                 if cell is not None:
                     self.click(cell)
             self._drag_from = None
@@ -1349,7 +1453,8 @@ class GameScreen3D(BaseGameScreen):
 
     def draw_board(self, surface, fonts: FontCache) -> None:
         for _, cell, polygon, center, glyph_radius, shade in self._project():
-            self.draw_cell(surface, fonts, cell, polygon, center, glyph_radius, shade)
+            self.draw_cell(surface, fonts, self._game_cell(cell),
+                           polygon, center, glyph_radius, shade)
 
 
 def make_screen(mode: str, difficulty: str) -> BaseGameScreen:
