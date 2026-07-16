@@ -499,6 +499,42 @@ def _hexagon_points(cx, cy, r, rotation=30):
     return _ngon_points(cx, cy, r, 6, rotation)
 
 
+def _smooth_curve(control, steps=8):
+    """A Catmull-Rom spline through ``control`` (endpoints duplicated), so
+    a few hand-placed points read as one smooth curve."""
+    pts = [control[0], *control, control[-1]]
+    out = []
+    for i in range(1, len(pts) - 2):
+        p0, p1, p2, p3 = pts[i - 1], pts[i], pts[i + 1], pts[i + 2]
+        for k in range(steps):
+            t = k / steps
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(
+                0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - dd) * t2
+                       + (-a + 3 * b - 3 * c + dd) * t3)
+                for a, b, c, dd in zip(p0, p1, p2, p3)
+            ))
+    out.append(control[-1])
+    return out
+
+
+def _tube_polygon(centerline, radius):
+    """A filled band of half-width ``radius`` running along ``centerline``
+    (a list of points): offset each point left and right by the local
+    normal and join the two sides into one closed polygon."""
+    n = len(centerline)
+    left, right = [], []
+    for i, (x, y) in enumerate(centerline):
+        ax, ay = centerline[max(0, i - 1)]
+        bx, by = centerline[min(n - 1, i + 1)]
+        tx, ty = bx - ax, by - ay
+        length = math.hypot(tx, ty) or 1.0
+        nx, ny = -ty / length, tx / length
+        left.append((x + nx * radius, y + ny * radius))
+        right.append((x - nx * radius, y - ny * radius))
+    return left + right[::-1]
+
+
 def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_BLUE_DARK, width=5):
     fill_polygon(surface, points, fill)
     pts = [(int(x), int(y)) for x, y in points]
@@ -847,6 +883,33 @@ def _render_icon(key: str) -> pygame.Surface:
         pygame.draw.ellipse(s, ICON_BLUE_LIGHT, top)
         pygame.draw.ellipse(s, ICON_BLUE_DARK, top, 4)
         _icon_gloss(s, pygame.Rect(d * 0.2, d * 0.26, d * 0.6, d * 0.5), 60)
+    elif key == "klein":
+        # the classic Klein bottle: a bulb whose neck arcs over the top and
+        # dives back in through the shoulder, opening into the interior
+        control = [
+            (d * 0.50, d * 0.64),   # the mouth, deep inside the bulb
+            (d * 0.50, d * 0.40),
+            (d * 0.52, d * 0.24),
+            (d * 0.62, d * 0.15),
+            (d * 0.75, d * 0.16),
+            (d * 0.84, d * 0.28),
+            (d * 0.82, d * 0.45),
+            (d * 0.70, d * 0.57),   # plunging back toward the bulb
+            (d * 0.58, d * 0.62),
+        ]
+        tube = _tube_polygon(_smooth_curve(control), d * 0.085)
+        _icon_shape(s, tube, width=4)
+        # the bulb, drawn over the neck's lower end so the neck dives behind
+        body = pygame.Rect(d * 0.12, d * 0.42, d * 0.54, d * 0.5)
+        pygame.draw.ellipse(s, ICON_BLUE, body)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, body, 4)
+        # the hole where the neck passes through the bulb's shoulder into the
+        # interior -- the Klein bottle's signature
+        hole = pygame.Rect(0, 0, d * 0.2, d * 0.14)
+        hole.center = (int(d * 0.5), int(d * 0.6))
+        pygame.draw.ellipse(s, (0, 0, 0, 0), hole)
+        pygame.draw.ellipse(s, ICON_BLUE_DARK, hole, 4)
+        _icon_gloss(s, pygame.Rect(d * 0.5, d * 0.12, d * 0.36, d * 0.32), 70)
     else:
         fill_circle(s, int(c), int(c), int(d * 0.4), ICON_BLUE)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.4), 2)
