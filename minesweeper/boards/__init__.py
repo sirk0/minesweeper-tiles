@@ -39,6 +39,7 @@ from minesweeper.boards.aperiodic import (  # noqa: F401
     penrose_board,
 )
 from minesweeper.boards.catalog import (  # noqa: F401
+    GROUP_TILINGS,
     GROUPS,
     MODE_LABELS,
     MODES_3D,

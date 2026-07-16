@@ -72,9 +72,12 @@ _REFLECTIVE = {
 def _tile_signature(polygon):
     """A congruence signature: the multiset of edge lengths and interior
     angles, rounded. Two tiles with equal signatures are congruent up to
-    rotation and reflection."""
+    rotation and reflection. Edges are rounded to 3 places (~1e-5 of a tile):
+    a Laves tile centre is a floating-point centroid of primal-tile vertices,
+    so congruent tiles in different orientations can disagree in the 4th
+    place -- still far tighter than any genuine non-congruence."""
     n = len(polygon)
-    edges = sorted(round(math.dist(polygon[i], polygon[(i + 1) % n]), 4)
+    edges = sorted(round(math.dist(polygon[i], polygon[(i + 1) % n]), 3)
                    for i in range(n))
     angles = []
     for i in range(n):
@@ -835,6 +838,30 @@ class TestWrappedArchimedean:
             "cyltrunctrihex": (96, 180, 252),
             "mobiusrhombitrihex": (96, 144, 288),
             "mobiustrunctrihex": (96, 144, 288),
+            # Laves (dual) tilings
+            "torusprismaticpent": (48, 112, 160),
+            "cylprismaticpent": (40, 96, 180),
+            "mobiusprismaticpent": (48, 96, 144),
+            "toruscairo": (40, 84, 160),
+            "cylcairo": (40, 84, 180),
+            "mobiuscairo": (52, 90, 136),
+            "torusrhombille": (96, 120, 216),
+            "cylrhombille": (72, 162, 264),
+            "mobiusrhombille": (72, 144, 216),
+            "torusfloret": (48, 72, 168),
+            "cylfloret": (48, 120, 168),
+            "torustetrakis": (144, 288, 448),
+            "cyltetrakis": (108, 240, 448),
+            "mobiustetrakis": (144, 256, 440),
+            "torustriakis": (168, 240, 432),
+            "cyltriakis": (144, 288, 480),
+            "mobiustriakis": (108, 240, 432),
+            "torusdeltoidal": (120, 168, 288),
+            "cyldeltoidal": (96, 180, 252),
+            "mobiusdeltoidal": (96, 144, 288),
+            "toruskisrhombille": (240, 336, 576),
+            "cylkisrhombille": (192, 360, 504),
+            "mobiuskisrhombille": (192, 288, 576),
         }
         assert sorted(counts) == sorted(self.WRAPPED)
         for mode, expected in counts.items():

@@ -452,6 +452,97 @@ def _trunctrihex_template() -> _ArchTemplate:
     return _template((4, 6, 12), width, height, polygons)
 
 
+# -- Laves (dual / Catalan) tilings ------------------------------------------
+#
+# Each Laves tiling is the dual of one Archimedean tiling: a vertex at every
+# tile centre, joined across every shared edge. _dual_template builds it
+# mechanically from the primal _ArchTemplate (AGENTS.md), so each factory
+# below is a one-liner. The dual shares the primal's translation lattice
+# (same width/height) and wallpaper group, so its mirror/glide come straight
+# from the primal; its single tile shape sits around each primal vertex, and
+# its window is centred on the primal's largest-tile centre (a rotation and,
+# where reflective, mirror centre of both tilings).
+
+
+def _dual_template(primal: Callable[[], _ArchTemplate]) -> _ArchTemplate:
+    p = primal()
+    width, height = p.width, p.height
+
+    def centroid(refs):
+        cx = sum(dm * width + tag[0] for tag, dm, dn in refs) / len(refs)
+        cy = sum(dn * height + tag[1] for tag, dm, dn in refs) / len(refs)
+        return cx, cy
+
+    centres = {name: centroid(refs) for name, refs in p.cells}
+    sides = {name: len(refs) for name, refs in p.cells}
+
+    # dual vertex = primal tile centre; dual face = the ring of tile centres
+    # around a primal vertex, ordered by angle
+    polygons = []
+    for i, vertex in enumerate(p.verts):
+        vx, vy = vertex
+        ring = []
+        for name, refs in p.cells:
+            cx, cy = centres[name]
+            for tag, dm, dn in refs:
+                if tag == vertex:
+                    ring.append((cx - dm * width, cy - dn * height))
+        ring.sort(key=lambda pt: math.atan2(pt[1] - vy, pt[0] - vx))
+        polygons.append((f"d{i}", ring))
+
+    # centre the flat window on the primal's largest tile (its centre is the
+    # highest-order rotation/mirror centre shared by both tilings); pick the
+    # copy nearest the origin so the domain coordinate is canonical
+    widest = max(sides.values())
+    centre = min(
+        ((round(cx % width, 6), round(cy % height, 6))
+         for name, (cx, cy) in centres.items() if sides[name] == widest),
+        key=lambda c: c[0] ** 2 + c[1] ** 2,
+    )
+    return _template(p.config, width, height, polygons,
+                     mirrored=p.mirror is not None, glide=p.glide, centre=centre)
+
+
+def _prismaticpent_template() -> _ArchTemplate:
+    """Prismatic pentagonal (dual of the elongated triangular tiling)."""
+    return _dual_template(_elongated_template)
+
+
+def _cairo_template() -> _ArchTemplate:
+    """Cairo pentagonal (dual of the snub square tiling)."""
+    return _dual_template(_snubsquare_template)
+
+
+def _rhombille_template() -> _ArchTemplate:
+    """Rhombille (dual of the kagome / trihexagonal tiling)."""
+    return _dual_template(_kagome_template)
+
+
+def _floret_template() -> _ArchTemplate:
+    """Floret pentagonal (dual of the snub hexagonal tiling); chiral."""
+    return _dual_template(_snubhex_template)
+
+
+def _tetrakis_template() -> _ArchTemplate:
+    """Tetrakis square (dual of the truncated square tiling)."""
+    return _dual_template(_truncsquare_template)
+
+
+def _triakis_template() -> _ArchTemplate:
+    """Triakis triangular (dual of the truncated hexagonal tiling)."""
+    return _dual_template(_trunchex_template)
+
+
+def _deltoidal_template() -> _ArchTemplate:
+    """Deltoidal trihexagonal (dual of the rhombitrihexagonal tiling)."""
+    return _dual_template(_rhombitrihex_template)
+
+
+def _kisrhombille_template() -> _ArchTemplate:
+    """Kisrhombille (dual of the truncated trihexagonal tiling)."""
+    return _dual_template(_trunctrihex_template)
+
+
 @dataclass(frozen=True)
 class ArchTiling:
     """One template-based periodic tiling. The eight below are the
@@ -487,6 +578,25 @@ ARCH_TILINGS = (
                _rhombitrihex_template),
     ArchTiling("trunctrihex", "Truncated trihexagonal", (4, 6, 12), 12,
                _trunctrihex_template),
+    # the Laves (dual / Catalan) tilings -- face-transitive, so config below
+    # is the tile's Laves symbol (the dual's vertex figure) and the
+    # vertex-configuration invariants do not apply.
+    ArchTiling("prismaticpent", "Prismatic pentagonal", (3, 3, 3, 4, 4), 12,
+               _prismaticpent_template, vertex_transitive=False),
+    ArchTiling("cairo", "Cairo pentagonal", (3, 3, 4, 3, 4), 12,
+               _cairo_template, vertex_transitive=False),
+    ArchTiling("rhombille", "Rhombille", (3, 6, 3, 6), 12,
+               _rhombille_template, vertex_transitive=False),
+    ArchTiling("floret", "Floret pentagonal", (3, 3, 3, 3, 6), 12,
+               _floret_template, vertex_transitive=False),
+    ArchTiling("tetrakis", "Tetrakis square", (4, 8, 8), 8,
+               _tetrakis_template, vertex_transitive=False),
+    ArchTiling("triakis", "Triakis triangular", (3, 12, 12), 12,
+               _triakis_template, vertex_transitive=False),
+    ArchTiling("deltoidal", "Deltoidal trihexagonal", (3, 4, 6, 4), 12,
+               _deltoidal_template, vertex_transitive=False),
+    ArchTiling("kisrhombille", "Kisrhombille", (4, 6, 12), 12,
+               _kisrhombille_template, vertex_transitive=False),
 )
 
 # Backward-compatible views derived from the single registry above.

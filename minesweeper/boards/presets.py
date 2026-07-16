@@ -241,6 +241,56 @@ ARCH_PRESETS = {
         "cylinder": {"easy": (4, 2, 14), "medium": (5, 3, 28), "hard": (7, 3, 40)},
         "mobius": {"easy": (4, 2, 14), "medium": (6, 2, 22), "hard": (8, 3, 45)},
     },
+    # Laves (dual) tilings: same fundamental domain as the Archimedean tiling
+    # they dualise, so the windows/seams carry over; only the mine counts are
+    # retuned to the dual's (different) tile counts.
+    "prismaticpent": {
+        "flat": {"easy": (7, 2, 9, 57), "medium": (10, 3, 20, 43), "hard": (14, 4, 43, 30)},
+        "torus": {"easy": (12, 1, 6, 0.31), "medium": (14, 2, 17, 0.53), "hard": (20, 2, 32, 0.37)},
+        "cylinder": {"easy": (10, 1 + 1 / (2 + ROOT3), 5, -0.5), "medium": (12, 2 + 1 / (2 + ROOT3), 15, -0.5), "hard": (15, 3 + 1 / (2 + ROOT3), 38, -0.5)},
+        "mobius": {"easy": (12, 1, 6), "medium": (12, 2, 15), "hard": (18, 2, 29)},
+    },
+    "cairo": {
+        "flat": {"easy": (4, 4, 9, 54), "medium": (5, 5, 16, 45), "hard": (7, 7, 36, 33)},
+        "torus": {"easy": (5, 2, 5, 0.40), "medium": (7, 3, 13, 0.43), "hard": (10, 4, 32, 0.40)},
+        "cylinder": {"easy": (5, 2, 5), "medium": (7, 3, 13), "hard": (9, 5, 38)},
+        "mobius": {"easy": (13, 2, 7), "medium": (15, 3, 13), "hard": (17, 4, 27)},
+    },
+    "rhombille": {
+        "flat": {"easy": (5, 3, 13, 40), "medium": (7, 4, 28, 30), "hard": (9, 6, 61, 22)},
+        "torus": {"easy": (8, 2, 12, 0.43), "medium": (10, 2, 18, 0.35), "hard": (12, 3, 43, 0.43)},
+        "cylinder": {"easy": (6, 2, 9, ROOT3 / 2), "medium": (9, 3, 24, ROOT3 / 2), "hard": (11, 4, 55, ROOT3 / 2)},
+        "mobius": {"easy": (12, 1, 9), "medium": (12, 2, 22), "hard": (18, 2, 43)},
+    },
+    "floret": {
+        "flat": {"easy": (3, 2, 10, 44), "medium": (4, 2, 15, 39), "hard": (5, 3, 33, 32)},
+        "torus": {"easy": (4, 1, 6, 0.43), "medium": (6, 1, 11, 0.29), "hard": (7, 2, 33, 0.49)},
+        "cylinder": {"easy": (4, 1, 6, 21**0.5 / 4), "medium": (5, 2, 18, 21**0.5 / 4), "hard": (7, 2, 35, 21**0.5 / 4)},
+    },
+    "tetrakis": {
+        "flat": {"easy": (6, 6, 20, 29), "medium": (9, 9, 52, 21), "hard": (13, 13, 126, 15)},
+        "torus": {"easy": (9, 4, 18, 0.44), "medium": (12, 6, 44, 0.50), "hard": (16, 7, 90, 0.44)},
+        "cylinder": {"easy": (9, 3, 14), "medium": (12, 5, 36), "hard": (16, 7, 90)},
+        "mobius": {"easy": (12, 3, 18), "medium": (16, 4, 38), "hard": (22, 5, 88)},
+    },
+    "triakis": {
+        "flat": {"easy": (6, 3, 30, 19), "medium": (8, 4, 62, 14), "hard": (10, 6, 134, 11)},
+        "torus": {"easy": (7, 2, 20, 0.49), "medium": (10, 2, 36, 0.35), "hard": (12, 3, 86, 0.43)},
+        "cylinder": {"easy": (6, 2, 18, 0.5 + ROOT3 / 2), "medium": (8, 3, 44, 0.5 + ROOT3 / 2), "hard": (10, 4, 96, 0.5 + ROOT3 / 2)},
+        "mobius": {"easy": (9, 1, 14), "medium": (10, 2, 36), "hard": (12, 3, 86)},
+    },
+    "deltoidal": {
+        "flat": {"easy": (4, 2, 13, 38), "medium": (5, 3, 30, 32), "hard": (7, 4, 62, 23)},
+        "torus": {"easy": (5, 2, 17, 0.40), "medium": (7, 2, 26, 0.40), "hard": (8, 3, 45, 0.43)},
+        "cylinder": {"easy": (4, 2, 14), "medium": (5, 3, 28), "hard": (7, 3, 40)},
+        "mobius": {"easy": (4, 2, 14), "medium": (6, 2, 22), "hard": (8, 3, 45)},
+    },
+    "kisrhombille": {
+        "flat": {"easy": (4, 2, 27, 21), "medium": (5, 3, 60, 18), "hard": (7, 4, 125, 13)},
+        "torus": {"easy": (5, 2, 34, 0.40), "medium": (7, 2, 52, 0.40), "hard": (8, 3, 90, 0.43)},
+        "cylinder": {"easy": (4, 2, 28), "medium": (5, 3, 56), "hard": (7, 3, 80)},
+        "mobius": {"easy": (4, 2, 28), "medium": (6, 2, 44), "hard": (8, 3, 90)},
+    },
 }
 
 _ARCH_BUILDERS = {
