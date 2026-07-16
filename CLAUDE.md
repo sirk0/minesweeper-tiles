@@ -73,12 +73,18 @@ gfxdraw doesn't exist in wasm at all — `_GFX` fallbacks in gui.py),
 pygame key constants read via `getattr` at module level, and `main.py`
 must import pygame itself so pygbag provisions the wasm wheel.
 
-The canvas CSS box is resized from Python on every set_mode
-(`App._fit_web_canvas`) because pygbag's template only sizes it once at
-boot — without this, screens after the first render stretched. pygbag
-also regenerates its default favicon on every build, so `make
-web-package` overwrites it afterwards with scripts/make_favicon.py
-(the in-game mine-in-hexagon icon).
+On the web the framebuffer and canvas CSS box fill the whole browser
+window (`_WebPresenter`, set on every frame since pygbag's template only
+sizes the canvas once at boot). The current screen is drawn on its own
+canvas, then scaled by a factor fixed by the window width and a design
+reference (`WEB_REF_WIDTH`) — not by the screen's own size, so the UI
+keeps one constant scale between the menu and boards of different sizes —
+and centred, with the background filling the rest. This means no
+letterbox gaps above/below on a tall phone and no scale jump between
+screens; a screen wider or taller than the window is clamped down to stay
+fully visible. pygbag also regenerates its default favicon on every
+build, so `make web-package` overwrites it afterwards with
+scripts/make_favicon.py (the in-game mine-in-hexagon icon).
 
 Local test — must use pygbag's own server; on any other port the
 template rewrites the CDN to localhost:8000 and pygame fails to load:

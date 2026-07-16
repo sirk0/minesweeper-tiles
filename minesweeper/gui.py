@@ -116,27 +116,36 @@ TILE_LIGHT_DIR = (-0.55, -0.83)  # screen-space light for the tile bevels
 # window uses logical points, and the browser build uses a device-pixel
 # framebuffer sized to the page. The active presenter keeps this in sync each
 # frame (see ``_DesktopPresenter`` / ``_WebPresenter``); it defaults to the
-# supersampling factor so headless code and tests behave as before.
-_MOUSE_TO_CANVAS: tuple[float, float] = (float(S), float(S))
+# supersampling factor so headless code and tests behave as before. The
+# transform is affine -- (scale_x, scale_y, offset_x, offset_y) -- so the web
+# build can letterbox the canvas inside a full-window framebuffer and still map
+# clicks back to canvas coordinates.
+_MOUSE_TO_CANVAS: tuple[float, float, float, float] = (float(S), float(S), 0.0, 0.0)
 
 
 def canvas_mouse() -> tuple[int, int]:
     """Mouse position in canvas coordinates."""
     x, y = pygame.mouse.get_pos()
-    sx, sy = _MOUSE_TO_CANVAS
-    return (round(x * sx), round(y * sy))
+    sx, sy, ox, oy = _MOUSE_TO_CANVAS
+    return (round(x * sx + ox), round(y * sy + oy))
+
+
+def _set_mouse_transform(
+    scale: tuple[float, float], offset: tuple[float, float] = (0.0, 0.0)
+) -> None:
+    """Record the affine map from SDL's mouse coordinates onto the canvas, so
+    clicks stay accurate whatever resolution the window/framebuffer was opened
+    at and wherever the canvas sits inside it."""
+    global _MOUSE_TO_CANVAS
+    _MOUSE_TO_CANVAS = (scale[0], scale[1], offset[0], offset[1])
 
 
 def _set_mouse_scale(
     canvas_size: tuple[int, int], display_size: tuple[int, int]
 ) -> None:
-    """Record how SDL's mouse coordinates (reported in ``display_size``) map
-    onto the canvas, so click positions stay accurate whatever resolution the
-    window/framebuffer was opened at."""
-    global _MOUSE_TO_CANVAS
-    _MOUSE_TO_CANVAS = (
-        canvas_size[0] / display_size[0],
-        canvas_size[1] / display_size[1],
+    """Convenience for the common case: the canvas covers the whole display."""
+    _set_mouse_transform(
+        (canvas_size[0] / display_size[0], canvas_size[1] / display_size[1])
     )
 
 
@@ -1513,17 +1522,17 @@ class MenuScreen:
 
 def _scale_mouse_event(event: pygame.event.Event) -> pygame.event.Event:
     """Translate a window-space mouse event into canvas coordinates."""
-    sx, sy = _MOUSE_TO_CANVAS
+    sx, sy, ox, oy = _MOUSE_TO_CANVAS
     if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
         return pygame.event.Event(
             event.type,
-            pos=(round(event.pos[0] * sx), round(event.pos[1] * sy)),
+            pos=(round(event.pos[0] * sx + ox), round(event.pos[1] * sy + oy)),
             button=event.button,
         )
     if event.type == pygame.MOUSEMOTION:
         return pygame.event.Event(
             event.type,
-            pos=(round(event.pos[0] * sx), round(event.pos[1] * sy)),
+            pos=(round(event.pos[0] * sx + ox), round(event.pos[1] * sy + oy)),
             rel=(round(event.rel[0] * sx), round(event.rel[1] * sy)),
             buttons=event.buttons,
         )
@@ -1588,17 +1597,31 @@ class _DesktopPresenter:
             self._window.destroy()
 
 
+# The browser build lays every screen out against this fixed design width (in
+# canvas pixels). The on-screen scale is derived from it and the window width
+# alone -- never from the screen currently showing -- so the UI keeps one
+# constant size as you move between the menu and boards of different sizes. A
+# screen narrower than this is centred with background to the sides; a wider or
+# taller one is shrunk just enough to stay fully visible.
+WEB_REF_WIDTH = 560 * S
+
+
 class _WebPresenter:
-    """Presents the canvas in the browser at the device's true pixel density.
+    """Presents the canvas in the browser, filling the whole window.
 
     pygbag's template sizes the canvas element once at boot and never revisits
-    it, so previously the fixed-resolution frame was stretched by CSS to
-    whatever the page happened to be -- blurry, and a different scale on every
-    screen. Instead we fit the board into the browser window ourselves and set
-    the pygame framebuffer to that CSS box times ``devicePixelRatio``, giving
-    the HTML canvas a backing store that matches the physical pixels 1:1 (so a
-    Retina/HiDPI browser gets the extra sharpness) while the CSS box keeps the
-    on-screen size and aspect ratio."""
+    it. Previously we matched the framebuffer to the board's own aspect ratio,
+    which left the canvas smaller than the window -- gaps (letterbox bars) above
+    and below on a tall phone -- and, because the fit scale depended on each
+    board's size, the whole UI changed scale from one screen to the next.
+
+    Instead the framebuffer is the full browser window (``innerWidth`` x
+    ``innerHeight`` x ``devicePixelRatio``, so a Retina/HiDPI phone gets its
+    extra sharpness), the CSS box is the full window, and the background fills
+    it edge to edge -- no gaps, ever. The screen is drawn onto its own canvas,
+    scaled by a factor derived from ``WEB_REF_WIDTH`` and the window width
+    (constant across screens), and centred; oversized screens are clamped down
+    to stay fully on screen."""
 
     def __init__(self) -> None:
         import platform  # pygbag's platform module exposes the DOM
@@ -1606,31 +1629,51 @@ class _WebPresenter:
         self._dom = platform.window
         self._display: pygame.Surface | None = None
         self._phys: tuple[int, int] = (0, 0)
-        self._state: object = None
 
-    def ensure(self, canvas_size: tuple[int, int]) -> None:
-        points = (canvas_size[0] // S, canvas_size[1] // S)
+    def _resize(self) -> tuple[int, int]:
+        """Match the framebuffer and CSS box to the current window; returns the
+        physical (device-pixel) size."""
         dom = self._dom
         dpr = getattr(dom, "devicePixelRatio", 1) or 1
-        scale = min(dom.innerWidth / points[0], dom.innerHeight / points[1])
-        css_w, css_h = int(points[0] * scale), int(points[1] * scale)
-        phys = (max(1, round(css_w * dpr)), max(1, round(css_h * dpr)))
-        state = (phys, css_w, css_h)
-        if state == self._state:
-            return
-        self._state = state
-        self._phys = phys
-        self._display = pygame.display.set_mode(phys)
-        style = dom.canvas.style
-        style.width = f"{css_w}px"
-        style.height = f"{css_h}px"
-        # emscripten reports mouse events in the framebuffer's pixels
-        _set_mouse_scale(canvas_size, phys)
+        phys = (
+            max(1, round(dom.innerWidth * dpr)),
+            max(1, round(dom.innerHeight * dpr)),
+        )
+        if phys != self._phys:
+            self._phys = phys
+            self._display = pygame.display.set_mode(phys)
+            style = dom.canvas.style
+            style.width = f"{dom.innerWidth}px"
+            style.height = f"{dom.innerHeight}px"
+        return phys
+
+    def ensure(self, canvas_size: tuple[int, int]) -> None:
+        self._resize()
 
     def present(self, canvas: pygame.Surface) -> None:
-        self.ensure(canvas.get_size())
-        pygame.transform.smoothscale(canvas, self._phys, self._display)
+        phys = self._resize()
+        assert self._display is not None
+        nat = canvas.get_size()
+        # device pixels per canvas pixel: fixed by the window width and the
+        # design reference so it does not jump between screens, then clamped so
+        # a screen wider or taller than the window still fits whole
+        scale = min(phys[0] / WEB_REF_WIDTH, phys[0] / nat[0], phys[1] / nat[1])
+        # clamp against float rounding so the centred blit always fits the frame
+        size = (
+            min(phys[0], max(1, round(nat[0] * scale))),
+            min(phys[1], max(1, round(nat[1] * scale))),
+        )
+        offset = ((phys[0] - size[0]) // 2, (phys[1] - size[1]) // 2)
+        self._display.fill(BG)
+        pygame.transform.smoothscale(canvas, size, self._display.subsurface(
+            pygame.Rect(offset, size)
+        ))
         pygame.display.flip()
+        # map framebuffer clicks back through the centring offset and scale
+        _set_mouse_transform(
+            (1.0 / scale, 1.0 / scale),
+            (-offset[0] / scale, -offset[1] / scale),
+        )
 
     def close(self) -> None:
         pass
