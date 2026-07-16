@@ -8,6 +8,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame = pytest.importorskip("pygame")
 
 from minesweeper.boards import (  # noqa: E402
+    GROUP_TILINGS,
     GROUPS,
     MODE_LABELS,
     MODES_3D,
@@ -342,24 +343,33 @@ class TestMenu:
         self.click_item(menu, "sphere")
         assert self.click_item(menu, "c80") == ("start", "c80")
 
-    def test_periodic_group_goes_tiling_then_surface(self):
+    def test_uniform_group_goes_tiling_then_surface(self):
         menu = MenuScreen()
-        self.click_item(menu, "periodic")
-        assert self.items(menu) == set(TILINGS)
+        self.click_item(menu, "uniform")
+        assert self.items(menu) == set(GROUP_TILINGS["uniform"])
         assert self.click_item(menu, "kagome") is None
         assert menu.tiling == "kagome"
         assert self.items(menu) == set(SURFACE_LABELS)
         assert self.click_item(menu, "torus") == ("start", "toruskagome")
 
+    def test_dual_group_lists_its_tilings_and_reaches_a_laves_mode(self):
+        menu = MenuScreen()
+        self.click_item(menu, "dual")
+        assert self.items(menu) == set(GROUP_TILINGS["dual"])
+        assert self.click_item(menu, "rhombille") is None
+        assert menu.tiling == "rhombille"
+        assert self.click_item(menu, "torus") == ("start", "torusrhombille")
+
     def test_every_mode_is_reachable(self):
         reached = set()
-        for tiling, (_, surfaces) in TILINGS.items():
-            for surface, mode in surfaces.items():
-                menu = MenuScreen()
-                self.click_item(menu, "periodic")
-                self.click_item(menu, tiling)
-                assert self.click_item(menu, surface) == ("start", mode)
-                reached.add(mode)
+        for group in ("uniform", "dual"):
+            for tiling in GROUP_TILINGS[group]:
+                for surface, mode in TILINGS[tiling][1].items():
+                    menu = MenuScreen()
+                    self.click_item(menu, group)
+                    self.click_item(menu, tiling)
+                    assert self.click_item(menu, surface) == ("start", mode)
+                    reached.add(mode)
         for group, (_, modes) in GROUPS.items():
             for mode in modes:
                 menu = MenuScreen()
@@ -371,31 +381,31 @@ class TestMenu:
     def test_impossible_surface_is_disabled(self):
         # snub hexagonal is chiral, so its Möbius strip does not exist
         menu = MenuScreen()
-        self.click_item(menu, "periodic")
+        self.click_item(menu, "uniform")
         self.click_item(menu, "snubhex")
         enabled = {key: on for _, key, _, on in menu.layout()["items"]}
         assert enabled == {
-            "flat": True, "torus": True, "cylinder": True, "mobius": False,
+            "flat": True, "mobius": False, "cylinder": True, "torus": True,
         }
         assert self.click_item(menu, "mobius") is None  # click ignored
         assert menu.tiling == "snubhex"  # still on the surface page
 
     def test_back_button_pops_one_page(self):
         menu = MenuScreen()
-        self.click_item(menu, "periodic")
+        self.click_item(menu, "uniform")
         self.click_item(menu, "hex")
         back = menu.layout()["back"]
         assert menu.handle_event(mouse_event(back.center)) is None
-        assert menu.group == "periodic" and menu.tiling is None
+        assert menu.group == "uniform" and menu.tiling is None
         assert menu.handle_event(mouse_event(back.center)) is None
         assert menu.group is None
 
     def test_escape_goes_back_then_quits(self):
         menu = MenuScreen()
-        self.click_item(menu, "periodic")
+        self.click_item(menu, "uniform")
         self.click_item(menu, "square")
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) is None
-        assert menu.group == "periodic" and menu.tiling is None
+        assert menu.group == "uniform" and menu.tiling is None
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) is None
         assert menu.group is None
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) == "quit"
@@ -418,9 +428,16 @@ class TestMenu:
 
     def test_all_pages_draw(self, fonts):
         menu = MenuScreen()
-        for step in (None, "periodic", "snubhex"):
+        for step in (None, "uniform", "snubhex"):
             if step is not None:
                 self.click_item(menu, step)
+            surface = pygame.Surface(menu.size)
+            menu.draw(surface, fonts)
+
+    def test_dual_group_page_draws(self, fonts):
+        menu = MenuScreen()
+        for step in ("dual", "floret"):
+            self.click_item(menu, step)
             surface = pygame.Surface(menu.size)
             menu.draw(surface, fonts)
 

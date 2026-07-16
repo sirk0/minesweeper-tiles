@@ -19,7 +19,7 @@ from minesweeper.boards.tilings import ARCH_TILINGS
 @dataclass(frozen=True)
 class SurfaceSpec:
     key: str                          # "flat" | "torus" | "cylinder" | "mobius"
-    label: str                        # menu label, "Donut"
+    label: str                        # menu label, "Torus"
     prefix: str                       # mode = prefix + tiling.key by default
     is_3d: bool                       # rendered by GameScreen3D
     needs_mirror: bool                # seam reverses orientation: excludes
@@ -28,23 +28,24 @@ class SurfaceSpec:
     tilt: float | None = None         # GameScreen3D initial x-rotation
 
 
-# The menu picks a group, then a tiling, then -- for the periodic tilings
-# -- a surface. Every periodic tiling wraps every surface, with one
-# exception: 3.3.3.3.6 (snub hexagonal) is chiral (p6, no mirror or
-# glide), so the orientation-reversing Mobius seam cannot glue it to
-# itself (needs_mirror gates it out). The sphere is its own group: none
-# of these periodic patterns can tile it (Euler's formula forces
+# The menu picks a group, then a tiling, then -- for the uniform and
+# dual-uniform tilings -- a surface. Every such tiling wraps every
+# surface, with one exception per handedness: 3.3.3.3.6 (snub hexagonal)
+# and its dual (the floret pentagonal) are chiral (p6, no mirror or
+# glide), so the orientation-reversing Mobius seam cannot glue them to
+# themselves (needs_mirror gates them out). The sphere is its own group:
+# none of these planar patterns can tile it (Euler's formula forces
 # curvature in), so it offers spherical tilings instead. To add a surface
 # (e.g. the Klein bottle) add a SurfaceSpec here and wire its builders.
 SURFACE_SPECS = (
     SurfaceSpec("flat", "Flat", "", is_3d=False, needs_mirror=False,
                 boundary_components=None),
-    SurfaceSpec("torus", "Donut", "torus", is_3d=True, needs_mirror=False,
-                boundary_components=0, tilt=-1.0),
-    SurfaceSpec("cylinder", "Cylinder", "cyl", is_3d=True, needs_mirror=False,
-                boundary_components=2, tilt=-0.35),
     SurfaceSpec("mobius", "Möbius strip", "mobius", is_3d=True,
                 needs_mirror=True, boundary_components=1, tilt=-0.8),
+    SurfaceSpec("cylinder", "Cylinder", "cyl", is_3d=True, needs_mirror=False,
+                boundary_components=2, tilt=-0.35),
+    SurfaceSpec("torus", "Torus", "torus", is_3d=True, needs_mirror=False,
+                boundary_components=0, tilt=-1.0),
 )
 SURFACES = {s.key: s for s in SURFACE_SPECS}
 SURFACE_LABELS = {s.key: s.label for s in SURFACE_SPECS}
@@ -118,10 +119,26 @@ TILINGS = {
     for t in TILING_SPECS
 }
 
-# group -> (label, modes); the periodic group routes through TILINGS, the
-# rest list their one-off modes directly.
+# The two tiling groups route through a tiling then a surface. Each lists
+# its tilings explicitly (the tiling pages), so the 11 uniform tilings and
+# their 11 Laves duals form parallel menus. The three regular tilings are
+# self/mutually dual (square is self-dual, triangle <-> hexagon), so they
+# appear in both groups, reusing the same boards.
+UNIFORM_TILINGS = (
+    "square", "tri", "hex", "elongated", "snubsquare", "kagome", "snubhex",
+    "truncsquare", "trunchex", "rhombitrihex", "trunctrihex",
+)
+DUAL_TILINGS = (
+    "square", "hex", "tri", "prismaticpent", "cairo", "rhombille", "floret",
+    "tetrakis", "triakis", "deltoidal", "kisrhombille",
+)
+GROUP_TILINGS = {"uniform": UNIFORM_TILINGS, "dual": DUAL_TILINGS}
+
+# group -> (label, modes); the two tiling groups route through GROUP_TILINGS
+# (empty modes here is the signal), the rest list their one-off modes.
 GROUPS = {
-    "periodic": ("Periodic tilings", ()),
+    "uniform": ("Uniform tilings", ()),
+    "dual": ("Dual-uniform tilings", ()),
     "aperiodic": ("Aperiodic", ("penrose", "hat")),
     "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
     "polyhedra": (

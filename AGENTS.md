@@ -22,7 +22,7 @@ Import order is a strict DAG; a module only imports from the ones above it.
 | Module | Responsibility |
 |--------|----------------|
 | `core.py` | `Board` / `Board3D`, the `_shared_vertex_adjacency` neighbour rule, `_build` (lattice→pixels) and `_finalize_flat` (float→pixels), 3D vector helpers, and the topology invariants `euler_characteristic` / `boundary_components` / `corner_fans`. |
-| `tilings.py` | Regular flat builders (square/triangle/hex/hexhex), the `_ArchTemplate` system, the eight `_*_template()` factories, and the **`ARCH_TILINGS`** registry (the one place an Archimedean tiling is declared). |
+| `tilings.py` | Regular flat builders (square/triangle/hex/hexhex), the `_ArchTemplate` system, the eight Archimedean `_*_template()` factories plus their eight Laves duals (built by `_dual_template`), and the **`ARCH_TILINGS`** registry (the one place an Archimedean or Laves tiling is declared). |
 | `aperiodic.py` | Penrose (P3) and the Hat monotile, each with its own exact-arithmetic vertex ids. |
 | `solids.py` | Closed/convex and polycube 3D boards (sphere, fullerenes, cube, tetrahedron, frames, bipyramid). |
 | `surfaces.py` | Wrapping tilings onto surfaces: the three immersion points (`_torus_point`, `_cylinder_point`, `_mobius_point`), the shared `_assemble` tail, the nine simple `*_board` wrappers, and the Archimedean `arch_torus_board` / `arch_cylinder_board` / `arch_mobius_board`. |
@@ -66,44 +66,46 @@ rectangle, symmetric if the tiling is) is load-bearing: see the
 
 ## Recipe: add a Laves (dual / Catalan) tiling
 
-Laves tilings are the **duals** of the Archimedean tilings: put a vertex
-at each Archimedean tile centre and join centres of adjacent tiles. They
-are periodic and edge-to-edge, so they use the *same* `ARCH_TILINGS`
-registry, `_ArchTemplate` system, wrapping, presets and menu derivation
-as the Archimedean tilings. Two things differ, and the architecture
-already accounts for both:
+Laves tilings are the **duals** of the Archimedean tilings: a vertex at
+each Archimedean tile centre, joined across every shared edge. All eight
+already ship (`_prismaticpent_template` … `_kisrhombille_template`), and
+they use the *same* `ARCH_TILINGS` registry, `_ArchTemplate` system,
+wrapping and presets as the Archimedean tilings. The `_dual_template`
+helper builds one mechanically from its primal factory, deriving the tile
+polygons (primal tile centres → dual vertices), the shared mirror/glide,
+the `config` (the primal's vertex configuration — the Laves symbol), and
+the flat-window `centre` (the primal's largest-tile centre, a rotation and
+mirror centre of both tilings). So each factory is a one-liner. Two things
+differ from an Archimedean tiling, both handled for you:
 
-- A Laves tiling is **face-transitive** (one congruent tile shape, but
-  vertices of several kinds) rather than vertex-transitive. Declare it
-  with `vertex_transitive=False` on its `ArchTiling` row. The
-  vertex-configuration tests then skip it automatically, and
-  `TestArchimedean.test_tiles_are_congruent` covers it instead (it checks
-  every tile has the same edge/angle signature). `config` on the row
-  should describe the single tile shape.
-- Some Laves tilings' highest rotation centre sits on a **vertex**, not a
-  tile centroid — pentagon-tiled ones (Cairo, floret, prismatic
-  pentagonal) have no 2-fold centre inside a tile. For those, pass
-  `centre=(x, y)` (domain coordinates of that rotation centre) to
-  `_template(...)`; `archimedean_board` then centres its window there so
-  the flat board comes out symmetric. Reflective vs chiral is derived from
-  the template's mirror/glide, so no test list needs editing.
+- A Laves tiling is **face-transitive** (one congruent tile shape, several
+  vertex kinds) rather than vertex-transitive. Declare it with
+  `vertex_transitive=False` on its `ArchTiling` row; the vertex-config
+  tests then skip it and `TestArchimedean.test_tiles_are_congruent` covers
+  it instead.
+- Its handedness (reflective vs chiral, hence Möbius or not) is read from
+  the primal's mirror/glide automatically — the floret pentagonal (dual of
+  snub hexagonal) is chiral, so like snub hexagonal it has no Möbius wrap.
 
-Steps:
+Steps (say a new primal `_foo_template` gained a dual `_bar_template`):
 
-1. Write `_foo_template()` in `tilings.py` giving one fundamental domain
-   of the Laves tile polygons (optionally with `centre=`). You can derive
-   the polygons by dualising the corresponding Archimedean template (tile
-   centroids become vertices), or lay them out directly.
-2. Add an `ArchTiling("foo", "Foo label", tile_config, edge_directions,
-   _foo_template, vertex_transitive=False)` row to `ARCH_TILINGS`.
-3. Add a `"foo"` block to `ARCH_PRESETS` (skip `mobius` if chiral — the
-   floret pentagonal is).
-4. Add the tiling's wrapped cell counts to
+1. `def _bar_template(): return _dual_template(_foo_template)` in
+   `tilings.py`.
+2. Add an `ArchTiling("bar", "Bar label", config, edge_directions,
+   _bar_template, vertex_transitive=False)` row to `ARCH_TILINGS` (`config`
+   is the Laves symbol, i.e. the primal's vertex configuration).
+3. Add `"bar"` to `DUAL_TILINGS` in `catalog.py` so it shows in the
+   Dual-uniform tilings menu group (the one manual menu edit — the tiling
+   groups list their tilings explicitly).
+4. Add a `"bar"` block to `ARCH_PRESETS` (skip `mobius` if chiral). The
+   windows can copy the primal's — the dual shares its fundamental domain;
+   only retune the mine counts to the dual's tile count.
+5. Add the tiling's wrapped cell counts to
    `TestWrappedArchimedean.test_cell_counts` (that test asserts the count
    table matches the set of wrapped modes, so it fails until you do).
 
-Everything else — menu, mode strings, `MODES_3D`, chirality gating,
-symmetry and congruence invariants — derives automatically.
+Everything else — mode strings, `MODES_3D`, chirality gating, symmetry and
+congruence invariants — derives automatically.
 
 ## Recipe: add an aperiodic / shaped / solid board
 
@@ -121,7 +123,7 @@ These are one-offs, not tiling×surface products.
 
 ## Recipe: add a surface (worked example — the Klein bottle)
 
-A surface is a new column in the periodic tiling×surface grid. The
+A surface is a new column in the uniform/dual tiling×surface grid. The
 catalog derives everything from one `SurfaceSpec`, so the work is: an
 immersion, a wrap builder, one spec row, and preset tuning.
 

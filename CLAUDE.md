@@ -19,12 +19,18 @@ tetrahedron, donut, Möbius strip, cylinder). Python 3.13 (see
   **derived** from `SURFACE_SPECS`/`TILING_SPECS`), `presets`
   (`ARCH_PRESETS` + `build_board`). The eight non-regular Archimedean
   tilings (six with two tile shapes, plus 3.4.6.4 and 4.6.12 with three)
-  wrap onto the donut/cylinder/Möbius via `_ArchTemplate` (one rectangular
-  periodic domain + modular seam gluing; snub hexagonal is chiral, so no
-  Möbius). **To add a tiling or surface, see `AGENTS.md`** — a tiling is
-  one `ARCH_TILINGS` + one `ARCH_PRESETS` row, a surface is one
-  `SurfaceSpec` + an immersion + a wrap builder; the menu, mode strings,
-  `MODES_3D`, and chirality gating all derive from those registries.
+  and their eight Laves (dual/Catalan) duals — built mechanically by
+  `_dual_template` — wrap onto the donut/cylinder/Möbius via
+  `_ArchTemplate` (one rectangular periodic domain + modular seam gluing;
+  snub hexagonal and its dual the floret pentagonal are chiral, so no
+  Möbius). The menu has two parallel tiling groups: **Uniform tilings**
+  (the 11 uniform tilings) and **Dual-uniform tilings** (their 11 duals;
+  the three regular tilings are self/mutually dual, so they appear in
+  both). **To add a tiling or surface, see `AGENTS.md`** — a tiling is
+  one `ARCH_TILINGS` + one `ARCH_PRESETS` row (duals also list their key
+  in `catalog.DUAL_TILINGS`), a surface is one `SurfaceSpec` + an
+  immersion + a wrap builder; the menu, mode strings, `MODES_3D`, and
+  chirality gating all derive from those registries.
   Board-shape convention (applies to all future flat boards): a finite
   flat board should read as a roughly *square* rectangle, not a round
   disc, and a symmetric tiling should give a symmetric board. For periodic
