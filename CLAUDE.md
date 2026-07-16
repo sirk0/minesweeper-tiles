@@ -73,18 +73,22 @@ gfxdraw doesn't exist in wasm at all — `_GFX` fallbacks in gui.py),
 pygame key constants read via `getattr` at module level, and `main.py`
 must import pygame itself so pygbag provisions the wasm wheel.
 
-On the web the framebuffer and canvas CSS box fill the whole browser
-window (`_WebPresenter`, set on every frame since pygbag's template only
-sizes the canvas once at boot). The current screen is drawn on its own
-canvas, then scaled by a factor fixed by the window width and a design
-reference (`WEB_REF_WIDTH`) — not by the screen's own size, so the UI
-keeps one constant scale between the menu and boards of different sizes —
-and centred, with the background filling the rest. This means no
-letterbox gaps above/below on a tall phone and no scale jump between
-screens; a screen wider or taller than the window is clamped down to stay
-fully visible. pygbag also regenerates its default favicon on every
-build, so `make web-package` overwrites it afterwards with
-scripts/make_favicon.py (the in-game mine-in-hexagon icon).
+On the web the framebuffer and canvas CSS box fill the visible viewport
+(`_WebPresenter`, using `visualViewport` so the mobile address bar is
+excluded; set on every frame since pygbag's template only sizes the
+canvas once at boot). The current screen is drawn on its own canvas, then
+scaled by a factor fixed by the window width and the screen's
+`web_ref_width` — not by how big the current board happens to be, so
+boards keep one constant scale as you switch between them (the menu
+reports its own width, so it fills the window edge to edge) — then
+centred horizontally and pinned to the top, with the background filling
+the rest. So the header (counter/smiley) sits just under the address bar,
+there are no letterbox gaps above/below on a tall phone, and switching
+boards does not resize the UI; a screen wider or taller than the window
+is clamped down to stay fully visible. pygbag also regenerates its
+default favicon on every build, so `make web-package` overwrites it
+afterwards with scripts/make_favicon.py (the in-game mine-in-hexagon
+icon).
 
 Local test — must use pygbag's own server; on any other port the
 template rewrites the CDN to localhost:8000 and pygame fails to load:

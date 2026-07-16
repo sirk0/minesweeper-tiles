@@ -56,6 +56,15 @@ S = UI_SCALE
 MARGIN = 10 * S
 HEADER = 56 * S
 
+# Fallback design width (in canvas pixels) for boards on the web build: the
+# on-screen scale is derived from it and the window width alone -- never from
+# the board currently showing -- so the UI keeps one constant size as you move
+# between boards of different sizes. A board narrower than this is centred with
+# background to the sides; a wider or taller one is shrunk just enough to stay
+# fully visible. Each screen may override it via ``web_ref_width`` (the menu
+# reports its own width so it fills the window edge to edge).
+WEB_REF_WIDTH = 560 * S
+
 # classic minesweeper grays
 BG = (192, 192, 192)
 HIDDEN_FACE = (189, 189, 189)
@@ -980,6 +989,10 @@ class BaseGameScreen:
     def size(self) -> tuple[int, int]:
         raise NotImplementedError
 
+    # Boards share one fixed web scale (see WEB_REF_WIDTH) so switching boards
+    # never resizes the UI; a board wider than this is shrunk to fit.
+    web_ref_width = WEB_REF_WIDTH
+
     @property
     def elapsed(self) -> int:
         if self.started_at is None:
@@ -1426,6 +1439,9 @@ class MenuScreen:
     def size(self) -> tuple[int, int]:
         return (self.WIDTH, self.layout()["height"])
 
+    # the menu fills the browser window edge to edge (scaled to its own width)
+    web_ref_width = WIDTH
+
     def handle_event(self, event: pygame.event.Event):
         """Returns "quit", ("start", mode), or None."""
         if event.type == pygame.QUIT:
@@ -1580,7 +1596,7 @@ class _DesktopPresenter:
         # SDL reports mouse events in the window's logical points, not pixels
         _set_mouse_scale(canvas_size, points)
 
-    def present(self, canvas: pygame.Surface) -> None:
+    def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
         self.ensure(canvas.get_size())
         frame = (
             canvas
@@ -1597,15 +1613,6 @@ class _DesktopPresenter:
             self._window.destroy()
 
 
-# The browser build lays every screen out against this fixed design width (in
-# canvas pixels). The on-screen scale is derived from it and the window width
-# alone -- never from the screen currently showing -- so the UI keeps one
-# constant size as you move between the menu and boards of different sizes. A
-# screen narrower than this is centred with background to the sides; a wider or
-# taller one is shrunk just enough to stay fully visible.
-WEB_REF_WIDTH = 560 * S
-
-
 class _WebPresenter:
     """Presents the canvas in the browser, filling the whole window.
 
@@ -1615,13 +1622,14 @@ class _WebPresenter:
     and below on a tall phone -- and, because the fit scale depended on each
     board's size, the whole UI changed scale from one screen to the next.
 
-    Instead the framebuffer is the full browser window (``innerWidth`` x
-    ``innerHeight`` x ``devicePixelRatio``, so a Retina/HiDPI phone gets its
-    extra sharpness), the CSS box is the full window, and the background fills
-    it edge to edge -- no gaps, ever. The screen is drawn onto its own canvas,
-    scaled by a factor derived from ``WEB_REF_WIDTH`` and the window width
-    (constant across screens), and centred; oversized screens are clamped down
-    to stay fully on screen."""
+    Instead the framebuffer is the full visible viewport (``visualViewport`` so
+    the mobile address bar is excluded, times ``devicePixelRatio`` so a
+    Retina/HiDPI phone gets its extra sharpness), the CSS box is the full
+    window, and the background fills it edge to edge -- no gaps, ever. The
+    screen is drawn onto its own canvas, scaled by a factor derived from its
+    ``web_ref_width`` and the window width (constant across boards), and pinned
+    to the top so the counters/smiley sit just under the address bar; oversized
+    screens are clamped down to stay fully on screen."""
 
     def __init__(self) -> None:
         import platform  # pygbag's platform module exposes the DOM
@@ -1630,40 +1638,50 @@ class _WebPresenter:
         self._display: pygame.Surface | None = None
         self._phys: tuple[int, int] = (0, 0)
 
-    def _resize(self) -> tuple[int, int]:
-        """Match the framebuffer and CSS box to the current window; returns the
-        physical (device-pixel) size."""
+    def _viewport(self) -> tuple[float, float, float]:
+        """The visible viewport (CSS px) and device-pixel ratio. ``visualViewport``
+        excludes the mobile browser's address bar; ``innerWidth``/``innerHeight``
+        are the fallback where it is missing."""
         dom = self._dom
+        vv = getattr(dom, "visualViewport", None)
+        w = (getattr(vv, "width", 0) if vv is not None else 0) or dom.innerWidth
+        h = (getattr(vv, "height", 0) if vv is not None else 0) or dom.innerHeight
         dpr = getattr(dom, "devicePixelRatio", 1) or 1
-        phys = (
-            max(1, round(dom.innerWidth * dpr)),
-            max(1, round(dom.innerHeight * dpr)),
-        )
+        return w, h, dpr
+
+    def _resize(self) -> tuple[int, int]:
+        """Match the framebuffer and CSS box to the current viewport; returns the
+        physical (device-pixel) size."""
+        w, h, dpr = self._viewport()
+        phys = (max(1, round(w * dpr)), max(1, round(h * dpr)))
         if phys != self._phys:
             self._phys = phys
             self._display = pygame.display.set_mode(phys)
-            style = dom.canvas.style
-            style.width = f"{dom.innerWidth}px"
-            style.height = f"{dom.innerHeight}px"
+            style = self._dom.canvas.style
+            style.width = f"{w}px"
+            style.height = f"{h}px"
         return phys
 
     def ensure(self, canvas_size: tuple[int, int]) -> None:
         self._resize()
 
-    def present(self, canvas: pygame.Surface) -> None:
+    def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
         phys = self._resize()
         assert self._display is not None
         nat = canvas.get_size()
+        ref = ref_width or WEB_REF_WIDTH
         # device pixels per canvas pixel: fixed by the window width and the
-        # design reference so it does not jump between screens, then clamped so
+        # design reference so it does not jump between boards, then clamped so
         # a screen wider or taller than the window still fits whole
-        scale = min(phys[0] / WEB_REF_WIDTH, phys[0] / nat[0], phys[1] / nat[1])
+        scale = min(phys[0] / ref, phys[0] / nat[0], phys[1] / nat[1])
         # clamp against float rounding so the centred blit always fits the frame
         size = (
             min(phys[0], max(1, round(nat[0] * scale))),
             min(phys[1], max(1, round(nat[1] * scale))),
         )
-        offset = ((phys[0] - size[0]) // 2, (phys[1] - size[1]) // 2)
+        # centre horizontally, pin to the top so the header sits under the
+        # address bar and the spare room falls below the board
+        offset = ((phys[0] - size[0]) // 2, 0)
         self._display.fill(BG)
         pygame.transform.smoothscale(canvas, size, self._display.subsurface(
             pygame.Rect(offset, size)
@@ -1719,7 +1737,7 @@ class App:
             if canvas.get_size() != self.screen.size:
                 canvas = pygame.Surface(self.screen.size)
             self.screen.draw(canvas, fonts)
-            presenter.present(canvas)
+            presenter.present(canvas, self.screen.web_ref_width)
             await asyncio.sleep(0)  # hand control back to the browser
             clock.tick(30)
         presenter.close()
