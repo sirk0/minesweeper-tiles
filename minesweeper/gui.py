@@ -964,6 +964,9 @@ class BaseGameScreen:
     def __init__(self, mode: str, difficulty: str = "easy") -> None:
         self.mode = mode
         self.difficulty = difficulty
+        # extra height handed down by the web presenter to fill the window; the
+        # header stays at the top and the board is centred in the space below
+        self._view_h: int | None = None
         self.new_game()
 
     def new_game(self, difficulty: str | None = None) -> None:
@@ -986,8 +989,33 @@ class BaseGameScreen:
         raise NotImplementedError
 
     @property
-    def size(self) -> tuple[int, int]:
+    def natural_size(self) -> tuple[int, int]:
+        """The board's own tight size, ignoring any web viewport padding."""
         raise NotImplementedError
+
+    @property
+    def size(self) -> tuple[int, int]:
+        nat = self.natural_size
+        if self._view_h is not None and self._view_h > nat[1]:
+            return (nat[0], self._view_h)
+        return nat
+
+    @property
+    def board_shift(self) -> int:
+        """Downward shift that centres the board in the space below the header
+        when the web presenter has given the screen extra height."""
+        return max(0, (self.size[1] - self.natural_size[1]) // 2)
+
+    def set_viewport_height(self, height: int) -> None:
+        """Fill this much canvas height (web build); the desktop leaves it at
+        the natural height, so its layout is unchanged."""
+        if height == self._view_h:
+            return
+        self._view_h = height
+        self._relayout()
+
+    def _relayout(self) -> None:
+        """Re-place geometry after the viewport height changed."""
 
     # Boards share one fixed web scale (see WEB_REF_WIDTH) so switching boards
     # never resizes the UI; a board wider than this is shrunk to fit.
@@ -1149,7 +1177,7 @@ class GameScreen(BaseGameScreen):
     """Flat boards: static polygons straight from the board definition."""
 
     def _setup_geometry(self) -> None:
-        offset_x, offset_y = MARGIN, MARGIN + HEADER
+        offset_x, offset_y = MARGIN, MARGIN + HEADER + self.board_shift
         self.polygons = {
             cell: [(x * S + offset_x, y * S + offset_y) for x, y in vertices]
             for cell, vertices in self.board.polygons.items()
@@ -1163,8 +1191,11 @@ class GameScreen(BaseGameScreen):
             for cell, vertices in self.polygons.items()
         }
 
+    # re-place the polygons when the web viewport height changes
+    _relayout = _setup_geometry
+
     @property
-    def size(self) -> tuple[int, int]:
+    def natural_size(self) -> tuple[int, int]:
         return (
             math.ceil(self.board.width * S) + 2 * MARGIN,
             math.ceil(self.board.height * S) + HEADER + 2 * MARGIN,
@@ -1216,11 +1247,14 @@ class GameScreen3D(BaseGameScreen):
         self._frame = None  # projected geometry, rebuilt after rotation
 
     @property
-    def size(self) -> tuple[int, int]:
+    def natural_size(self) -> tuple[int, int]:
         return (
             self.VIEWPORT + 2 * MARGIN,
             self.VIEWPORT + HEADER + 2 * MARGIN,
         )
+
+    def _relayout(self) -> None:
+        self._frame = None  # cy depends on board_shift; reproject
 
     def _project(self):
         """Rotate, cull, light and depth-sort the cells. Returns a
@@ -1228,7 +1262,7 @@ class GameScreen3D(BaseGameScreen):
         if self._frame is not None:
             return self._frame
         cx = self.size[0] / 2
-        cy = MARGIN + HEADER + self.VIEWPORT / 2
+        cy = MARGIN + HEADER + self.VIEWPORT / 2 + self.board_shift
         two_sided = self.board.two_sided
         frame = []
         for cell, points in self.board.polygons.items():
@@ -1339,6 +1373,13 @@ class MenuScreen:
         self.difficulty = difficulty
         self.group: str | None = None  # None = group page
         self.tiling: str | None = None  # periodic group: tiling page done
+        # extra height handed down by the web presenter to fill the window; the
+        # title stays at the top, the difficulty row drops to the bottom and the
+        # mode list is centred in the space between
+        self._view_h: int | None = None
+
+    def set_viewport_height(self, height: int) -> None:
+        self._view_h = height
 
     def _via_tilings(self) -> bool:
         """Whether the current group navigates tiling -> surface. Signalled
@@ -1413,13 +1454,27 @@ class MenuScreen:
                     )
                 )
                 y += item_step
-        y += 14 * S
+        items_height = y - top
+        natural_height = y + 14 * S + 40 * S + 30 * S
+        # on the web the presenter hands down extra height to fill the window:
+        # pin the difficulty row to the bottom and centre the modes between it
+        # and the title
+        total = (
+            self._view_h
+            if self._view_h is not None and self._view_h > natural_height
+            else natural_height
+        )
+        diff_y = total - 30 * S - 40 * S
+        shift = max(0, ((diff_y - 14 * S - top) - items_height) // 2)
+        if shift:
+            for rect, *_ in rects:
+                rect.move_ip(0, shift)
         difficulty_buttons = []
         button_width = 110 * S
         x = (self.WIDTH - 3 * button_width - 2 * 12 * S) // 2
         for difficulty_key in DIFFICULTIES:
             difficulty_buttons.append(
-                (pygame.Rect(x, y, button_width, 40 * S), difficulty_key)
+                (pygame.Rect(x, diff_y, button_width, 40 * S), difficulty_key)
             )
             x += button_width + 12 * S
         back = (
@@ -1432,8 +1487,16 @@ class MenuScreen:
             "difficulty": difficulty_buttons,
             "back": back,
             "compact": compact,
-            "height": y + 40 * S + 30 * S,
+            "height": total,
         }
+
+    @property
+    def natural_size(self) -> tuple[int, int]:
+        view, self._view_h = self._view_h, None
+        try:
+            return (self.WIDTH, self.layout()["height"])
+        finally:
+            self._view_h = view
 
     @property
     def size(self) -> tuple[int, int]:
@@ -1596,6 +1659,9 @@ class _DesktopPresenter:
         # SDL reports mouse events in the window's logical points, not pixels
         _set_mouse_scale(canvas_size, points)
 
+    def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
+        return natural[1]  # desktop keeps each screen's natural height
+
     def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
         self.ensure(canvas.get_size())
         frame = (
@@ -1664,6 +1730,15 @@ class _WebPresenter:
 
     def ensure(self, canvas_size: tuple[int, int]) -> None:
         self._resize()
+
+    def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
+        """Canvas height the screen should fill so it reaches the bottom of the
+        window at the shared scale (see ``present``)."""
+        phys = self._resize()
+        nat_w, nat_h = natural
+        ref = ref_width or WEB_REF_WIDTH
+        scale = min(phys[0] / ref, phys[0] / nat_w, phys[1] / nat_h)
+        return max(nat_h, round(phys[1] / scale))
 
     def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
         phys = self._resize()
@@ -1734,6 +1809,13 @@ class App:
                     self.screen = make_screen(result[1], self.menu.difficulty)
             if not running:
                 break
+            # let the presenter grow the screen to fill the window height; the
+            # screen distributes the extra room (desktop leaves it at natural)
+            self.screen.set_viewport_height(
+                presenter.viewport_height(
+                    self.screen.web_ref_width, self.screen.natural_size
+                )
+            )
             if canvas.get_size() != self.screen.size:
                 canvas = pygame.Surface(self.screen.size)
             self.screen.draw(canvas, fonts)
