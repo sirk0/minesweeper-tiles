@@ -26,6 +26,8 @@ class SurfaceSpec:
     #                                   chiral tilings (snub hexagonal)
     boundary_components: int | None   # topological invariant; None for flat
     tilt: float | None = None         # GameScreen3D initial x-rotation
+    tilings: frozenset[str] | None = None  # restrict to these tiling keys;
+    #                                        None means every tiling (default)
 
 
 # The menu picks a group, then a tiling, then -- for the periodic tilings
@@ -45,6 +47,11 @@ SURFACE_SPECS = (
                 boundary_components=2, tilt=-0.35),
     SurfaceSpec("mobius", "Möbius strip", "mobius", is_3d=True,
                 needs_mirror=True, boundary_components=1, tilt=-0.8),
+    # A Klein bottle: closed like the donut but glued with a flip, so
+    # non-orientable. Only the square tiling wraps it for now.
+    SurfaceSpec("klein", "Klein bottle", "klein", is_3d=True,
+                needs_mirror=True, boundary_components=0, tilt=-0.9,
+                tilings=frozenset({"square"})),
 )
 SURFACES = {s.key: s for s in SURFACE_SPECS}
 SURFACE_LABELS = {s.key: s.label for s in SURFACE_SPECS}
@@ -64,7 +71,11 @@ class TilingSpec:
         return self.mode_overrides.get(surface.key, surface.prefix + self.key)
 
     def allows(self, surface: SurfaceSpec) -> bool:
-        return not (surface.needs_mirror and self.chiral)
+        if surface.needs_mirror and self.chiral:
+            return False
+        if surface.tilings is not None and self.key not in surface.tilings:
+            return False
+        return True
 
 
 # The three regular tilings keep their legacy mode names: the square
@@ -72,7 +83,8 @@ class TilingSpec:
 # triangle grid is "trigrid".
 REGULAR_TILINGS = (
     TilingSpec("square", "Squares", mode_overrides={
-        "torus": "torus", "cylinder": "cylinder", "mobius": "mobius"}),
+        "torus": "torus", "cylinder": "cylinder", "mobius": "mobius",
+        "klein": "klein"}),
     TilingSpec("tri", "Triangles", mode_overrides={"flat": "trigrid"}),
     TilingSpec("hex", "Hexagons"),
 )

@@ -369,13 +369,15 @@ class TestMenu:
         assert reached == set(MODE_LABELS)
 
     def test_impossible_surface_is_disabled(self):
-        # snub hexagonal is chiral, so its Möbius strip does not exist
+        # snub hexagonal is chiral, so its Möbius strip does not exist; the
+        # Klein bottle is squares-only for now, so it is disabled here too
         menu = MenuScreen()
         self.click_item(menu, "periodic")
         self.click_item(menu, "snubhex")
         enabled = {key: on for _, key, _, on in menu.layout()["items"]}
         assert enabled == {
             "flat": True, "torus": True, "cylinder": True, "mobius": False,
+            "klein": False,
         }
         assert self.click_item(menu, "mobius") is None  # click ignored
         assert menu.tiling == "snubhex"  # still on the surface page

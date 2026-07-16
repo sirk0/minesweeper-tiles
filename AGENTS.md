@@ -125,45 +125,74 @@ A surface is a new column in the periodic tiling×surface grid. The
 catalog derives everything from one `SurfaceSpec`, so the work is: an
 immersion, a wrap builder, one spec row, and preset tuning.
 
+The Klein bottle is already implemented **for the square tiling only**
+(`klein_board` + the `"klein"` `SurfaceSpec`); the notes below double as
+its as-built documentation and as the pattern for finishing it (the other
+tilings) or adding a fresh surface.
+
 1. **Immersion** in `surfaces.py`. A Klein bottle is a torus whose tube
-   seam is glued with a flip, so use a figure-8 immersion, ``u`` around
-   the ring and ``v`` around the cross-section (both radians):
+   seam is glued with a flip. The cross-section must be a genuine
+   *figure-8* (a lemniscate: `sin v` against `sin 2v`) whose two lobes are
+   carried by the `u / 2` frame, so a full loop swaps the lobes = a
+   reflected seam. A plain circle rotated by `u / 2` only reindexes the
+   tube (still a torus); scaling one axis by `cos(u/2)+sin(u/2)` — an
+   earlier sketch here — collapses the tube flat at `u = 3π/2`. The
+   working immersion (``u`` round the ring, ``v`` round the cross-section,
+   both radians):
 
    ```python
    def _klein_point(u: float, v: float, tube_radius: float = 0.45) -> Vec3:
        r = tube_radius
-       across = r * math.cos(v)            # figure-8 cross-section
-       fold = r * math.sin(v) * math.cos(u / 2)
-       twist = r * math.sin(v) * math.sin(u / 2)
-       radial = 1.0 + across
-       return (radial * math.cos(u), radial * math.sin(u), fold + twist)
+       cross = math.cos(u / 2) * math.sin(v) - math.sin(u / 2) * math.sin(2 * v)
+       height = math.sin(u / 2) * math.sin(v) + math.cos(u / 2) * math.sin(2 * v)
+       radial = 1.0 + r * cross
+       return (radial * math.cos(u), radial * math.sin(u), r * height)
    ```
 
-2. **Wrap builder** in `surfaces.py`, modelled on `arch_torus_board` but
-   gluing the tube seam flipped after a full loop — reuse
-   `template.mirror` exactly as `arch_mobius_board` does for its seam.
-   Wrap the ring modulo like the torus and the tube with the mirror flip;
-   assemble with `_assemble(..., two_sided=True, radius=_max_radius)`.
-   A Klein bottle is closed (0 boundary circles) but non-orientable.
+   The figure-8 self-crosses at `v = 0, π` (every 3-space immersion of the
+   Klein bottle must self-intersect somewhere); `klein_board` offsets `v`
+   by half a cell so no *vertex* lands on that circle and all vertices
+   stay distinct.
+
+2. **Wrap builder** in `surfaces.py`. `klein_board` is modelled on
+   `torus_board`: the cross-section (`tube`) wraps straight, but the ring
+   seam glues *flipped* — column `ring` re-enters column 0 with the tube
+   reversed (`j -> -j - 1`, matching the half-cell `v` offset). Assemble
+   with `_assemble(..., two_sided=True, radius=_max_radius)`. A Klein
+   bottle is closed (0 boundary circles) but non-orientable, so it is
+   drawn two-sided, not back-face culled. To extend it to the Archimedean
+   tilings, write `arch_klein_board` next to `arch_torus_board`, gluing
+   the seam flipped with `template.mirror` as `arch_mobius_board` does.
 
 3. **SurfaceSpec** in `catalog.py`:
 
    ```python
    SurfaceSpec("klein", "Klein bottle", "klein", is_3d=True,
-               needs_mirror=True, boundary_components=0, tilt=-0.9),
+               needs_mirror=True, boundary_components=0, tilt=-0.9,
+               tilings=frozenset({"square"})),
    ```
 
    `needs_mirror=True` makes the derivation drop the chiral snub
-   hexagonal automatically, exactly like the Möbius strip.
+   hexagonal automatically, exactly like the Möbius strip. `tilings=` is
+   an optional allow-list that restricts a surface to specific tiling
+   keys (`None` = every tiling) — that is what keeps this surface
+   squares-only for now; widen or drop it as more wrap builders land.
+   `TilingSpec.allows` gates on both. The square tiling maps `(square,
+   klein)` to the bare mode `"klein"` via its `mode_overrides`, like its
+   other legacy surface names.
 
-4. **Presets** in `presets.py`: add `"klein": arch_klein_board` to
-   `_ARCH_BUILDERS`, and a `"klein"` column to each tiling's
-   `ARCH_PRESETS` block (skip snub hexagonal).
+4. **Presets** in `presets.py`: while squares-only, add an explicit
+   `"klein"` block to `_PRESETS` (like the `torus`/`mobius`/`cylinder`
+   square blocks). For the eventual Archimedean columns, add `"klein":
+   arch_klein_board` to `_ARCH_BUILDERS` and a `"klein"` column to each
+   tiling's `ARCH_PRESETS` block (skip snub hexagonal).
 
 No menu, `gui.py`, or test edits are needed: `MODE_LABELS`, `TILINGS`,
 `MODES_3D`, `mode_for`, `surface_of`, `view_hint` and the menu pages all
 derive from the new `SurfaceSpec`, and the invariant/boundary tests pick
-the new modes up automatically. If you add the spec but forget a preset,
+the new modes up automatically. (A surface restricted to some tilings
+shows greyed-out on the others' menu pages, exactly like Möbius on snub
+hexagonal.) If you add the spec but forget a preset,
 `TestPresets.test_all_presets_build` fails loudly — that is the intended
 guard rail.
 

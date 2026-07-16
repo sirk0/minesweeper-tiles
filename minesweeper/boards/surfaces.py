@@ -50,6 +50,23 @@ def _mobius_point(u: float, v: float) -> Vec3:
     return (radial * math.cos(u), radial * math.sin(u), v * math.sin(u / 2))
 
 
+def _klein_point(u: float, v: float, tube_radius: float = 0.45) -> Vec3:
+    """A figure-8 Klein-bottle point: ``u`` runs round the ring, ``v``
+    round the cross-section (both radians). The cross-section is a
+    figure-8 (lemniscate) whose two lobes are carried by the ``u / 2``
+    frame, so after a full loop (``u`` = 2π) it comes back with the lobes
+    swapped -- i.e. the tube seam is glued with a reflection. That is what
+    turns the torus into the (non-orientable, closed) Klein bottle. The
+    lobes swap rather than scale, so the tube keeps its body all the way
+    round (no pinch); the price is the honest self-intersection every
+    immersion of the Klein bottle in 3-space must have."""
+    r = tube_radius
+    cross = math.cos(u / 2) * math.sin(v) - math.sin(u / 2) * math.sin(2 * v)
+    height = math.sin(u / 2) * math.sin(v) + math.cos(u / 2) * math.sin(2 * v)
+    radial = 1.0 + r * cross
+    return (radial * math.cos(u), radial * math.sin(u), r * height)
+
+
 # -- assembly: shared tail for every wrapped board ---------------------------
 
 
@@ -232,6 +249,39 @@ def mobius_hex_board(ring: int, rows: int, mine_count: int) -> Board3D:
                              for ox, oy in _HEX_VERTEX_OFFSETS]
     return _assemble("mobiushex", cells, point, mine_count,
                      two_sided=True, radius=1.0 + half_width)
+
+
+# -- the Klein bottle --------------------------------------------------------
+
+
+def klein_board(
+    ring: int, tube: int, mine_count: int, tube_radius: float = 0.45
+) -> Board3D:
+    """A Klein bottle tiled with ``ring * tube`` quadrilaterals. Like the
+    torus the cross-section (``tube``) wraps straight, but after a full
+    loop round the ring the tube seam glues *flipped* (``j`` -> ``-j``),
+    so the surface is closed yet non-orientable. Every cell has exactly 8
+    neighbors."""
+    def key(i, j):
+        if i >= ring:                      # crossed the ring seam: flip the tube
+            return (i - ring, (-j - 1) % tube)
+        return (i, j % tube)
+
+    def point(k):
+        i, j = k
+        # half-cell offset in v keeps every vertex off the figure-8's
+        # self-crossing circle (v = 0, π), so no two vertices coincide
+        return _klein_point(2 * math.pi * i / ring,
+                            2 * math.pi * (j + 0.5) / tube, tube_radius)
+
+    cells = {
+        (i, j): [key(i, j), key(i + 1, j),
+                 key(i + 1, j + 1), key(i, j + 1)]
+        for i in range(ring)
+        for j in range(tube)
+    }
+    return _assemble("klein", cells, point, mine_count,
+                     two_sided=True, radius=_max_radius)
 
 
 # -- the cylinder ------------------------------------------------------------
