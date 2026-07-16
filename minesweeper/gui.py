@@ -941,9 +941,14 @@ class BaseGameScreen:
             ):
                 return "menu"
             self._handle_mouse(event)
+        if event.type == pygame.MOUSEWHEEL:
+            self._handle_wheel(event)
         return None
 
     def _handle_key(self, event) -> None:
+        pass
+
+    def _handle_wheel(self, event) -> None:
         pass
 
     def _handle_mouse(self, event) -> None:
@@ -1108,6 +1113,10 @@ class GameScreen3D(BaseGameScreen):
         # turn to a vertex-first 3/4 view so the frame's gaps read clearly
         if self.mode == "tetraframe":
             return mat_mul(rot_x(-0.62), rot_y(0.45))
+        # the Klein bottle reads best from a 3/4 turn: the neck diving
+        # through the body (the self-intersection) is then plainly visible
+        if self.mode == "klein":
+            return mat_mul(rot_x(-0.4), rot_y(0.6))
         # wrapped surfaces tilt by their SurfaceSpec hint (donut, cylinder,
         # Möbius strip); everything else faces straight on
         tilt = view_hint(self.mode)
@@ -1119,6 +1128,15 @@ class GameScreen3D(BaseGameScreen):
         self._drag_from = None
         self._dragged = False
         self._frame = None  # projected geometry, rebuilt after rotation
+        # scroll-to-shift: only boards that expose a ring translation (the
+        # Klein bottle) support it. _remap sends each geometric face to the
+        # game cell currently painted on it; scrolling walks it along cycle.
+        self._cycle = self.board.cell_cycle
+        self._cycle_inv = (
+            {v: k for k, v in self._cycle.items()} if self._cycle else None
+        )
+        self._remap = {c: c for c in self.board.polygons}
+        self._scroll_accum = 0.0
 
     @property
     def size(self) -> tuple[int, int]:
@@ -1176,6 +1194,29 @@ class GameScreen3D(BaseGameScreen):
                 return entry[1]
         return None
 
+    def _game_cell(self, geom):
+        """The game cell whose state is painted on geometric face ``geom``
+        (identity unless the board has been scrolled)."""
+        if geom is None:
+            return None
+        return self._remap.get(geom, geom)
+
+    def _handle_wheel(self, event) -> None:
+        """Scroll the cell contents one step along the ring per notch,
+        rotating cells hidden by the self-intersection into view. The
+        geometry never moves -- only which game cell each face shows."""
+        if not self._cycle:
+            return
+        # precise_y is smooth on a touchpad (two-finger scroll) and +-1 per
+        # notch on a wheel; step one cell each time a whole unit is crossed
+        self._scroll_accum += getattr(event, "precise_y", event.y)
+        while self._scroll_accum >= 1.0:
+            self._scroll_accum -= 1.0
+            self._remap = {g: self._cycle[c] for g, c in self._remap.items()}
+        while self._scroll_accum <= -1.0:
+            self._scroll_accum += 1.0
+            self._remap = {g: self._cycle_inv[c] for g, c in self._remap.items()}
+
     def _handle_key(self, event) -> None:
         step = 40 * S  # canvas-pixels-worth of rotation per key press
         if event.key == pygame.K_LEFT:
@@ -1196,7 +1237,7 @@ class GameScreen3D(BaseGameScreen):
                 self._drag_from = event.pos
                 self._dragged = False
             elif event.button == 3:
-                cell = self.cell_at(event.pos)
+                cell = self._game_cell(self.cell_at(event.pos))
                 if cell is not None:
                     self.game.toggle_flag(cell)
         elif event.type == pygame.MOUSEMOTION and self._drag_from is not None:
@@ -1212,7 +1253,7 @@ class GameScreen3D(BaseGameScreen):
             self.rotate(event.rel[0], -event.rel[1])
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self._drag_from is not None and not self._dragged:
-                cell = self.cell_at(event.pos)
+                cell = self._game_cell(self.cell_at(event.pos))
                 if cell is not None:
                     self.click(cell)
             self._drag_from = None
@@ -1220,7 +1261,8 @@ class GameScreen3D(BaseGameScreen):
 
     def draw_board(self, surface, fonts: FontCache) -> None:
         for _, cell, polygon, center, glyph_radius, shade in self._project():
-            self.draw_cell(surface, fonts, cell, polygon, center, glyph_radius, shade)
+            self.draw_cell(surface, fonts, self._game_cell(cell),
+                           polygon, center, glyph_radius, shade)
 
 
 def make_screen(mode: str, difficulty: str) -> BaseGameScreen:

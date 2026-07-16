@@ -48,9 +48,11 @@ SURFACE_SPECS = (
     SurfaceSpec("mobius", "Möbius strip", "mobius", is_3d=True,
                 needs_mirror=True, boundary_components=1, tilt=-0.8),
     # A Klein bottle: closed like the donut but glued with a flip, so
-    # non-orientable. Only the square tiling wraps it for now.
+    # non-orientable, shaped as the classic self-intersecting bottle. Only
+    # the square tiling wraps it for now. (GameScreen3D adds a y-turn on
+    # top of this x-tilt so the neck-through-body view reads clearly.)
     SurfaceSpec("klein", "Klein bottle", "klein", is_3d=True,
-                needs_mirror=True, boundary_components=0, tilt=-0.9,
+                needs_mirror=True, boundary_components=0, tilt=-0.4,
                 tilings=frozenset({"square"})),
 )
 SURFACES = {s.key: s for s in SURFACE_SPECS}

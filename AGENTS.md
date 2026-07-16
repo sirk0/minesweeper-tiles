@@ -131,46 +131,58 @@ its as-built documentation and as the pattern for finishing it (the other
 tilings) or adding a fresh surface.
 
 1. **Immersion** in `surfaces.py`. A Klein bottle is a torus whose tube
-   seam is glued with a flip. The cross-section must be a genuine
-   *figure-8* (a lemniscate: `sin v` against `sin 2v`) whose two lobes are
-   carried by the `u / 2` frame, so a full loop swaps the lobes = a
-   reflected seam. A plain circle rotated by `u / 2` only reindexes the
-   tube (still a torus); scaling one axis by `cos(u/2)+sin(u/2)` — an
-   earlier sketch here — collapses the tube flat at `u = 3π/2`. The
-   working immersion (``u`` round the ring, ``v`` round the cross-section,
-   both radians):
-
-   ```python
-   def _klein_point(u: float, v: float, tube_radius: float = 0.45) -> Vec3:
-       r = tube_radius
-       cross = math.cos(u / 2) * math.sin(v) - math.sin(u / 2) * math.sin(2 * v)
-       height = math.sin(u / 2) * math.sin(v) + math.cos(u / 2) * math.sin(2 * v)
-       radial = 1.0 + r * cross
-       return (radial * math.cos(u), radial * math.sin(u), r * height)
-   ```
-
-   The figure-8 self-crosses at `v = 0, π` (every 3-space immersion of the
-   Klein bottle must self-intersect somewhere); `klein_board` offsets `v`
-   by half a cell so no *vertex* lands on that circle and all vertices
-   stay distinct.
+   seam is glued with a flip. `_klein_point` uses the classic
+   self-intersecting *bottle* immersion (`u` runs the profile round the
+   ring — up the body, over the top, down and through the neck; `v` runs
+   the circular cross-section). It reads as the familiar bottle rather
+   than a donut. It is piecewise (a `u < π` body branch, a `u ≥ π` neck
+   branch) and its natural coordinates are large and off-origin, so
+   `klein_board` **recentres** the sampled points before `_assemble`
+   (`GameScreen3D` measures `radius` from, and pivots rotation about, the
+   origin, so off-origin geometry renders shrunk and off-centre). The
+   neck-through-body
+   self-intersection is unavoidable (no immersion of the Klein bottle
+   embeds in 3-space); `klein_board` offsets `v` by half a cell so no
+   *vertex* lands on the self-intersection circle and all vertices stay
+   distinct (`euler_characteristic`/`boundary_components` key on rounded
+   coordinates). An earlier figure-8 (lemniscate) immersion is in the git
+   history if you want the donut-shaped variant back.
 
 2. **Wrap builder** in `surfaces.py`. `klein_board` is modelled on
-   `torus_board`: the cross-section (`tube`) wraps straight, but the ring
-   seam glues *flipped* — column `ring` re-enters column 0 with the tube
-   reversed (`j -> -j - 1`, matching the half-cell `v` offset). Assemble
-   with `_assemble(..., two_sided=True, radius=_max_radius)`. A Klein
-   bottle is closed (0 boundary circles) but non-orientable, so it is
-   drawn two-sided, not back-face culled. To extend it to the Archimedean
-   tilings, write `arch_klein_board` next to `arch_torus_board`, gluing
-   the seam flipped with `template.mirror` as `arch_mobius_board` does.
+   `torus_board`: the cross-section (`tube`, **must be even**) wraps
+   straight, but the ring seam glues *flipped* — column `ring` re-enters
+   column 0 with the tube reflected. The vertex flip is `j -> tube/2 - j -
+   1` (the reflection the bottle immersion makes at the seam, matched to
+   the half-cell `v` offset); the *cell* flip is one lower, `tube/2 - j -
+   2`, because a cell is indexed by its low-`j` corner. Assemble with
+   `_assemble(..., two_sided=True, radius=_max_radius, cell_cycle=...)`. A
+   Klein bottle is closed (0 boundary circles) but non-orientable, so it
+   is drawn two-sided, not back-face culled.
+
+   `cell_cycle` is the one-step **ring translation** `(i, j) -> (i+1, j)`
+   (with the cell flip at the seam) — a graph automorphism carried on
+   `Board3D`. `GameScreen3D` reads it to let the player **scroll** the
+   cell contents along the ring (mouse wheel / two-finger scroll), so
+   cells hidden behind the self-intersection rotate into view without the
+   geometry moving. Because it is an automorphism the board stays readable
+   at every offset; its order is `2 * ring` (crossing the seam flips the
+   tube, so a cell returns only after two loops). Any other board that
+   exposes a `cell_cycle` gets the same scrolling for free; everything
+   else leaves it `None`. To extend the bottle to the Archimedean tilings,
+   write `arch_klein_board` next to `arch_torus_board`, gluing the seam
+   flipped with `template.mirror` as `arch_mobius_board` does.
 
 3. **SurfaceSpec** in `catalog.py`:
 
    ```python
    SurfaceSpec("klein", "Klein bottle", "klein", is_3d=True,
-               needs_mirror=True, boundary_components=0, tilt=-0.9,
+               needs_mirror=True, boundary_components=0, tilt=-0.4,
                tilings=frozenset({"square"})),
    ```
+
+   (The Klein bottle also takes a `mode == "klein"` special case in
+   `GameScreen3D._initial_rotation` for a 3/4 view that shows the
+   self-intersection; `tilt` alone is only an x-rotation.)
 
    `needs_mirror=True` makes the derivation drop the chiral snub
    hexagonal automatically, exactly like the Möbius strip. `tilings=` is
