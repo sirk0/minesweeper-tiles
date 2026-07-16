@@ -56,6 +56,11 @@ def key_event(key):
     return pygame.event.Event(pygame.KEYDOWN, key=key)
 
 
+def wheel_event(y):
+    return pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=y, precise_x=0.0,
+                              precise_y=float(y), flipped=False)
+
+
 def find_mine(screen):
     return next(cell for cell in screen.game.cells if screen.game.is_mine(cell))
 
@@ -315,6 +320,34 @@ class Test3DScreens:
         assert screen.game is not old_game
         assert screen._drag_from is None
 
+    def test_scroll_shifts_cells_along_the_ring(self):
+        # the Klein bottle carries a cell_cycle, so scrolling remaps which
+        # game cell each face shows (geometry untouched)
+        screen = GameScreen3D("klein", "easy")
+        cycle = screen.board.cell_cycle
+        assert screen._remap == {c: c for c in screen.board.polygons}
+        screen.handle_event(wheel_event(2))
+        assert screen._remap == {g: cycle[cycle[g]] for g in cycle}
+        screen.handle_event(wheel_event(-2))  # back to identity
+        assert screen._remap == {c: c for c in screen.board.polygons}
+
+    def test_scroll_moves_the_clicked_cell(self):
+        # after scrolling, clicking a face acts on the shifted game cell --
+        # the one whose number is drawn there
+        screen = GameScreen3D("klein", "easy")
+        cell, pos = self.nearest_visible(screen)
+        screen.handle_event(wheel_event(1))
+        expected = screen.board.cell_cycle[cell]
+        screen.handle_event(mouse_event(pos, button=3))
+        assert screen.game.cell_state(expected) is CellState.FLAGGED
+        assert screen.game.cell_state(cell) is CellState.HIDDEN
+
+    def test_non_klein_board_ignores_scroll(self):
+        screen = GameScreen3D("torus", "easy")
+        assert screen.board.cell_cycle is None
+        screen.handle_event(wheel_event(3))
+        assert screen._remap == {c: c for c in screen.board.polygons}
+
 
 class TestMenu:
     def items(self, menu):
@@ -379,13 +412,15 @@ class TestMenu:
         assert reached == set(MODE_LABELS)
 
     def test_impossible_surface_is_disabled(self):
-        # snub hexagonal is chiral, so its Möbius strip does not exist
+        # snub hexagonal is chiral, so its Möbius strip does not exist; the
+        # Klein bottle is squares-only for now, so it is disabled here too
         menu = MenuScreen()
         self.click_item(menu, "uniform")
         self.click_item(menu, "snubhex")
         enabled = {key: on for _, key, _, on in menu.layout()["items"]}
         assert enabled == {
             "flat": True, "mobius": False, "cylinder": True, "torus": True,
+            "klein": False,
         }
         assert self.click_item(menu, "mobius") is None  # click ignored
         assert menu.tiling == "snubhex"  # still on the surface page

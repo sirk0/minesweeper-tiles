@@ -32,6 +32,10 @@ class Board3D:
     mine_count: int
     radius: float  # max vertex distance from the origin
     two_sided: bool = False  # open/non-orientable surfaces show both sides
+    cell_cycle: dict[Cell, Cell] | None = None  # one-step ring translation (a
+    #   graph automorphism); when set, GameScreen3D lets the player scroll the
+    #   cell contents along it, so cells hidden by a self-intersection can be
+    #   rotated into view without moving the geometry. None = no scrolling.
 
 
 def _shared_vertex_adjacency(cells: dict[Cell, list]) -> dict[Cell, tuple[Cell, ...]]:

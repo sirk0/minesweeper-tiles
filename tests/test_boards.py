@@ -26,6 +26,7 @@ from minesweeper.boards import (
     hat_board,
     hex_board,
     hexhex_board,
+    klein_board,
     mobius_board,
     mobius_hex_board,
     mobius_triangle_board,
@@ -699,6 +700,60 @@ class TestSteppedCube:
             stepped_bipyramid_board(4, 3, 5)  # apex 4 - 2*2 = 0: nothing left
 
 
+
+
+class TestKleinBottle:
+    """The Klein bottle: the square grid on the classic self-intersecting
+    bottle immersion -- closed (no boundary) but non-orientable, and
+    carrying a ring-translation ``cell_cycle`` for scroll-to-shift."""
+
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_is_a_closed_non_orientable_surface(self, difficulty):
+        board = build_board("klein", difficulty)
+        assert _euler_characteristic(board) == 0
+        assert _boundary_components(board) == 0
+        assert board.two_sided is True  # non-orientable: drawn both sides
+        assert {len(n) for n in board.adjacency.values()} == {8}
+
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_immersion_keeps_every_vertex_distinct(self, difficulty):
+        # a closed quad mesh with chi = 0 has V = F; if the immersion merged
+        # two grid vertices the distinct-point count would drop below F
+        board = build_board("klein", difficulty)
+        points = {tuple(round(c, 6) for c in p)
+                  for poly in board.polygons.values() for p in poly}
+        assert len(points) == len(board.polygons)
+
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_cell_cycle_is_a_graph_automorphism(self, difficulty):
+        board = build_board("klein", difficulty)
+        cycle = board.cell_cycle
+        assert cycle is not None
+        # a bijection over exactly the cells
+        assert set(cycle) == set(board.adjacency)
+        assert len(set(cycle.values())) == len(cycle)
+        # adjacency-preserving: neighbours map to neighbours (so the board
+        # reads correctly at every scroll offset)
+        for cell, neighbors in board.adjacency.items():
+            shifted = board.adjacency[cycle[cell]]
+            assert all(cycle[n] in shifted for n in neighbors)
+
+    def test_cell_cycle_period_is_twice_the_ring(self):
+        # crossing the seam flips the tube, so a cell returns to itself only
+        # after two full loops: order 2 * ring (here ring = 12)
+        board = klein_board(12, 6, 9)
+        cycle = board.cell_cycle
+        start = next(iter(cycle))
+        cur, order = cycle[start], 1
+        while cur != start:
+            cur, order = cycle[cur], order + 1
+        assert order == 24
+
+    def test_tube_must_be_even(self):
+        # the seam reflection j -> tube/2 - j - 1 only lands on cells when
+        # tube is even
+        with pytest.raises(ValueError):
+            klein_board(12, 5, 9)
 
 
 class TestWrappedArchimedean:
