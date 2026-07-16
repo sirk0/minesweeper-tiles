@@ -29,6 +29,7 @@ import pygame
 
 from minesweeper.boards import (
     DIFFICULTIES,
+    GROUP_TILINGS,
     GROUPS,
     MODE_LABELS,
     MODES_3D,
@@ -543,8 +544,8 @@ def _render_icon(key: str) -> pygame.Surface:
 
     key = _ICON_ALIASES.get(key, key)
 
-    if key == "periodic":
-        # one shape of each kind: the group of periodic tilings
+    if key == "uniform":
+        # one shape of each kind: the group of uniform tilings
         _icon_shape(s, [(d * 0.08, d * 0.08), (d * 0.48, d * 0.08),
                         (d * 0.48, d * 0.48), (d * 0.08, d * 0.48)])
         _icon_shape(s, _hexagon_points(d * 0.72, d * 0.28, d * 0.22))
@@ -553,6 +554,17 @@ def _render_icon(key: str) -> pygame.Surface:
         _icon_shape(s, [(d * 0.52, d * 0.55), (d * 0.92, d * 0.55),
                         (d * 0.92, d * 0.9), (d * 0.52, d * 0.9)])
         _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.08, d * 0.84, d * 0.84))
+    elif key == "dual":
+        # the Laves (dual) tilings: a pentagon and a rhombus, the shapes of
+        # the two best-known duals (Cairo and rhombille)
+        _icon_shape(s, _ngon_points(d * 0.34, d * 0.36, d * 0.28, 5, -90))
+        _icon_shape(s, [(d * 0.72, d * 0.34), (d * 0.92, d * 0.62),
+                        (d * 0.72, d * 0.9), (d * 0.52, d * 0.62)],
+                    fill=ICON_BLUE_LIGHT)
+        _icon_shape(s, [(d * 0.12, d * 0.66), (d * 0.44, d * 0.66),
+                        (d * 0.3, d * 0.94), (d * -0.02, d * 0.94)],
+                    fill=ICON_BLUE_LIGHT)
+        _icon_gloss(s, pygame.Rect(d * 0.06, d * 0.08, d * 0.86, d * 0.84))
     elif key in ("flat", "square", "torus_tile"):
         gap, tile = d * 0.04, d * 0.42
         for ix in (0, 1):
@@ -694,6 +706,67 @@ def _render_icon(key: str) -> pygame.Surface:
         _icon_shape(s, _ngon_points(d * 0.17, d * 0.83, d * 0.11, 4, 45),
                     fill=ICON_BLUE_LIGHT, width=3)
         _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.8))
+    elif key == "prismaticpent":
+        # rows of pentagons: two stacked (the dual of elongated triangular)
+        _icon_shape(s, _ngon_points(c, d * 0.32, d * 0.26, 5, -90), width=4)
+        _icon_shape(s, _ngon_points(c, d * 0.68, d * 0.26, 5, 90),
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.14, d * 0.08, d * 0.72, d * 0.7))
+    elif key == "cairo":
+        # two pentagons in the Cairo basketweave (dual of snub square)
+        _icon_shape(s, _ngon_points(d * 0.37, d * 0.4, d * 0.28, 5, -108), width=4)
+        _icon_shape(s, _ngon_points(d * 0.63, d * 0.6, d * 0.28, 5, 72),
+                    fill=ICON_BLUE_LIGHT, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.08, d * 0.08, d * 0.84, d * 0.7))
+    elif key == "rhombille":
+        # three rhombi meeting as an isometric cube (dual of kagome)
+        h = _hexagon_points(c, c, d * 0.42, -90)
+        _icon_shape(s, [h[0], h[1], (c, c), h[5]], fill=ICON_BLUE_LIGHT, width=4)
+        _icon_shape(s, [h[1], h[2], h[3], (c, c)], fill=ICON_BLUE, width=4)
+        _icon_shape(s, [h[5], (c, c), h[3], h[4]], fill=ICON_BLUE_DARK, width=4)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.4))
+    elif key == "floret":
+        # six pentagons pinwheeling round a centre (dual of snub hexagonal)
+        for k in range(6):
+            angle = math.radians(60 * k)
+            px = c + d * 0.24 * math.cos(angle)
+            py = c + d * 0.24 * math.sin(angle)
+            _icon_shape(s, _ngon_points(px, py, d * 0.17, 5, 60 * k + 20),
+                        fill=ICON_BLUE_LIGHT if k % 2 else ICON_BLUE, width=3)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.7))
+    elif key == "tetrakis":
+        # a square cut by both diagonals into four triangles
+        sq = [(d * 0.12, d * 0.12), (d * 0.88, d * 0.12),
+              (d * 0.88, d * 0.88), (d * 0.12, d * 0.88)]
+        _icon_shape(s, sq, width=4)
+        for a, b in (((c, c), sq[0]), ((c, c), sq[1]), ((c, c), sq[2]), ((c, c), sq[3])):
+            pygame.draw.line(s, ICON_BLUE_DARK, a, b, 4)
+        _icon_gloss(s, pygame.Rect(d * 0.12, d * 0.12, d * 0.76, d * 0.4))
+    elif key == "triakis":
+        # a triangle split from its centre into three (dual of trunc. hex.)
+        outer = _ngon_points(c, c + d * 0.04, d * 0.46, 3, -90)
+        _icon_shape(s, outer, width=4)
+        for v in outer:
+            pygame.draw.line(s, ICON_BLUE_DARK, (c, c + d * 0.04), v, 4)
+        _icon_gloss(s, pygame.Rect(d * 0.18, d * 0.1, d * 0.64, d * 0.4))
+    elif key == "deltoidal":
+        # a ring of kites round a centre (dual of rhombitrihexagonal)
+        h = _hexagon_points(c, c, d * 0.44, 0)
+        mids = [( (h[k][0] + h[(k+1) % 6][0]) / 2, (h[k][1] + h[(k+1) % 6][1]) / 2 )
+                for k in range(6)]
+        for k in range(6):
+            kite = [(c, c), mids[k - 1], h[k], mids[k]]
+            _icon_shape(s, kite, fill=ICON_BLUE_LIGHT if k % 2 else ICON_BLUE, width=3)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.4))
+    elif key == "kisrhombille":
+        # a hexagon barycentrically cut into twelve right triangles
+        h = _hexagon_points(c, c, d * 0.44, 0)
+        mids = [( (h[k][0] + h[(k+1) % 6][0]) / 2, (h[k][1] + h[(k+1) % 6][1]) / 2 )
+                for k in range(6)]
+        _icon_shape(s, h, width=4)
+        for pt in list(h) + mids:
+            pygame.draw.line(s, ICON_BLUE_DARK, (c, c), pt, 3)
+        _icon_gloss(s, pygame.Rect(d * 0.1, d * 0.08, d * 0.8, d * 0.4))
     elif key in ("sphere", "c80", "c180", "spheretri", "snubdodec"):
         fill_circle(s, int(c), int(c), int(d * 0.44), ICON_BLUE)
         pygame.draw.circle(s, ICON_BLUE_DARK, (int(c), int(c)), int(d * 0.44), 4)
@@ -1247,8 +1320,8 @@ class MenuScreen:
 
     def _via_tilings(self) -> bool:
         """Whether the current group navigates tiling -> surface. Signalled
-        by an empty mode list in GROUPS (the periodic group routes through
-        TILINGS); the others list their modes directly."""
+        by an empty mode list in GROUPS (the uniform and dual-uniform groups
+        route through GROUP_TILINGS); the others list their modes directly."""
         return self.group is not None and not GROUPS[self.group][1]
 
     def _items(self) -> list[tuple[str, str, bool]]:
@@ -1257,7 +1330,8 @@ class MenuScreen:
             return [(key, label, True) for key, (label, _) in GROUPS.items()]
         if self._via_tilings():
             if self.tiling is None:
-                return [(key, label, True) for key, (label, _) in TILINGS.items()]
+                return [(key, TILINGS[key][0], True)
+                        for key in GROUP_TILINGS[self.group]]
             surfaces = TILINGS[self.tiling][1]
             return [
                 (key, label, key in surfaces)
@@ -1284,21 +1358,39 @@ class MenuScreen:
 
     def layout(self):
         items = self._items()
-        compact = len(items) > 8  # long tiling lists get tighter rows
+        # the tiling pages (11 tilings) go in two columns; every other page
+        # is a single column. Two-column rows are narrower, so they use the
+        # tighter compact sizing too.
+        two_col = self._via_tilings() and self.tiling is None
+        compact = two_col or len(items) > 8
         item_height = 42 * S if compact else self.ITEM_HEIGHT
         item_step = 50 * S if compact else self.ITEM_STEP
         rects = []
-        y = 96 * S
-        for key, label, enabled in items:
-            rects.append(
-                (
-                    pygame.Rect(50 * S, y, self.WIDTH - 100 * S, item_height),
-                    key,
-                    label,
-                    enabled,
+        top = 96 * S
+        if two_col:
+            margin, gap = 26 * S, 14 * S
+            col_w = (self.WIDTH - 2 * margin - gap) / 2
+            rows = (len(items) + 1) // 2  # first column gets the extra row
+            for i, (key, label, enabled) in enumerate(items):
+                col, row = divmod(i, rows)
+                x = margin + col * (col_w + gap)
+                rects.append(
+                    (pygame.Rect(x, top + row * item_step, col_w, item_height),
+                     key, label, enabled)
                 )
-            )
-            y += item_step
+            y = top + rows * item_step
+        else:
+            y = top
+            for key, label, enabled in items:
+                rects.append(
+                    (
+                        pygame.Rect(50 * S, y, self.WIDTH - 100 * S, item_height),
+                        key,
+                        label,
+                        enabled,
+                    )
+                )
+                y += item_step
         y += 14 * S
         difficulty_buttons = []
         button_width = 110 * S
@@ -1390,15 +1482,16 @@ class MenuScreen:
             if not enabled:
                 icon.set_alpha(70)
             surface.blit(icon, icon.get_rect(midleft=(rect.left + 10 * S, rect.centery)))
-            label = fonts.get(label_size).render(
-                label_text, True, TEXT if enabled else MUTED
-            )
-            surface.blit(
-                label,
-                label.get_rect(
-                    midleft=(rect.left + 10 * S + icon_size + 12 * S, rect.centery)
-                ),
-            )
+            text_x = rect.left + 10 * S + icon_size + 12 * S
+            avail = rect.right - text_x - 10 * S  # shrink long labels to fit
+            size = label_size
+            label = fonts.get(size).render(label_text, True, TEXT if enabled else MUTED)
+            while label.get_width() > avail and size > 11 * S:
+                size -= 1 * S
+                label = fonts.get(size).render(
+                    label_text, True, TEXT if enabled else MUTED
+                )
+            surface.blit(label, label.get_rect(midleft=(text_x, rect.centery)))
             if not enabled:  # say why, quietly
                 note = fonts.get(11 * S).render("impossible", True, MUTED)
                 surface.blit(

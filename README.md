@@ -20,11 +20,15 @@ Pick a surface, then a tiling:
   subdivided into small triangles (12), a triangle grid (12), hexagons
   (6), a big hexagon composed of small hexagons (6), two aperiodic
   tilings — a Penrose mosaic (P3 rhombi) and "the hat", the single
-  tridecagon monotile that tiles only aperiodically — and the six
-  Archimedean tilings with two
-  tile shapes: elongated triangular 3.3.3.4.4, snub square 3.3.4.3.4,
-  trihexagonal/kagome 3.6.3.6, snub hexagonal 3.3.3.3.6, truncated
-  square 4.8.8, and truncated hexagonal 3.12.12
+  tridecagon monotile that tiles only aperiodically — the eight
+  Archimedean tilings: elongated triangular 3.3.3.4.4, snub square
+  3.3.4.3.4, trihexagonal/kagome 3.6.3.6, snub hexagonal 3.3.3.3.6,
+  truncated square 4.8.8, truncated hexagonal 3.12.12, rhombitrihexagonal
+  3.4.6.4, and truncated trihexagonal 4.6.12 — and their eight Laves
+  (dual) tilings, from Cairo pentagonal and rhombille to the kisrhombille.
+  The menu groups these as **Uniform tilings** and **Dual-uniform
+  tilings**; every one of them also wraps the torus, cylinder and (unless
+  chiral) the Möbius strip below
 - **Sphere (3D)** — 60 pentagons (a pentagonal hexecontahedron, 7
   neighbors), a C80 fullerene (12 pentagons + 30 hexagons), a C180
   fullerene (12 pentagons + 80 hexagons), 80 geodesic triangles, or a snub dodecahedron
@@ -40,7 +44,7 @@ Pick a surface, then a tiling:
   bipyramid (two stepped pyramids stitched base-to-base into a terraced
   diamond); tiled by triangles or squares, cells stitching across the
   edges where faces meet, inner walls and step shoulders included
-- **Donut (3D)** — squares, triangles, or pure hexagons (possible
+- **Torus (3D)** — squares, triangles, or pure hexagons (possible
   because the torus has Euler characteristic 0); the grid wraps in
   both directions, so there are no border cells
 - **Möbius strip (3D)** — squares, triangles, or hexagons on a
