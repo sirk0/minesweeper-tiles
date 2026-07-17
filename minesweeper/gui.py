@@ -65,6 +65,12 @@ HEADER = 56 * S
 # reports its own width so it fills the window edge to edge).
 WEB_REF_WIDTH = 560 * S
 
+# Upper bound on the web framebuffer's longest side, to stay well under the
+# browser's max canvas/texture size on large/HiDPI desktop windows (see
+# ``_WebPresenter._resize``). Phones stay well below it, so their rendering is
+# unchanged.
+WEB_MAX_FB = 2048
+
 # classic minesweeper grays
 BG = (192, 192, 192)
 HIDDEN_FACE = (189, 189, 189)
@@ -1824,7 +1830,16 @@ class _WebPresenter:
         """Match the framebuffer and CSS box to the current viewport; returns the
         physical (device-pixel) size."""
         w, h, dpr = self._viewport()
-        phys = (max(1, round(w * dpr)), max(1, round(h * dpr)))
+        fb_w, fb_h = w * dpr, h * dpr
+        # Cap the framebuffer's longest side. A maximised desktop window on a
+        # HiDPI/4K display would otherwise make ``window x dpr`` several thousand
+        # pixels, which allocates a huge surface and can exceed the browser's
+        # max canvas/texture size (commonly 4096) -- a hard failure that never
+        # shows on a phone. The CSS box still fills the window (same aspect
+        # ratio, so no distortion or gaps); only the backing-store resolution is
+        # bounded, costing a little sharpness on very large screens.
+        shrink = min(1.0, WEB_MAX_FB / max(fb_w, fb_h, 1))
+        phys = (max(1, round(fb_w * shrink)), max(1, round(fb_h * shrink)))
         if phys != self._phys:
             self._phys = phys
             self._display = pygame.display.set_mode(phys)
