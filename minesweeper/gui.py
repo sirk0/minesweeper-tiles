@@ -1897,7 +1897,12 @@ class _WebPresenter:
         # width is less than the framebuffer's) came out sheared and tiled
         # across the frame. blit honours the pitch.
         scaled = pygame.transform.smoothscale(canvas, size)
-        self._display.fill(BG)
+        # Fill the margins with the scaled screen's own corner (a background
+        # pixel) rather than with BG: pygbag's wasm SDL can render the blitted,
+        # smooth-scaled background a hair differently from a flat fill of the
+        # same colour, showing a faint seam where the centred screen meets the
+        # margin. Sampling the blit's own result keeps them byte-identical.
+        self._display.fill(scaled.get_at((0, 0)))
         self._display.blit(scaled, offset)
         pygame.display.flip()
         # map framebuffer clicks back through the centring offset and scale
