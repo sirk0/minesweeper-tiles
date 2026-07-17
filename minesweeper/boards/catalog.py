@@ -49,12 +49,13 @@ SURFACE_SPECS = (
     SurfaceSpec("torus", "Torus", "torus", is_3d=True, needs_mirror=False,
                 boundary_components=0, tilt=-1.0),
     # A Klein bottle: closed like the torus but glued with a flip, so
-    # non-orientable, shaped as the classic self-intersecting bottle. Only
-    # the square tiling wraps it for now. (GameScreen3D adds a y-turn on
-    # top of this x-tilt so the neck-through-body view reads clearly.)
+    # non-orientable, shaped as the classic self-intersecting bottle. Every
+    # non-chiral tiling wraps it (needs_mirror drops the chiral snub
+    # hexagonal / floret pentagonal, like the Möbius strip). (GameScreen3D
+    # adds a y-turn on top of this x-tilt so the neck-through-body view
+    # reads clearly.)
     SurfaceSpec("klein", "Klein bottle", "klein", is_3d=True,
-                needs_mirror=True, boundary_components=0, tilt=-0.4,
-                tilings=frozenset({"square"})),
+                needs_mirror=True, boundary_components=0, tilt=-0.4),
 )
 SURFACES = {s.key: s for s in SURFACE_SPECS}
 SURFACE_LABELS = {s.key: s.label for s in SURFACE_SPECS}

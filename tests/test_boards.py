@@ -12,6 +12,7 @@ from minesweeper.boards import (
     MODES_3D,
     SURFACE_LABELS,
     TILINGS,
+    arch_klein_board,
     arch_mobius_board,
     arch_torus_board,
     archimedean_board,
@@ -27,6 +28,8 @@ from minesweeper.boards import (
     hex_board,
     hexhex_board,
     klein_board,
+    klein_hex_board,
+    klein_triangle_board,
     mobius_board,
     mobius_hex_board,
     mobius_triangle_board,
@@ -756,6 +759,82 @@ class TestKleinBottle:
             klein_board(12, 5, 9)
 
 
+class TestKleinTilings:
+    """The Klein bottle wrapped with tilings other than the square grid:
+    the triangle/hexagon regular boards and (via the WRAPPED suite below)
+    every non-chiral Archimedean/Laves tiling."""
+
+    # every klein mode the catalog exposes: square + triangle + hexagon +
+    # the 14 non-chiral template tilings
+    KLEIN_MODES = sorted(m for m in MODE_LABELS if surface_of(m)
+                         and surface_of(m).key == "klein")
+
+    def test_menu_offers_klein_for_every_non_chiral_tiling(self):
+        # 3 regular + 8 Archimedean + 8 Laves = 19 tilings, minus the two
+        # chiral ones (snub hexagonal and its floret dual) = 17
+        assert len(self.KLEIN_MODES) == 17
+        assert "kleinsnubhex" not in MODE_LABELS
+        assert "kleinfloret" not in MODE_LABELS
+
+    @pytest.mark.parametrize("mode", KLEIN_MODES)
+    @pytest.mark.parametrize("difficulty", DIFFICULTIES)
+    def test_each_is_a_closed_non_orientable_surface(self, mode, difficulty):
+        board = build_board(mode, difficulty)
+        assert _euler_characteristic(board) == 0
+        assert _boundary_components(board) == 0
+        assert board.two_sided is True
+
+    def test_triangle_and_hex_cell_counts(self):
+        assert len(klein_triangle_board(12, 6, 14).adjacency) == 144
+        assert len(klein_hex_board(6, 4, 9).adjacency) == 24
+
+    def test_triangle_tube_must_be_even(self):
+        with pytest.raises(ValueError):
+            klein_triangle_board(10, 5, 12)
+
+    def test_hex_rows_must_be_even(self):
+        with pytest.raises(ValueError):
+            klein_hex_board(6, 5, 9)
+
+    def _assert_is_scroll_cycle(self, board):
+        cycle = board.cell_cycle
+        assert cycle is not None and set(cycle) == set(board.adjacency)
+        assert len(set(cycle.values())) == len(cycle)  # a bijection
+        for cell, neighbors in board.adjacency.items():
+            shifted = board.adjacency[cycle[cell]]
+            assert all(cycle[n] in shifted for n in neighbors)  # automorphism
+
+    def test_hex_carries_a_scroll_cycle(self):
+        # whole-hexagon cells let the ring translation act as an automorphism
+        self._assert_is_scroll_cycle(klein_hex_board(8, 6, 20))
+
+    def test_triangle_scrolls_when_tube_is_two_mod_four(self):
+        # the column-alternating diagonal survives the seam glide only then
+        self._assert_is_scroll_cycle(klein_triangle_board(12, 6, 14))
+        assert klein_triangle_board(12, 8, 14).cell_cycle is None
+
+    def test_chiral_tilings_have_no_klein(self):
+        for tiling in ("snubhex", "floret"):
+            with pytest.raises(ValueError):
+                arch_klein_board(tiling, 4, 3, 5)
+
+    def test_glide_tilings_need_odd_half_domains(self):
+        # p4g (snub square, Cairo) glues with a glide, so nx counts
+        # half-domains and must be odd, exactly as on the Möbius strip
+        for tiling in ("snubsquare", "cairo"):
+            with pytest.raises(ValueError):
+                arch_klein_board(tiling, 10, 4, 5)
+
+    def test_arch_klein_scroll_cycle_is_an_automorphism(self):
+        board = arch_klein_board("kagome", 6, 3, 12)
+        cycle = board.cell_cycle
+        assert cycle is not None and set(cycle) == set(board.adjacency)
+        assert len(set(cycle.values())) == len(cycle)
+        for cell, neighbors in board.adjacency.items():
+            shifted = board.adjacency[cycle[cell]]
+            assert all(cycle[n] in shifted for n in neighbors)
+
+
 class TestWrappedArchimedean:
     """The Archimedean tilings wrapped onto the donut, cylinder and
     Möbius strip."""
@@ -763,7 +842,7 @@ class TestWrappedArchimedean:
     WRAPPED = [
         mode
         for mode in MODE_LABELS
-        if mode.startswith(("torus", "mobius", "cyl"))
+        if mode.startswith(("torus", "mobius", "cyl", "klein"))
         and any(mode.endswith(tiling) for tiling in _ARCH_CONFIGS)
     ]
 
@@ -862,6 +941,22 @@ class TestWrappedArchimedean:
             "toruskisrhombille": (240, 336, 576),
             "cylkisrhombille": (192, 360, 504),
             "mobiuskisrhombille": (192, 288, 576),
+            # Klein bottle: closed like the torus, glued with a flip. Chiral
+            # snub hexagonal / floret pentagonal are excluded (no mirror).
+            "kleinelongated": (72, 168, 240),
+            "kleinsnubsquare": (30, 63, 108),
+            "kleinkagome": (96, 120, 216),
+            "kleintruncsquare": (72, 144, 224),
+            "kleintrunchex": (84, 120, 216),
+            "kleinrhombitrihex": (120, 168, 288),
+            "kleintrunctrihex": (120, 168, 288),
+            "kleinprismaticpent": (48, 112, 160),
+            "kleincairo": (20, 42, 72),
+            "kleinrhombille": (96, 120, 216),
+            "kleintetrakis": (144, 288, 448),
+            "kleintriakis": (168, 240, 432),
+            "kleindeltoidal": (120, 168, 288),
+            "kleinkisrhombille": (240, 336, 576),
         }
         assert sorted(counts) == sorted(self.WRAPPED)
         for mode, expected in counts.items():

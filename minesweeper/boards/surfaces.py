@@ -1,15 +1,16 @@
-"""Wrapping flat tilings onto 3D surfaces (donut, cylinder, Möbius strip).
+"""Wrapping flat tilings onto 3D surfaces (donut, cylinder, Möbius strip,
+Klein bottle).
 
 Every wrapped board is built the same way: pick vertex keys on an integer
 grid, glue them at the seam, map each key onto the surface with an
-*immersion* ( _torus_point / _cylinder_point / _mobius_point ), then hand
-the cells to _assemble, which shares the adjacency / polygon / Board3D
-tail and the outward-orientation (closed) vs two-sided (open) choice.
+*immersion* ( _torus_point / _cylinder_point / _mobius_point / _klein_point ),
+then hand the cells to _assemble, which shares the adjacency / polygon /
+Board3D tail and the outward-orientation (closed) vs two-sided (open)
+choice.
 
-To add a surface (e.g. a Klein bottle) write one immersion point
-function and a wrap builder next to arch_torus_board / arch_mobius_board,
-then register a SurfaceSpec in catalog.py and presets in presets.py.
-See AGENTS.md.
+To add a surface write one immersion point function and a wrap builder
+next to arch_torus_board / arch_mobius_board, then register a SurfaceSpec
+in catalog.py and presets in presets.py. See AGENTS.md.
 """
 
 from __future__ import annotations
@@ -323,6 +324,112 @@ def klein_board(
                      two_sided=True, radius=_max_radius, cell_cycle=cell_cycle)
 
 
+def _klein_recentre(cells, raw):
+    """Sample ``raw(key)`` for every vertex and shift them so their centroid
+    sits at the origin (the bottle immersion is not origin-centred; the 3D
+    view frames and pivots about the origin). Returns the positions dict."""
+    verts = {k for keys in cells.values() for k in keys}
+    raws = {k: raw(k) for k in verts}
+    centre = tuple(sum(c) / len(raws) for c in zip(*raws.values()))
+    return {k: tuple(c - o for c, o in zip(p, centre)) for k, p in raws.items()}
+
+
+def klein_triangle_board(
+    ring: int, tube: int, mine_count: int, tube_scale: float = 1.0
+) -> Board3D:
+    """A Klein bottle tiled with triangles: each quad of the ``ring * tube``
+    bottle grid split along a diagonal, giving ``2 * ring * tube`` cells.
+    The cross-section (``tube``, must be even) wraps straight; the ring seam
+    glues flipped (``j`` -> ``tube/2 - j - 1``) like ``klein_board``.
+
+    The quad diagonal alternates by column (``/`` on even ``j``, ``\\`` on
+    odd) so that the seam's glide reflection carries diagonals to diagonals:
+    when ``tube`` is 2 (mod 4) the ring translation is then an automorphism
+    and the board scrolls like ``klein_board``. At other even ``tube`` the
+    triangulation admits no such scroll and ``cell_cycle`` is left ``None``
+    (the torus/Möbius triangle boards likewise offer no scroll)."""
+    if tube % 2:
+        raise ValueError("tube must be even so the seam reflection lands on cells")
+
+    def key(i, j):
+        if i >= ring:                      # crossed the ring seam: flip the tube
+            return (i - ring, (tube // 2 - j - 1) % tube)
+        return (i % ring, j % tube)
+
+    def raw(k):
+        i, j = k
+        return _klein_point(2 * math.pi * i / ring,
+                            2 * math.pi * (j + 0.5) / tube, tube_scale)
+
+    cells = {}
+    for i in range(ring):
+        for j in range(tube):
+            a, b = key(i, j), key(i + 1, j)
+            c, d = key(i + 1, j + 1), key(i, j + 1)
+            if j % 2 == 0:                  # "/" diagonal a--c
+                cells[(i, j, 0)] = [a, b, c]
+                cells[(i, j, 1)] = [a, c, d]
+            else:                           # "\" diagonal b--d
+                cells[(i, j, 0)] = [a, b, d]
+                cells[(i, j, 1)] = [b, c, d]
+    positions = _klein_recentre(cells, raw)
+
+    # one step forward along the ring, matched by vertex set; kept only if it
+    # is a bijection over the cells (a graph automorphism), else no scroll
+    by_vertexset = {frozenset(keys): cell for cell, keys in cells.items()}
+    shifted = {cell: frozenset(key(i + 1, j) for i, j in keys)
+               for cell, keys in cells.items()}
+    cell_cycle = None
+    if all(s in by_vertexset for s in shifted.values()):
+        cell_cycle = {cell: by_vertexset[s] for cell, s in shifted.items()}
+        if len(set(cell_cycle.values())) != len(cell_cycle):
+            cell_cycle = None
+    return _assemble("kleintri", cells, positions.__getitem__, mine_count,
+                     two_sided=True, radius=_max_radius, cell_cycle=cell_cycle)
+
+
+def klein_hex_board(
+    ring: int, rows: int, mine_count: int, tube_scale: float = 1.0
+) -> Board3D:
+    """A Klein bottle tiled entirely with hexagons: ``ring`` columns around
+    the loop, ``rows`` (must be even) hexagons around the tube. The tube
+    wraps straight like ``torus_hex_board``; the ring seam glues the tube
+    reflected (``ky`` -> ``4 - ky``, a horizontal mirror through the bottom
+    row of hex centres), so the surface is closed yet non-orientable. Every
+    cell has exactly 6 neighbours."""
+    if rows % 2:
+        raise ValueError("rows must be even so the tube lattice wraps")
+    kx_period, ky_period = 2 * ring, 3 * rows
+
+    def key(kx, ky):
+        if kx >= kx_period:                # ring seam: reflect the tube (ky)
+            return ((kx - kx_period) % kx_period, (4 - ky) % ky_period)
+        return (kx % kx_period, ky % ky_period)
+
+    def raw(k):
+        kx, ky = k
+        # centre v on ky = 2 (the seam's mirror axis) and offset by pi/2 so the
+        # immersion's seam reflection matches the ky -> 4 - ky lattice flip
+        return _klein_point(2 * math.pi * kx / kx_period,
+                            2 * math.pi * (ky - 2) / ky_period + math.pi / 2,
+                            tube_scale)
+
+    cells = {}
+    for r in range(rows):
+        for c in range(ring):
+            kx, ky = 2 * c + (r % 2) + 1, 3 * r + 2
+            cells[(r, c)] = [key(kx + ox, ky + oy) for ox, oy in _HEX_VERTEX_OFFSETS]
+    positions = _klein_recentre(cells, raw)
+
+    # one column forward along the ring, matched by vertex set (crossing the
+    # seam flips the tube, so this is an automorphism only up to that flip)
+    by_vertexset = {frozenset(keys): cell for cell, keys in cells.items()}
+    cell_cycle = {cell: by_vertexset[frozenset(key(kx + 2, ky) for kx, ky in keys)]
+                  for cell, keys in cells.items()}
+    return _assemble("kleinhex", cells, positions.__getitem__, mine_count,
+                     two_sided=True, radius=_max_radius, cell_cycle=cell_cycle)
+
+
 # -- the cylinder ------------------------------------------------------------
 
 
@@ -534,3 +641,87 @@ def arch_mobius_board(tiling: str, ring: int, rows: int, mine_count: int) -> Boa
                 cells[(m, n, name)] = keys
     return _assemble("mobius" + tiling, cells, point, mine_count,
                      two_sided=True, radius=_max_radius)
+
+
+def arch_klein_board(
+    tiling: str, nx: int, ny: int, mine_count: int, tube_scale: float = 1.0
+) -> Board3D:
+    """An Archimedean tiling wrapped onto the Klein bottle: ``nx`` domain
+    copies around the ring, ``ny`` around the tube. Like ``arch_torus_board``
+    the tube wraps straight, but the ring seam glues the tube *flipped*
+    (through ``template.mirror``, as ``arch_mobius_board`` does), so the
+    surface is closed yet non-orientable, shaped as the classic
+    self-intersecting bottle.
+
+    The flip needs the tiling's horizontal mirror, so the chiral snub
+    hexagonal / floret pentagonal are refused. p4g (snub square, Cairo) has
+    only a glide -- mirror plus half a domain -- so ``nx`` counts
+    half-domains there and must be odd, exactly as on the Möbius strip.
+
+    The immersion self-intersects (the neck passes through the body), so the
+    board carries a ``cell_cycle`` -- one domain forward along the ring --
+    which lets the UI scroll cell contents past the self-intersection."""
+    template = _arch_template(tiling)
+    if template.mirror is None:
+        raise ValueError(f"{tiling} is chiral and cannot wrap a Klein bottle")
+    width, height = template.width, template.height
+    verts = template.verts
+    if template.glide:
+        if nx % 2 == 0:
+            raise ValueError("nx counts half-domains and must be odd")
+        halves = nx
+    else:
+        halves = 2 * nx
+    q, odd = divmod(halves, 2)
+    length = halves * width / 2          # ring circumference in edge units
+    tube_total = ny * height             # tube circumference in edge units
+
+    def flipped(mi, ni, tag):
+        image, dm, dn = template.mirror[tag]
+        return image, mi + dm - odd, (-1 - ni + dn) % ny
+
+    def canonical(mi, ni, tag):
+        # fold x into [0, length) at the ring seam, flipping the tube each
+        # crossing; the tube (ni) itself wraps straight modulo ny
+        while 2 * mi + 2 * verts[tag][0] / width >= halves - 1e-5:
+            tag, mi, ni = flipped(mi - q, ni, tag)
+        while 2 * mi + 2 * verts[tag][0] / width < -1e-5:
+            tag, mi, ni = flipped(mi + q + odd, ni, tag)
+        return (mi, ni % ny, tag)
+
+    def point(key):
+        mi, ni, tag = key
+        vx, vy = verts[tag]
+        u = 2 * math.pi * (mi * width + vx) / length
+        # +pi/2 aligns the immersion's seam reflection (v -> pi - v) with the
+        # tiling's tube mirror (y -> tube_total - y) that flipped() applies
+        v = 2 * math.pi * (ni * height + vy) / tube_total + math.pi / 2
+        return _klein_point(u, v, tube_scale)
+
+    centroids_x = {
+        name: sum(dm * width + verts[tag][0] for tag, dm, _ in refs) / len(refs)
+        for name, refs in template.cells
+    }
+    cells = {}
+    for m in range(q + 1):
+        for n in range(ny):
+            for name, refs in template.cells:
+                if not -1e-9 <= centroids_x[name] + m * width < length - 1e-9:
+                    continue  # this domain copy of the cell is past the seam
+                keys = [canonical(m + dm, n + dn, tag) for tag, dm, dn in refs]
+                if len(set(keys)) < len(keys):
+                    raise ValueError(f"{nx}x{ny} is too small for {tiling}")
+                cells[(m, n, name)] = keys
+
+    positions = _klein_recentre(cells, point)
+
+    # one domain forward along the ring, matched by vertex set: a graph
+    # automorphism (the seam flip carries cells to their mirror partners)
+    by_vertexset = {frozenset(keys): cell for cell, keys in cells.items()}
+    cell_cycle = {
+        cell: by_vertexset[frozenset(canonical(mi + 1, ni, tag)
+                                     for mi, ni, tag in keys)]
+        for cell, keys in cells.items()
+    }
+    return _assemble("klein" + tiling, cells, positions.__getitem__, mine_count,
+                     two_sided=True, radius=_max_radius, cell_cycle=cell_cycle)
