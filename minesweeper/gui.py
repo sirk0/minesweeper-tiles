@@ -57,6 +57,29 @@ S = UI_SCALE
 MARGIN = 10 * S
 HEADER = 56 * S
 
+# Fallback design width (in canvas pixels) for boards on the web build: the
+# on-screen scale is derived from it and the window width alone -- never from
+# the board currently showing -- so the UI keeps one constant size as you move
+# between boards of different sizes. A board narrower than this is centred with
+# background to the sides; a wider or taller one is shrunk just enough to stay
+# fully visible. Each screen may override it via ``web_ref_width`` (the menu
+# reports its own width so it fills the window edge to edge).
+WEB_REF_WIDTH = 560 * S
+
+# Upper bound on the web framebuffer's longest side, to stay well under the
+# browser's max canvas/texture size on large/HiDPI desktop windows (see
+# ``_WebPresenter._resize``). Phones stay well below it, so their rendering is
+# unchanged.
+WEB_MAX_FB = 2048
+
+# Most-portrait aspect (width / height) a screen is stretched to fill. A window
+# narrower than this -- a desktop browser dragged thin, thinner than any phone
+# -- would otherwise spread the title/board/buttons ever further apart over an
+# ever taller canvas; past this point the screen keeps this aspect and the
+# presenter centres it with background instead (see ``viewport_height``). Phones
+# sit above it, so they still fill the window top to bottom.
+WEB_MIN_ASPECT = 0.42
+
 # classic minesweeper grays
 BG = (192, 192, 192)
 HIDDEN_FACE = (189, 189, 189)
@@ -117,27 +140,36 @@ TILE_LIGHT_DIR = (-0.55, -0.83)  # screen-space light for the tile bevels
 # window uses logical points, and the browser build uses a device-pixel
 # framebuffer sized to the page. The active presenter keeps this in sync each
 # frame (see ``_DesktopPresenter`` / ``_WebPresenter``); it defaults to the
-# supersampling factor so headless code and tests behave as before.
-_MOUSE_TO_CANVAS: tuple[float, float] = (float(S), float(S))
+# supersampling factor so headless code and tests behave as before. The
+# transform is affine -- (scale_x, scale_y, offset_x, offset_y) -- so the web
+# build can letterbox the canvas inside a full-window framebuffer and still map
+# clicks back to canvas coordinates.
+_MOUSE_TO_CANVAS: tuple[float, float, float, float] = (float(S), float(S), 0.0, 0.0)
 
 
 def canvas_mouse() -> tuple[int, int]:
     """Mouse position in canvas coordinates."""
     x, y = pygame.mouse.get_pos()
-    sx, sy = _MOUSE_TO_CANVAS
-    return (round(x * sx), round(y * sy))
+    sx, sy, ox, oy = _MOUSE_TO_CANVAS
+    return (round(x * sx + ox), round(y * sy + oy))
+
+
+def _set_mouse_transform(
+    scale: tuple[float, float], offset: tuple[float, float] = (0.0, 0.0)
+) -> None:
+    """Record the affine map from SDL's mouse coordinates onto the canvas, so
+    clicks stay accurate whatever resolution the window/framebuffer was opened
+    at and wherever the canvas sits inside it."""
+    global _MOUSE_TO_CANVAS
+    _MOUSE_TO_CANVAS = (scale[0], scale[1], offset[0], offset[1])
 
 
 def _set_mouse_scale(
     canvas_size: tuple[int, int], display_size: tuple[int, int]
 ) -> None:
-    """Record how SDL's mouse coordinates (reported in ``display_size``) map
-    onto the canvas, so click positions stay accurate whatever resolution the
-    window/framebuffer was opened at."""
-    global _MOUSE_TO_CANVAS
-    _MOUSE_TO_CANVAS = (
-        canvas_size[0] / display_size[0],
-        canvas_size[1] / display_size[1],
+    """Convenience for the common case: the canvas covers the whole display."""
+    _set_mouse_transform(
+        (canvas_size[0] / display_size[0], canvas_size[1] / display_size[1])
     )
 
 
@@ -1010,6 +1042,9 @@ class BaseGameScreen:
     def __init__(self, mode: str, difficulty: str = "easy") -> None:
         self.mode = mode
         self.difficulty = difficulty
+        # extra height handed down by the web presenter to fill the window; the
+        # header stays at the top and the board is centred in the space below
+        self._view_h: int | None = None
         self.new_game()
 
     def new_game(self, difficulty: str | None = None) -> None:
@@ -1032,8 +1067,37 @@ class BaseGameScreen:
         raise NotImplementedError
 
     @property
-    def size(self) -> tuple[int, int]:
+    def natural_size(self) -> tuple[int, int]:
+        """The board's own tight size, ignoring any web viewport padding."""
         raise NotImplementedError
+
+    @property
+    def size(self) -> tuple[int, int]:
+        nat = self.natural_size
+        if self._view_h is not None and self._view_h > nat[1]:
+            return (nat[0], self._view_h)
+        return nat
+
+    @property
+    def board_shift(self) -> int:
+        """Downward shift that centres the board in the space below the header
+        when the web presenter has given the screen extra height."""
+        return max(0, (self.size[1] - self.natural_size[1]) // 2)
+
+    def set_viewport_height(self, height: int) -> None:
+        """Fill this much canvas height (web build); the desktop leaves it at
+        the natural height, so its layout is unchanged."""
+        if height == self._view_h:
+            return
+        self._view_h = height
+        self._relayout()
+
+    def _relayout(self) -> None:
+        """Re-place geometry after the viewport height changed."""
+
+    # Boards share one fixed web scale (see WEB_REF_WIDTH) so switching boards
+    # never resizes the UI; a board wider than this is shrunk to fit.
+    web_ref_width = WEB_REF_WIDTH
 
     @property
     def elapsed(self) -> int:
@@ -1196,7 +1260,7 @@ class GameScreen(BaseGameScreen):
     """Flat boards: static polygons straight from the board definition."""
 
     def _setup_geometry(self) -> None:
-        offset_x, offset_y = MARGIN, MARGIN + HEADER
+        offset_x, offset_y = MARGIN, MARGIN + HEADER + self.board_shift
         self.polygons = {
             cell: [(x * S + offset_x, y * S + offset_y) for x, y in vertices]
             for cell, vertices in self.board.polygons.items()
@@ -1210,8 +1274,11 @@ class GameScreen(BaseGameScreen):
             for cell, vertices in self.polygons.items()
         }
 
+    # re-place the polygons when the web viewport height changes
+    _relayout = _setup_geometry
+
     @property
-    def size(self) -> tuple[int, int]:
+    def natural_size(self) -> tuple[int, int]:
         return (
             math.ceil(self.board.width * S) + 2 * MARGIN,
             math.ceil(self.board.height * S) + HEADER + 2 * MARGIN,
@@ -1276,11 +1343,14 @@ class GameScreen3D(BaseGameScreen):
         self._scroll_accum = 0.0
 
     @property
-    def size(self) -> tuple[int, int]:
+    def natural_size(self) -> tuple[int, int]:
         return (
             self.VIEWPORT + 2 * MARGIN,
             self.VIEWPORT + HEADER + 2 * MARGIN,
         )
+
+    def _relayout(self) -> None:
+        self._frame = None  # cy depends on board_shift; reproject
 
     def _project(self):
         """Rotate, cull, light and depth-sort the cells. Returns a
@@ -1288,7 +1358,7 @@ class GameScreen3D(BaseGameScreen):
         if self._frame is not None:
             return self._frame
         cx = self.size[0] / 2
-        cy = MARGIN + HEADER + self.VIEWPORT / 2
+        cy = MARGIN + HEADER + self.VIEWPORT / 2 + self.board_shift
         two_sided = self.board.two_sided
         frame = []
         for cell, points in self.board.polygons.items():
@@ -1423,6 +1493,13 @@ class MenuScreen:
         self.difficulty = difficulty
         self.group: str | None = None  # None = group page
         self.tiling: str | None = None  # periodic group: tiling page done
+        # extra height handed down by the web presenter to fill the window; the
+        # title stays at the top, the difficulty row drops to the bottom and the
+        # mode list is centred in the space between
+        self._view_h: int | None = None
+
+    def set_viewport_height(self, height: int) -> None:
+        self._view_h = height
 
     def _via_tilings(self) -> bool:
         """Whether the current group navigates tiling -> surface. Signalled
@@ -1497,13 +1574,27 @@ class MenuScreen:
                     )
                 )
                 y += item_step
-        y += 14 * S
+        items_height = y - top
+        natural_height = y + 14 * S + 40 * S + 30 * S
+        # on the web the presenter hands down extra height to fill the window:
+        # pin the difficulty row to the bottom and centre the modes between it
+        # and the title
+        total = (
+            self._view_h
+            if self._view_h is not None and self._view_h > natural_height
+            else natural_height
+        )
+        diff_y = total - 30 * S - 40 * S
+        shift = max(0, ((diff_y - 14 * S - top) - items_height) // 2)
+        if shift:
+            for rect, *_ in rects:
+                rect.move_ip(0, shift)
         difficulty_buttons = []
         button_width = 110 * S
         x = (self.WIDTH - 3 * button_width - 2 * 12 * S) // 2
         for difficulty_key in DIFFICULTIES:
             difficulty_buttons.append(
-                (pygame.Rect(x, y, button_width, 40 * S), difficulty_key)
+                (pygame.Rect(x, diff_y, button_width, 40 * S), difficulty_key)
             )
             x += button_width + 12 * S
         back = (
@@ -1516,12 +1607,23 @@ class MenuScreen:
             "difficulty": difficulty_buttons,
             "back": back,
             "compact": compact,
-            "height": y + 40 * S + 30 * S,
+            "height": total,
         }
+
+    @property
+    def natural_size(self) -> tuple[int, int]:
+        view, self._view_h = self._view_h, None
+        try:
+            return (self.WIDTH, self.layout()["height"])
+        finally:
+            self._view_h = view
 
     @property
     def size(self) -> tuple[int, int]:
         return (self.WIDTH, self.layout()["height"])
+
+    # the menu fills the browser window edge to edge (scaled to its own width)
+    web_ref_width = WIDTH
 
     def handle_event(self, event: pygame.event.Event):
         """Returns "quit", ("start", mode), or None."""
@@ -1619,17 +1721,17 @@ class MenuScreen:
 
 def _scale_mouse_event(event: pygame.event.Event) -> pygame.event.Event:
     """Translate a window-space mouse event into canvas coordinates."""
-    sx, sy = _MOUSE_TO_CANVAS
+    sx, sy, ox, oy = _MOUSE_TO_CANVAS
     if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
         return pygame.event.Event(
             event.type,
-            pos=(round(event.pos[0] * sx), round(event.pos[1] * sy)),
+            pos=(round(event.pos[0] * sx + ox), round(event.pos[1] * sy + oy)),
             button=event.button,
         )
     if event.type == pygame.MOUSEMOTION:
         return pygame.event.Event(
             event.type,
-            pos=(round(event.pos[0] * sx), round(event.pos[1] * sy)),
+            pos=(round(event.pos[0] * sx + ox), round(event.pos[1] * sy + oy)),
             rel=(round(event.rel[0] * sx), round(event.rel[1] * sy)),
             buttons=event.buttons,
         )
@@ -1677,7 +1779,10 @@ class _DesktopPresenter:
         # SDL reports mouse events in the window's logical points, not pixels
         _set_mouse_scale(canvas_size, points)
 
-    def present(self, canvas: pygame.Surface) -> None:
+    def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
+        return natural[1]  # desktop keeps each screen's natural height
+
+    def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
         self.ensure(canvas.get_size())
         frame = (
             canvas
@@ -1695,16 +1800,22 @@ class _DesktopPresenter:
 
 
 class _WebPresenter:
-    """Presents the canvas in the browser at the device's true pixel density.
+    """Presents the canvas in the browser, filling the whole window.
 
     pygbag's template sizes the canvas element once at boot and never revisits
-    it, so previously the fixed-resolution frame was stretched by CSS to
-    whatever the page happened to be -- blurry, and a different scale on every
-    screen. Instead we fit the board into the browser window ourselves and set
-    the pygame framebuffer to that CSS box times ``devicePixelRatio``, giving
-    the HTML canvas a backing store that matches the physical pixels 1:1 (so a
-    Retina/HiDPI browser gets the extra sharpness) while the CSS box keeps the
-    on-screen size and aspect ratio."""
+    it. Previously we matched the framebuffer to the board's own aspect ratio,
+    which left the canvas smaller than the window -- gaps (letterbox bars) above
+    and below on a tall phone -- and, because the fit scale depended on each
+    board's size, the whole UI changed scale from one screen to the next.
+
+    Instead the framebuffer is the full visible viewport (``visualViewport`` so
+    the mobile address bar is excluded, times ``devicePixelRatio`` so a
+    Retina/HiDPI phone gets its extra sharpness), the CSS box is the full
+    window, and the background fills it edge to edge -- no gaps, ever. The
+    screen is drawn onto its own canvas, scaled by a factor derived from its
+    ``web_ref_width`` and the window width (constant across boards), and pinned
+    to the top so the counters/smiley sit just under the address bar; oversized
+    screens are clamped down to stay fully on screen."""
 
     def __init__(self) -> None:
         import platform  # pygbag's platform module exposes the DOM
@@ -1712,31 +1823,93 @@ class _WebPresenter:
         self._dom = platform.window
         self._display: pygame.Surface | None = None
         self._phys: tuple[int, int] = (0, 0)
-        self._state: object = None
+
+    def _viewport(self) -> tuple[float, float, float]:
+        """The visible viewport (CSS px) and device-pixel ratio. ``visualViewport``
+        excludes the mobile browser's address bar; ``innerWidth``/``innerHeight``
+        are the fallback where it is missing."""
+        dom = self._dom
+        vv = getattr(dom, "visualViewport", None)
+        w = (getattr(vv, "width", 0) if vv is not None else 0) or dom.innerWidth
+        h = (getattr(vv, "height", 0) if vv is not None else 0) or dom.innerHeight
+        dpr = getattr(dom, "devicePixelRatio", 1) or 1
+        return w, h, dpr
+
+    def _resize(self) -> tuple[int, int]:
+        """Match the framebuffer and CSS box to the current viewport; returns the
+        physical (device-pixel) size."""
+        w, h, dpr = self._viewport()
+        fb_w, fb_h = w * dpr, h * dpr
+        # Cap the framebuffer's longest side. A maximised desktop window on a
+        # HiDPI/4K display would otherwise make ``window x dpr`` several thousand
+        # pixels, which allocates a huge surface and can exceed the browser's
+        # max canvas/texture size (commonly 4096) -- a hard failure that never
+        # shows on a phone. The CSS box still fills the window (same aspect
+        # ratio, so no distortion or gaps); only the backing-store resolution is
+        # bounded, costing a little sharpness on very large screens.
+        shrink = min(1.0, WEB_MAX_FB / max(fb_w, fb_h, 1))
+        phys = (max(1, round(fb_w * shrink)), max(1, round(fb_h * shrink)))
+        if phys != self._phys:
+            self._phys = phys
+            self._display = pygame.display.set_mode(phys)
+            style = self._dom.canvas.style
+            style.width = f"{w}px"
+            style.height = f"{h}px"
+        return phys
 
     def ensure(self, canvas_size: tuple[int, int]) -> None:
-        points = (canvas_size[0] // S, canvas_size[1] // S)
-        dom = self._dom
-        dpr = getattr(dom, "devicePixelRatio", 1) or 1
-        scale = min(dom.innerWidth / points[0], dom.innerHeight / points[1])
-        css_w, css_h = int(points[0] * scale), int(points[1] * scale)
-        phys = (max(1, round(css_w * dpr)), max(1, round(css_h * dpr)))
-        state = (phys, css_w, css_h)
-        if state == self._state:
-            return
-        self._state = state
-        self._phys = phys
-        self._display = pygame.display.set_mode(phys)
-        style = dom.canvas.style
-        style.width = f"{css_w}px"
-        style.height = f"{css_h}px"
-        # emscripten reports mouse events in the framebuffer's pixels
-        _set_mouse_scale(canvas_size, phys)
+        self._resize()
 
-    def present(self, canvas: pygame.Surface) -> None:
-        self.ensure(canvas.get_size())
-        pygame.transform.smoothscale(canvas, self._phys, self._display)
+    def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
+        """Canvas height the screen should fill so it reaches the bottom of the
+        window at the shared scale (see ``present``), but never so tall that the
+        screen is stretched thinner than ``WEB_MIN_ASPECT`` -- beyond that the
+        window is narrower than a phone and ``present`` centres the screen with
+        background rather than spreading its contents apart."""
+        phys = self._resize()
+        nat_w, nat_h = natural
+        ref = ref_width or WEB_REF_WIDTH
+        scale = min(phys[0] / ref, phys[0] / nat_w, phys[1] / nat_h)
+        fill = round(phys[1] / scale)
+        return max(nat_h, min(fill, round(nat_w / WEB_MIN_ASPECT)))
+
+    def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
+        phys = self._resize()
+        assert self._display is not None
+        nat = canvas.get_size()
+        ref = ref_width or WEB_REF_WIDTH
+        # device pixels per canvas pixel: fixed by the window width and the
+        # design reference so it does not jump between boards, then clamped so
+        # a screen wider or taller than the window still fits whole
+        scale = min(phys[0] / ref, phys[0] / nat[0], phys[1] / nat[1])
+        # clamp against float rounding so the centred blit always fits the frame
+        size = (
+            min(phys[0], max(1, round(nat[0] * scale))),
+            min(phys[1], max(1, round(nat[1] * scale))),
+        )
+        # centre the screen; on a phone the padded canvas already fills the
+        # height (offset ~0, header at the top), and a window wider or narrower
+        # than the screen's aspect gets equal background above and below
+        offset = ((phys[0] - size[0]) // 2, (phys[1] - size[1]) // 2)
+        # Scale to a standalone surface and blit it, rather than scaling into a
+        # subsurface of the display: pygbag's wasm SDL ignores the parent's row
+        # pitch when the destination is a subsurface, so a centred screen (whose
+        # width is less than the framebuffer's) came out sheared and tiled
+        # across the frame. blit honours the pitch.
+        scaled = pygame.transform.smoothscale(canvas, size)
+        # Fill the margins with the scaled screen's own corner (a background
+        # pixel) rather than with BG: pygbag's wasm SDL can render the blitted,
+        # smooth-scaled background a hair differently from a flat fill of the
+        # same colour, showing a faint seam where the centred screen meets the
+        # margin. Sampling the blit's own result keeps them byte-identical.
+        self._display.fill(scaled.get_at((0, 0)))
+        self._display.blit(scaled, offset)
         pygame.display.flip()
+        # map framebuffer clicks back through the centring offset and scale
+        _set_mouse_transform(
+            (1.0 / scale, 1.0 / scale),
+            (-offset[0] / scale, -offset[1] / scale),
+        )
 
     def close(self) -> None:
         pass
@@ -1779,10 +1952,17 @@ class App:
                     self.screen = make_screen(result[1], self.menu.difficulty)
             if not running:
                 break
+            # let the presenter grow the screen to fill the window height; the
+            # screen distributes the extra room (desktop leaves it at natural)
+            self.screen.set_viewport_height(
+                presenter.viewport_height(
+                    self.screen.web_ref_width, self.screen.natural_size
+                )
+            )
             if canvas.get_size() != self.screen.size:
                 canvas = pygame.Surface(self.screen.size)
             self.screen.draw(canvas, fonts)
-            presenter.present(canvas)
+            presenter.present(canvas, self.screen.web_ref_width)
             await asyncio.sleep(0)  # hand control back to the browser
             clock.tick(30)
         presenter.close()
