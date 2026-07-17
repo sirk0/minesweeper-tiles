@@ -71,6 +71,14 @@ WEB_REF_WIDTH = 560 * S
 # unchanged.
 WEB_MAX_FB = 2048
 
+# Most-portrait aspect (width / height) a screen is stretched to fill. A window
+# narrower than this -- a desktop browser dragged thin, thinner than any phone
+# -- would otherwise spread the title/board/buttons ever further apart over an
+# ever taller canvas; past this point the screen keeps this aspect and the
+# presenter centres it with background instead (see ``viewport_height``). Phones
+# sit above it, so they still fill the window top to bottom.
+WEB_MIN_ASPECT = 0.42
+
 # classic minesweeper grays
 BG = (192, 192, 192)
 HIDDEN_FACE = (189, 189, 189)
@@ -1853,12 +1861,16 @@ class _WebPresenter:
 
     def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
         """Canvas height the screen should fill so it reaches the bottom of the
-        window at the shared scale (see ``present``)."""
+        window at the shared scale (see ``present``), but never so tall that the
+        screen is stretched thinner than ``WEB_MIN_ASPECT`` -- beyond that the
+        window is narrower than a phone and ``present`` centres the screen with
+        background rather than spreading its contents apart."""
         phys = self._resize()
         nat_w, nat_h = natural
         ref = ref_width or WEB_REF_WIDTH
         scale = min(phys[0] / ref, phys[0] / nat_w, phys[1] / nat_h)
-        return max(nat_h, round(phys[1] / scale))
+        fill = round(phys[1] / scale)
+        return max(nat_h, min(fill, round(nat_w / WEB_MIN_ASPECT)))
 
     def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
         phys = self._resize()
@@ -1874,9 +1886,10 @@ class _WebPresenter:
             min(phys[0], max(1, round(nat[0] * scale))),
             min(phys[1], max(1, round(nat[1] * scale))),
         )
-        # centre horizontally, pin to the top so the header sits under the
-        # address bar and the spare room falls below the board
-        offset = ((phys[0] - size[0]) // 2, 0)
+        # centre the screen; on a phone the padded canvas already fills the
+        # height (offset ~0, header at the top), and a window wider or narrower
+        # than the screen's aspect gets equal background above and below
+        offset = ((phys[0] - size[0]) // 2, (phys[1] - size[1]) // 2)
         self._display.fill(BG)
         pygame.transform.smoothscale(canvas, size, self._display.subsurface(
             pygame.Rect(offset, size)
