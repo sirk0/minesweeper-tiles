@@ -1890,10 +1890,14 @@ class _WebPresenter:
         # height (offset ~0, header at the top), and a window wider or narrower
         # than the screen's aspect gets equal background above and below
         offset = ((phys[0] - size[0]) // 2, (phys[1] - size[1]) // 2)
+        # Scale to a standalone surface and blit it, rather than scaling into a
+        # subsurface of the display: pygbag's wasm SDL ignores the parent's row
+        # pitch when the destination is a subsurface, so a centred screen (whose
+        # width is less than the framebuffer's) came out sheared and tiled
+        # across the frame. blit honours the pitch.
+        scaled = pygame.transform.smoothscale(canvas, size)
         self._display.fill(BG)
-        pygame.transform.smoothscale(canvas, size, self._display.subsurface(
-            pygame.Rect(offset, size)
-        ))
+        self._display.blit(scaled, offset)
         pygame.display.flip()
         # map framebuffer clicks back through the centring offset and scale
         _set_mouse_transform(
