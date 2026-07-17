@@ -37,6 +37,7 @@ from minesweeper.boards import (
     TILINGS,
     build_board,
     newell_normal,
+    surface_of,
     view_hint,
 )
 from minesweeper.game import CellState, Game, GameState
@@ -1318,7 +1319,7 @@ class GameScreen3D(BaseGameScreen):
             return mat_mul(rot_x(-0.62), rot_y(0.45))
         # the Klein bottle reads best from a 3/4 turn: the neck diving
         # through the body (the self-intersection) is then plainly visible
-        if self.mode == "klein":
+        if surface_of(self.mode) is not None and surface_of(self.mode).key == "klein":
             return mat_mul(rot_x(-0.4), rot_y(0.6))
         # wrapped surfaces tilt by their SurfaceSpec hint (donut, cylinder,
         # Möbius strip); everything else faces straight on

@@ -127,88 +127,100 @@ A surface is a new column in the uniform/dual tiling×surface grid. The
 catalog derives everything from one `SurfaceSpec`, so the work is: an
 immersion, a wrap builder, one spec row, and preset tuning.
 
-The Klein bottle is already implemented **for the square tiling only**
-(`klein_board` + the `"klein"` `SurfaceSpec`); the notes below double as
-its as-built documentation and as the pattern for finishing it (the other
-tilings) or adding a fresh surface.
+The Klein bottle is implemented **for every non-chiral tiling** — the
+square (`klein_board`), the regular triangle/hexagon
+(`klein_triangle_board`/`klein_hex_board`) and all 14 non-chiral template
+tilings (`arch_klein_board`), plus the `"klein"` `SurfaceSpec`. The notes
+below are its as-built documentation and the pattern for adding a fresh
+surface.
 
 1. **Immersion** in `surfaces.py`. A Klein bottle is a torus whose tube
    seam is glued with a flip. `_klein_point` uses the classic
    self-intersecting *bottle* immersion (`u` runs the profile round the
    ring — up the body, over the top, down and through the neck; `v` runs
-   the circular cross-section). It reads as the familiar bottle rather
-   than a donut. It is piecewise (a `u < π` body branch, a `u ≥ π` neck
-   branch) and its natural coordinates are large and off-origin, so
-   `klein_board` **recentres** the sampled points before `_assemble`
+   the circular cross-section, seam-reflected `v -> π - v`). It reads as
+   the familiar bottle rather than a donut. It is piecewise (a `u < π`
+   body branch, a `u ≥ π` neck branch) and its natural coordinates are
+   large and off-origin, so every wrap builder **recentres** the sampled
+   points (shared helper `_klein_recentre`) before `_assemble`
    (`GameScreen3D` measures `radius` from, and pivots rotation about, the
    origin, so off-origin geometry renders shrunk and off-centre). The
-   neck-through-body
-   self-intersection is unavoidable (no immersion of the Klein bottle
-   embeds in 3-space); `klein_board` offsets `v` by half a cell so no
-   *vertex* lands on the self-intersection circle and all vertices stay
-   distinct (`euler_characteristic`/`boundary_components` key on rounded
-   coordinates). An earlier figure-8 (lemniscate) immersion is in the git
-   history if you want the donut-shaped variant back.
+   neck-through-body self-intersection is unavoidable (no immersion of the
+   Klein bottle embeds in 3-space) and lives on the `v ∈ {0, π}` circle;
+   the builders offset `v` so no *vertex* lands there and all vertices
+   stay distinct (`euler_characteristic`/`boundary_components` key on
+   rounded coordinates — a merge silently drops χ below 0). A stray merge
+   is a measure-zero coincidence that a small `tube`/`tube_scale` change
+   clears, so presets are verified for χ = 0. An earlier figure-8
+   (lemniscate) immersion is in the git history for the donut-shaped
+   variant.
 
-2. **Wrap builder** in `surfaces.py`. `klein_board` is modelled on
-   `torus_board`: the cross-section (`tube`, **must be even**) wraps
-   straight, but the ring seam glues *flipped* — column `ring` re-enters
-   column 0 with the tube reflected. The vertex flip is `j -> tube/2 - j -
-   1` (the reflection the bottle immersion makes at the seam, matched to
-   the half-cell `v` offset); the *cell* flip is one lower, `tube/2 - j -
-   2`, because a cell is indexed by its low-`j` corner. Assemble with
-   `_assemble(..., two_sided=True, radius=_max_radius, cell_cycle=...)`. A
-   Klein bottle is closed (0 boundary circles) but non-orientable, so it
-   is drawn two-sided, not back-face culled.
+2. **Wrap builders** in `surfaces.py`. All are modelled on the torus
+   builders: the cross-section (the tube) wraps straight, but the ring
+   seam glues *flipped* — the tube re-enters reflected, so the surface is
+   closed (0 boundary circles) yet non-orientable, hence drawn two-sided,
+   not back-face culled. `_klein_recentre` + `radius=_max_radius` frame
+   it. The flip needs an orientation-reversing tube mirror, so **chiral
+   tilings are refused** (snub hexagonal, floret pentagonal), exactly as
+   on the Möbius strip.
 
-   `cell_cycle` is the one-step **ring translation** `(i, j) -> (i+1, j)`
-   (with the cell flip at the seam) — a graph automorphism carried on
-   `Board3D`. `GameScreen3D` reads it to let the player **scroll** the
-   cell contents along the ring (mouse wheel / two-finger scroll), so
-   cells hidden behind the self-intersection rotate into view without the
-   geometry moving. Because it is an automorphism the board stays readable
-   at every offset; its order is `2 * ring` (crossing the seam flips the
-   tube, so a cell returns only after two loops). Any other board that
-   exposes a `cell_cycle` gets the same scrolling for free; everything
-   else leaves it `None`. To extend the bottle to the Archimedean tilings,
-   write `arch_klein_board` next to `arch_torus_board`, gluing the seam
-   flipped with `template.mirror` as `arch_mobius_board` does.
+   - `klein_board` (square): vertex flip `j -> tube/2 - j - 1` (matching
+     the immersion's `v -> π - v`, `tube` **even**); the *cell* flip is
+     one lower because a cell is indexed by its low-`j` corner.
+   - `klein_triangle_board`: splits each quad, diagonal alternating by
+     column so the seam glide carries diagonals to diagonals — the ring
+     translation is then an automorphism only when `tube` is 2 (mod 4)
+     (else `cell_cycle` is `None`).
+   - `klein_hex_board`: offset hex lattice, tube reflected `ky -> 4 - ky`
+     across the ring seam (`rows` **even**).
+   - `arch_klein_board`: the template version, next to `arch_torus_board`
+     but gluing the seam flipped through `template.mirror` exactly as
+     `arch_mobius_board` does. p4g (snub square, Cairo) has only a glide,
+     so `nx` counts half-domains and must be **odd** there. The `+π/2`
+     `v`-phase aligns the immersion's seam reflection with the tiling's
+     tube mirror.
+
+   `cell_cycle` is the one-step **ring translation** — a graph
+   automorphism carried on `Board3D`. `GameScreen3D` reads it to let the
+   player **scroll** the cell contents along the ring (mouse wheel /
+   two-finger scroll), so cells hidden behind the self-intersection rotate
+   into view without the geometry moving. The template/hex/triangle
+   builders build it by matching each cell's shifted vertex set back to a
+   generated cell (keeping it only when it is a bijection). Any board that
+   exposes a `cell_cycle` gets the scrolling for free; everything else
+   leaves it `None`.
 
 3. **SurfaceSpec** in `catalog.py`:
 
    ```python
    SurfaceSpec("klein", "Klein bottle", "klein", is_3d=True,
-               needs_mirror=True, boundary_components=0, tilt=-0.4,
-               tilings=frozenset({"square"})),
+               needs_mirror=True, boundary_components=0, tilt=-0.4),
    ```
 
-   (The Klein bottle also takes a `mode == "klein"` special case in
-   `GameScreen3D._initial_rotation` for a 3/4 view that shows the
-   self-intersection; `tilt` alone is only an x-rotation.)
-
-   `needs_mirror=True` makes the derivation drop the chiral snub
-   hexagonal automatically, exactly like the Möbius strip. `tilings=` is
-   an optional allow-list that restricts a surface to specific tiling
-   keys (`None` = every tiling) — that is what keeps this surface
-   squares-only for now; widen or drop it as more wrap builders land.
-   `TilingSpec.allows` gates on both. The square tiling maps `(square,
+   `needs_mirror=True` makes the derivation drop the chiral tilings
+   automatically, exactly like the Möbius strip (`TilingSpec.allows`
+   gates on it). A `SurfaceSpec` may also carry an optional
+   `tilings=frozenset({...})` allow-list to restrict a *new* surface to
+   specific tiling keys while its other wrap builders are still missing;
+   the Klein bottle no longer needs one. The square tiling maps `(square,
    klein)` to the bare mode `"klein"` via its `mode_overrides`, like its
-   other legacy surface names.
+   other legacy surface names. Every klein mode also takes the `klein`
+   3/4-view branch in `GameScreen3D._initial_rotation` (keyed on
+   `surface_of(mode).key`), showing the self-intersection; `tilt` alone is
+   only an x-rotation.
 
-4. **Presets** in `presets.py`: while squares-only, add an explicit
-   `"klein"` block to `_PRESETS` (like the `torus`/`mobius`/`cylinder`
-   square blocks). For the eventual Archimedean columns, add `"klein":
-   arch_klein_board` to `_ARCH_BUILDERS` and a `"klein"` column to each
-   tiling's `ARCH_PRESETS` block (skip snub hexagonal).
+4. **Presets** in `presets.py`: explicit `"klein"`/`"kleintri"`/
+   `"kleinhex"` blocks in `_PRESETS` for the regular tilings, `"klein":
+   arch_klein_board` in `_ARCH_BUILDERS`, and a `"klein"` column in each
+   non-chiral tiling's `ARCH_PRESETS` block (the non-glide ones reuse
+   their `torus` `nx`/`ny`/mines; snub square and Cairo need odd `nx`).
 
-No menu, `gui.py`, or test edits are needed: `MODE_LABELS`, `TILINGS`,
+No menu or `gui.py` menu edits are needed: `MODE_LABELS`, `TILINGS`,
 `MODES_3D`, `mode_for`, `surface_of`, `view_hint` and the menu pages all
-derive from the new `SurfaceSpec`, and the invariant/boundary tests pick
-the new modes up automatically. (A surface restricted to some tilings
-shows greyed-out on the others' menu pages, exactly like Möbius on snub
-hexagonal.) If you add the spec but forget a preset,
-`TestPresets.test_all_presets_build` fails loudly — that is the intended
-guard rail.
+derive from the `SurfaceSpec`. The `klein` modes join the wrapped-surface
+invariant suite (`TestWrappedArchimedean` / `TestKleinTilings`) so
+χ = 0 / 0 boundary circles are checked automatically; if you add the spec
+but forget a preset, `TestPresets.test_all_presets_build` fails loudly.
 
 ## Verifying a change
 

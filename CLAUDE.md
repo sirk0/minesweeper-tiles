@@ -1,8 +1,8 @@
 # Minesweeper (pygame)
 
 A minesweeper clone with flat and 3D boards (sphere, fullerenes, cube,
-tetrahedron, donut, Möbius strip, cylinder). Python 3.13 (see
-`.python-version`), only dependency: `pygame-ce`.
+tetrahedron, donut, Möbius strip, cylinder, Klein bottle). Python 3.13
+(see `.python-version`), only dependency: `pygame-ce`.
 
 ## Architecture
 
@@ -15,15 +15,20 @@ tetrahedron, donut, Möbius strip, cylinder). Python 3.13 (see
   invariants), `tilings` (flat tilings + the `ARCH_TILINGS` registry and
   `_ArchTemplate` system), `aperiodic` (Penrose, Hat), `solids` (sphere,
   fullerenes, cube, tetrahedron, frames), `surfaces` (donut/cylinder/
-  Möbius wrapping via shared immersion helpers), `catalog` (the menu,
-  **derived** from `SURFACE_SPECS`/`TILING_SPECS`), `presets`
+  Möbius/Klein-bottle wrapping via shared immersion helpers), `catalog`
+  (the menu, **derived** from `SURFACE_SPECS`/`TILING_SPECS`), `presets`
   (`ARCH_PRESETS` + `build_board`). The eight non-regular Archimedean
   tilings (six with two tile shapes, plus 3.4.6.4 and 4.6.12 with three)
   and their eight Laves (dual/Catalan) duals — built mechanically by
-  `_dual_template` — wrap onto the donut/cylinder/Möbius via
+  `_dual_template` — wrap onto the donut/cylinder/Möbius/Klein-bottle via
   `_ArchTemplate` (one rectangular periodic domain + modular seam gluing;
   snub hexagonal and its dual the floret pentagonal are chiral, so no
-  Möbius). The menu has two parallel tiling groups: **Uniform tilings**
+  Möbius and no Klein bottle — both seams reverse orientation). The
+  Klein bottle glues like the donut but flips the tube across the ring
+  seam (the same `template.mirror` the Möbius uses); the
+  self-intersecting bottle immersion hides some cells behind the neck, so
+  every Klein board carries a `cell_cycle` the UI scrolls along to bring
+  them into view. The menu has two parallel tiling groups: **Uniform tilings**
   (the 11 uniform tilings) and **Dual-uniform tilings** (their 11 duals;
   the three regular tilings are self/mutually dual, so they appear in
   both). **To add a tiling or surface, see `AGENTS.md`** — a tiling is
