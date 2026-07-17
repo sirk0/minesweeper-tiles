@@ -26,12 +26,15 @@ from minesweeper.boards.solids import (
 )
 from minesweeper.boards.surfaces import (
     arch_cylinder_board,
+    arch_klein_board,
     arch_mobius_board,
     arch_torus_board,
     cylinder_board,
     cylinder_hex_board,
     cylinder_triangle_board,
     klein_board,
+    klein_hex_board,
+    klein_triangle_board,
     mobius_board,
     mobius_hex_board,
     mobius_triangle_board,
@@ -170,6 +173,16 @@ _PRESETS = {
         "medium": lambda: klein_board(16, 8, 20),
         "hard": lambda: klein_board(24, 10, 48),
     },
+    "kleintri": {  # tube = 2 (mod 4) so the ring-translation scroll exists
+        "easy": lambda: klein_triangle_board(12, 6, 14),
+        "medium": lambda: klein_triangle_board(14, 10, 34),
+        "hard": lambda: klein_triangle_board(18, 14, 88),
+    },
+    "kleinhex": {
+        "easy": lambda: klein_hex_board(6, 4, 9),
+        "medium": lambda: klein_hex_board(8, 6, 20),
+        "hard": lambda: klein_hex_board(11, 8, 44),
+    },
     "cylinder": {
         "easy": lambda: cylinder_board(12, 7, 10),
         "medium": lambda: cylinder_board(16, 10, 26),
@@ -199,18 +212,21 @@ ARCH_PRESETS = {
         "torus": {"easy": (12, 1, 9, 0.31), "medium": (14, 2, 26, 0.53), "hard": (20, 2, 48, 0.37)},
         "cylinder": {"easy": (10, 1 + 1 / (2 + ROOT3), 8, -0.5), "medium": (12, 2 + 1 / (2 + ROOT3), 24, -0.5), "hard": (15, 3 + 1 / (2 + ROOT3), 60, -0.5)},
         "mobius": {"easy": (12, 1, 9), "medium": (12, 2, 22), "hard": (18, 2, 43)},
+        "klein": {"easy": (12, 1, 9), "medium": (14, 2, 26), "hard": (20, 2, 48)},
     },
     "snubsquare": {
         "flat": {"easy": (4, 4, 15, 54), "medium": (5, 5, 26, 45), "hard": (7, 7, 57, 33)},
         "torus": {"easy": (5, 2, 8, 0.40), "medium": (7, 3, 19, 0.43), "hard": (10, 4, 48, 0.40)},
         "cylinder": {"easy": (5, 2, 8), "medium": (7, 3, 19), "hard": (9, 5, 57)},
         "mobius": {"easy": (13, 2, 10), "medium": (15, 3, 20), "hard": (17, 4, 41)},
+        "klein": {"easy": (5, 2, 8), "medium": (7, 3, 19), "hard": (9, 4, 44)},
     },
     "kagome": {
         "flat": {"easy": (5, 3, 14, 40), "medium": (7, 4, 30, 30), "hard": (9, 6, 65, 22)},
         "torus": {"easy": (8, 2, 12, 0.43), "medium": (10, 2, 18, 0.35), "hard": (12, 3, 43, 0.43)},
         "cylinder": {"easy": (6, 2, 9, ROOT3 / 2), "medium": (9, 3, 24, ROOT3 / 2), "hard": (11, 4, 55, ROOT3 / 2)},
         "mobius": {"easy": (12, 1, 9), "medium": (12, 2, 22), "hard": (18, 2, 43)},
+        "klein": {"easy": (8, 2, 12), "medium": (10, 2, 18), "hard": (12, 3, 43)},
     },
     "snubhex": {
         "flat": {"easy": (3, 2, 16, 44), "medium": (4, 2, 24, 39), "hard": (5, 3, 50, 32)},
@@ -222,24 +238,28 @@ ARCH_PRESETS = {
         "torus": {"easy": (9, 4, 9, 0.44), "medium": (12, 6, 22, 0.50), "hard": (16, 7, 45, 0.44)},
         "cylinder": {"easy": (9, 3, 7), "medium": (12, 5, 18), "hard": (16, 7, 45)},
         "mobius": {"easy": (12, 3, 9), "medium": (16, 4, 19), "hard": (22, 5, 44)},
+        "klein": {"easy": (9, 4, 9), "medium": (12, 6, 22), "hard": (16, 7, 45)},
     },
     "trunchex": {
         "flat": {"easy": (6, 3, 16, 19), "medium": (8, 4, 33, 14), "hard": (10, 6, 70, 11)},
         "torus": {"easy": (7, 2, 10, 0.49), "medium": (10, 2, 18, 0.35), "hard": (12, 3, 43, 0.43)},
         "cylinder": {"easy": (6, 2, 9, 0.5 + ROOT3 / 2), "medium": (8, 3, 22, 0.5 + ROOT3 / 2), "hard": (10, 4, 48, 0.5 + ROOT3 / 2)},
         "mobius": {"easy": (9, 1, 7), "medium": (10, 2, 18), "hard": (12, 3, 43)},
+        "klein": {"easy": (7, 2, 10), "medium": (10, 2, 18), "hard": (12, 3, 43)},
     },
     "rhombitrihex": {
         "flat": {"easy": (4, 2, 15, 38), "medium": (5, 3, 30, 32), "hard": (7, 4, 65, 23)},
         "torus": {"easy": (5, 2, 17, 0.40), "medium": (7, 2, 26, 0.40), "hard": (8, 3, 45, 0.43)},
         "cylinder": {"easy": (4, 2, 14), "medium": (5, 3, 28), "hard": (7, 3, 40)},
         "mobius": {"easy": (4, 2, 14), "medium": (6, 2, 22), "hard": (8, 3, 45)},
+        "klein": {"easy": (5, 2, 17), "medium": (7, 2, 26), "hard": (8, 3, 45)},
     },
     "trunctrihex": {
         "flat": {"easy": (4, 2, 15, 21), "medium": (5, 3, 30, 18), "hard": (7, 4, 65, 13)},
         "torus": {"easy": (5, 2, 17, 0.40), "medium": (7, 2, 26, 0.40), "hard": (8, 3, 45, 0.43)},
         "cylinder": {"easy": (4, 2, 14), "medium": (5, 3, 28), "hard": (7, 3, 40)},
         "mobius": {"easy": (4, 2, 14), "medium": (6, 2, 22), "hard": (8, 3, 45)},
+        "klein": {"easy": (5, 2, 17), "medium": (7, 2, 26), "hard": (8, 3, 45)},
     },
     # Laves (dual) tilings: same fundamental domain as the Archimedean tiling
     # they dualise, so the windows/seams carry over; only the mine counts are
@@ -249,18 +269,21 @@ ARCH_PRESETS = {
         "torus": {"easy": (12, 1, 6, 0.31), "medium": (14, 2, 17, 0.53), "hard": (20, 2, 32, 0.37)},
         "cylinder": {"easy": (10, 1 + 1 / (2 + ROOT3), 5, -0.5), "medium": (12, 2 + 1 / (2 + ROOT3), 15, -0.5), "hard": (15, 3 + 1 / (2 + ROOT3), 38, -0.5)},
         "mobius": {"easy": (12, 1, 6), "medium": (12, 2, 15), "hard": (18, 2, 29)},
+        "klein": {"easy": (12, 1, 6), "medium": (14, 2, 17), "hard": (20, 2, 32)},
     },
     "cairo": {
         "flat": {"easy": (4, 4, 9, 54), "medium": (5, 5, 16, 45), "hard": (7, 7, 36, 33)},
         "torus": {"easy": (5, 2, 5, 0.40), "medium": (7, 3, 13, 0.43), "hard": (10, 4, 32, 0.40)},
         "cylinder": {"easy": (5, 2, 5), "medium": (7, 3, 13), "hard": (9, 5, 38)},
         "mobius": {"easy": (13, 2, 7), "medium": (15, 3, 13), "hard": (17, 4, 27)},
+        "klein": {"easy": (5, 2, 5), "medium": (7, 3, 13), "hard": (9, 4, 32)},
     },
     "rhombille": {
         "flat": {"easy": (5, 3, 13, 40), "medium": (7, 4, 28, 30), "hard": (9, 6, 61, 22)},
         "torus": {"easy": (8, 2, 12, 0.43), "medium": (10, 2, 18, 0.35), "hard": (12, 3, 43, 0.43)},
         "cylinder": {"easy": (6, 2, 9, ROOT3 / 2), "medium": (9, 3, 24, ROOT3 / 2), "hard": (11, 4, 55, ROOT3 / 2)},
         "mobius": {"easy": (12, 1, 9), "medium": (12, 2, 22), "hard": (18, 2, 43)},
+        "klein": {"easy": (8, 2, 12), "medium": (10, 2, 18), "hard": (12, 3, 43)},
     },
     "floret": {
         "flat": {"easy": (3, 2, 10, 44), "medium": (4, 2, 15, 39), "hard": (5, 3, 33, 32)},
@@ -272,24 +295,28 @@ ARCH_PRESETS = {
         "torus": {"easy": (9, 4, 18, 0.44), "medium": (12, 6, 44, 0.50), "hard": (16, 7, 90, 0.44)},
         "cylinder": {"easy": (9, 3, 14), "medium": (12, 5, 36), "hard": (16, 7, 90)},
         "mobius": {"easy": (12, 3, 18), "medium": (16, 4, 38), "hard": (22, 5, 88)},
+        "klein": {"easy": (9, 4, 18), "medium": (12, 6, 44), "hard": (16, 7, 90)},
     },
     "triakis": {
         "flat": {"easy": (6, 3, 30, 19), "medium": (8, 4, 62, 14), "hard": (10, 6, 134, 11)},
         "torus": {"easy": (7, 2, 20, 0.49), "medium": (10, 2, 36, 0.35), "hard": (12, 3, 86, 0.43)},
         "cylinder": {"easy": (6, 2, 18, 0.5 + ROOT3 / 2), "medium": (8, 3, 44, 0.5 + ROOT3 / 2), "hard": (10, 4, 96, 0.5 + ROOT3 / 2)},
         "mobius": {"easy": (9, 1, 14), "medium": (10, 2, 36), "hard": (12, 3, 86)},
+        "klein": {"easy": (7, 2, 20), "medium": (10, 2, 36), "hard": (12, 3, 86)},
     },
     "deltoidal": {
         "flat": {"easy": (4, 2, 13, 38), "medium": (5, 3, 30, 32), "hard": (7, 4, 62, 23)},
         "torus": {"easy": (5, 2, 17, 0.40), "medium": (7, 2, 26, 0.40), "hard": (8, 3, 45, 0.43)},
         "cylinder": {"easy": (4, 2, 14), "medium": (5, 3, 28), "hard": (7, 3, 40)},
         "mobius": {"easy": (4, 2, 14), "medium": (6, 2, 22), "hard": (8, 3, 45)},
+        "klein": {"easy": (5, 2, 17), "medium": (7, 2, 26), "hard": (8, 3, 45)},
     },
     "kisrhombille": {
         "flat": {"easy": (4, 2, 27, 21), "medium": (5, 3, 60, 18), "hard": (7, 4, 125, 13)},
         "torus": {"easy": (5, 2, 34, 0.40), "medium": (7, 2, 52, 0.40), "hard": (8, 3, 90, 0.43)},
         "cylinder": {"easy": (4, 2, 28), "medium": (5, 3, 56), "hard": (7, 3, 80)},
         "mobius": {"easy": (4, 2, 28), "medium": (6, 2, 44), "hard": (8, 3, 90)},
+        "klein": {"easy": (5, 2, 34), "medium": (7, 2, 52), "hard": (8, 3, 90)},
     },
 }
 
@@ -298,6 +325,7 @@ _ARCH_BUILDERS = {
     "torus": arch_torus_board,
     "cylinder": arch_cylinder_board,
     "mobius": arch_mobius_board,
+    "klein": arch_klein_board,
 }
 
 for _tiling, _surfaces in ARCH_PRESETS.items():
