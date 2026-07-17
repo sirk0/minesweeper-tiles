@@ -1095,6 +1095,12 @@ class BaseGameScreen:
     def _relayout(self) -> None:
         """Re-place geometry after the viewport height changed."""
 
+    def wants_animation(self) -> bool:
+        """Whether the screen needs periodic redraws with no input: true only
+        while the clock is running, so the timer display keeps ticking.
+        Everything else on a board changes solely in response to events."""
+        return self.started_at is not None and self.finished_at is None
+
     # Boards share one fixed web scale (see WEB_REF_WIDTH) so switching boards
     # never resizes the UI; a board wider than this is shrunk to fit.
     web_ref_width = WEB_REF_WIDTH
@@ -1501,6 +1507,10 @@ class MenuScreen:
     def set_viewport_height(self, height: int) -> None:
         self._view_h = height
 
+    def wants_animation(self) -> bool:
+        """The menu is static: it only ever changes in response to input."""
+        return False
+
     def _via_tilings(self) -> bool:
         """Whether the current group navigates tiling -> surface. Signalled
         by an empty mode list in GROUPS (the uniform and dual-uniform groups
@@ -1779,6 +1789,11 @@ class _DesktopPresenter:
         # SDL reports mouse events in the window's logical points, not pixels
         _set_mouse_scale(canvas_size, points)
 
+    def take_resized(self) -> bool:
+        # The desktop window is fixed to the canvas size; any OS resize/expose
+        # arrives as a pygame event, which already forces a repaint.
+        return False
+
     def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
         return natural[1]  # desktop keeps each screen's natural height
 
@@ -1823,6 +1838,7 @@ class _WebPresenter:
         self._dom = platform.window
         self._display: pygame.Surface | None = None
         self._phys: tuple[int, int] = (0, 0)
+        self._resized = False  # framebuffer changed since the last take_resized
 
     def _viewport(self) -> tuple[float, float, float]:
         """The visible viewport (CSS px) and device-pixel ratio. ``visualViewport``
@@ -1851,11 +1867,21 @@ class _WebPresenter:
         phys = (max(1, round(fb_w * shrink)), max(1, round(fb_h * shrink)))
         if phys != self._phys:
             self._phys = phys
+            self._resized = True
             self._display = pygame.display.set_mode(phys)
             style = self._dom.canvas.style
             style.width = f"{w}px"
             style.height = f"{h}px"
         return phys
+
+    def take_resized(self) -> bool:
+        """Whether the framebuffer changed (the browser window was resized)
+        since the last call. The browser delivers no resize event -- the size
+        is polled each frame -- so the loop uses this to force a repaint even
+        when nothing else changed. ``set_mode`` also clears the display, so the
+        skipped frame would otherwise leave the window blank."""
+        resized, self._resized = self._resized, False
+        return resized
 
     def ensure(self, canvas_size: tuple[int, int]) -> None:
         self._resize()
@@ -1937,10 +1963,22 @@ class App:
         presenter.ensure(self.screen.size)
         canvas = pygame.Surface(self.screen.size)
         fonts = FontCache()
-        clock = pygame.time.Clock()
+        # Redraw only when something changes. The full-scene draw plus
+        # supersampled downscale is by far the loop's biggest cost, so an idle
+        # screen (the menu, a finished or not-yet-started board) that skips it
+        # drops to near-zero CPU. Frames are paced with an awaited sleep rather
+        # than Clock.tick: on the desktop it caps the rate without busy-waiting,
+        # and in the browser (pygbag) it hands real time back to the event loop
+        # each frame -- Clock.tick spins the wasm main thread to 100% CPU.
+        frame = 1.0 / 30.0
+        anim_interval = 0.25  # redraw cadence for the ticking timer (~4/s)
         running = True
+        dirty = True  # always paint the first frame
+        anim_deadline = 0.0
         while running:
+            start = time.monotonic()
             for event in pygame.event.get():
+                dirty = True  # any input may change what is shown
                 result = self.screen.handle_event(_scale_mouse_event(event))
                 if result == "quit":
                     running = False
@@ -1961,10 +1999,18 @@ class App:
             )
             if canvas.get_size() != self.screen.size:
                 canvas = pygame.Surface(self.screen.size)
-            self.screen.draw(canvas, fonts)
-            presenter.present(canvas, self.screen.web_ref_width)
-            await asyncio.sleep(0)  # hand control back to the browser
-            clock.tick(30)
+                dirty = True  # size changed (board switch or window resize)
+            if presenter.take_resized():
+                dirty = True  # browser window resized (polled, no event)
+            if self.screen.wants_animation() and start >= anim_deadline:
+                dirty = True
+                anim_deadline = start + anim_interval
+            if dirty:
+                self.screen.draw(canvas, fonts)
+                presenter.present(canvas, self.screen.web_ref_width)
+                dirty = False
+            # hand control back (browser) and pace to the target frame rate
+            await asyncio.sleep(max(0.0, frame - (time.monotonic() - start)))
         presenter.close()
         pygame.quit()
 
