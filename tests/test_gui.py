@@ -8,11 +8,14 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 pygame = pytest.importorskip("pygame")
 
 from minesweeper.boards import (  # noqa: E402
-    GROUP_TILINGS,
-    GROUPS,
+    FLAT_MODES,
+    GEOMETRY_MODES,
+    GEOMETRY_ORDER,
     MODE_LABELS,
     MODES_3D,
+    SURFACE_GROUPS,
     SURFACE_LABELS,
+    TILING_GROUPS,
     TILINGS,
 )
 from minesweeper.game import CellState, Game, GameState  # noqa: E402
@@ -359,62 +362,146 @@ class TestMenu:
                 return menu.handle_event(mouse_event(rect.center))
         raise AssertionError(f"{wanted} not on the current page")
 
-    def test_first_page_lists_groups(self):
+    def test_home_page_lists_start_and_entry_points(self):
         menu = MenuScreen()
-        assert menu.group is None
-        assert self.items(menu) == set(GROUPS)
+        assert menu.path == []
+        assert self.items(menu) == {"start", "tilings", "geometries"}
         assert menu.layout()["back"] is None
 
-    def test_choosing_a_plain_group_shows_its_tilings(self):
+    def test_start_launches_a_random_flat_board(self):
         menu = MenuScreen()
-        assert self.click_item(menu, "sphere") is None
-        assert menu.group == "sphere"
-        assert self.items(menu) == set(GROUPS["sphere"][1])
+        result = self.click_item(menu, "start")
+        assert result[0] == "start" and result[1] in FLAT_MODES
 
-    def test_choosing_a_tiling_in_a_plain_group_starts_the_game(self):
-        menu = MenuScreen()
-        self.click_item(menu, "sphere")
-        assert self.click_item(menu, "c80") == ("start", "c80")
+    # -- Tilings entry point ------------------------------------------------
 
-    def test_uniform_group_goes_tiling_then_surface(self):
+    def test_tilings_lists_families(self):
         menu = MenuScreen()
+        assert self.click_item(menu, "tilings") is None
+        assert self.items(menu) == set(TILING_GROUPS)
+
+    def test_tilings_uniform_goes_tiling_then_geometry(self):
+        menu = MenuScreen()
+        self.click_item(menu, "tilings")
         self.click_item(menu, "uniform")
-        assert self.items(menu) == set(GROUP_TILINGS["uniform"])
+        assert self.items(menu) == set(TILING_GROUPS["uniform"][1])
         assert self.click_item(menu, "kagome") is None
-        assert menu.tiling == "kagome"
+        assert menu.path == ["tilings", "uniform", "kagome"]
         assert self.items(menu) == set(SURFACE_LABELS)
         assert self.click_item(menu, "torus") == ("start", "toruskagome")
 
-    def test_dual_group_lists_its_tilings_and_reaches_a_laves_mode(self):
+    def test_tilings_dual_reaches_a_laves_mode(self):
         menu = MenuScreen()
+        self.click_item(menu, "tilings")
         self.click_item(menu, "dual")
-        assert self.items(menu) == set(GROUP_TILINGS["dual"])
-        assert self.click_item(menu, "rhombille") is None
-        assert menu.tiling == "rhombille"
+        assert self.items(menu) == set(TILING_GROUPS["dual"][1])
+        self.click_item(menu, "rhombille")
         assert self.click_item(menu, "torus") == ("start", "torusrhombille")
+
+    def test_tilings_aperiodic_family_is_terminal(self):
+        menu = MenuScreen()
+        self.click_item(menu, "tilings")
+        self.click_item(menu, "aperiodic")
+        assert self.items(menu) == {"penrose", "hat"}
+        assert self.click_item(menu, "penrose") == ("start", "penrose")
+
+    def test_tilings_sphere_family_is_terminal(self):
+        menu = MenuScreen()
+        self.click_item(menu, "tilings")
+        self.click_item(menu, "sphere")
+        assert self.click_item(menu, "c80") == ("start", "c80")
+
+    # -- Geometries entry point --------------------------------------------
+
+    def test_geometries_lists_all_geometries(self):
+        menu = MenuScreen()
+        assert self.click_item(menu, "geometries") is None
+        assert self.items(menu) == set(GEOMETRY_ORDER)
+
+    def test_geometry_surface_goes_family_then_tiling(self):
+        menu = MenuScreen()
+        self.click_item(menu, "geometries")
+        self.click_item(menu, "torus")
+        assert self.items(menu) == set(SURFACE_GROUPS["torus"])
+        self.click_item(menu, "uniform")
+        assert self.items(menu) == set(TILING_GROUPS["uniform"][1])
+        assert self.click_item(menu, "kagome") == ("start", "toruskagome")
+
+    def test_flat_geometry_offers_aperiodic(self):
+        menu = MenuScreen()
+        self.click_item(menu, "geometries")
+        self.click_item(menu, "flat")
+        assert self.items(menu) == {"uniform", "dual", "aperiodic"}
+        self.click_item(menu, "aperiodic")
+        assert self.click_item(menu, "hat") == ("start", "hat")
+
+    def test_cube_geometry_lists_its_boards(self):
+        menu = MenuScreen()
+        self.click_item(menu, "geometries")
+        self.click_item(menu, "cube")
+        assert self.items(menu) == set(GEOMETRY_MODES["cube"])
+        assert self.click_item(menu, "cubeframe") == ("start", "cubeframe")
+
+    def test_single_board_geometry_starts_at_once(self):
+        menu = MenuScreen()
+        self.click_item(menu, "geometries")
+        assert self.click_item(menu, "steppedbipyramid") == (
+            "start", "steppedbipyramid")
+
+    def test_shaped_geometry_lists_its_boards(self):
+        menu = MenuScreen()
+        self.click_item(menu, "geometries")
+        self.click_item(menu, "shaped")
+        assert self.click_item(menu, "hexhex") == ("start", "hexhex")
+
+    def test_sphere_geometry_lists_spherical_tilings(self):
+        menu = MenuScreen()
+        self.click_item(menu, "geometries")
+        self.click_item(menu, "sphere")
+        assert self.items(menu) == set(GEOMETRY_MODES["sphere"])
+        assert self.click_item(menu, "spheretri") == ("start", "spheretri")
+
+    # -- reachability & gating ---------------------------------------------
 
     def test_every_mode_is_reachable(self):
         reached = set()
-        for group in ("uniform", "dual"):
-            for tiling in GROUP_TILINGS[group]:
-                for surface, mode in TILINGS[tiling][1].items():
+        # Tilings flow: every periodic (tiling x geometry) board (uniform and
+        # dual together cover all tilings), plus the terminal families.
+        for group, (_, members) in TILING_GROUPS.items():
+            if group in ("uniform", "dual"):
+                for tiling in members:
+                    for surface, mode in TILINGS[tiling][1].items():
+                        menu = MenuScreen()
+                        self.click_item(menu, "tilings")
+                        self.click_item(menu, group)
+                        self.click_item(menu, tiling)
+                        assert self.click_item(menu, surface) == ("start", mode)
+                        reached.add(mode)
+            else:
+                for mode in members:
                     menu = MenuScreen()
+                    self.click_item(menu, "tilings")
                     self.click_item(menu, group)
-                    self.click_item(menu, tiling)
-                    assert self.click_item(menu, surface) == ("start", mode)
+                    assert self.click_item(menu, mode) == ("start", mode)
                     reached.add(mode)
-        for group, (_, modes) in GROUPS.items():
+        # Geometries flow: the solids and shaped boards.
+        for geom, modes in GEOMETRY_MODES.items():
             for mode in modes:
                 menu = MenuScreen()
-                self.click_item(menu, group)
-                assert self.click_item(menu, mode) == ("start", mode)
+                self.click_item(menu, "geometries")
+                if len(modes) == 1:  # a single-board geometry starts at once
+                    assert self.click_item(menu, geom) == ("start", mode)
+                else:
+                    self.click_item(menu, geom)
+                    assert self.click_item(menu, mode) == ("start", mode)
                 reached.add(mode)
         assert reached == set(MODE_LABELS)
 
-    def test_impossible_surface_is_disabled(self):
-        # snub hexagonal is chiral, so its Möbius strip does not exist; the
-        # Klein bottle is squares-only for now, so it is disabled here too
+    def test_impossible_geometry_is_disabled(self):
+        # snub hexagonal is chiral, so its Möbius strip and Klein bottle do
+        # not exist; they show disabled on its geometry page
         menu = MenuScreen()
+        self.click_item(menu, "tilings")
         self.click_item(menu, "uniform")
         self.click_item(menu, "snubhex")
         enabled = {key: on for _, key, _, on in menu.layout()["items"]}
@@ -423,26 +510,40 @@ class TestMenu:
             "klein": False,
         }
         assert self.click_item(menu, "mobius") is None  # click ignored
-        assert menu.tiling == "snubhex"  # still on the surface page
+        assert menu.path == ["tilings", "uniform", "snubhex"]
+
+    def test_chiral_tiling_disabled_under_a_mirror_surface(self):
+        # entering from the geometry, a chiral tiling is disabled on the Möbius
+        menu = MenuScreen()
+        self.click_item(menu, "geometries")
+        self.click_item(menu, "mobius")
+        self.click_item(menu, "uniform")
+        enabled = {key: on for _, key, _, on in menu.layout()["items"]}
+        assert enabled["snubhex"] is False
+        assert enabled["kagome"] is True
+        assert self.click_item(menu, "snubhex") is None  # click ignored
 
     def test_back_button_pops_one_page(self):
         menu = MenuScreen()
+        self.click_item(menu, "tilings")
         self.click_item(menu, "uniform")
         self.click_item(menu, "hex")
         back = menu.layout()["back"]
         assert menu.handle_event(mouse_event(back.center)) is None
-        assert menu.group == "uniform" and menu.tiling is None
+        assert menu.path == ["tilings", "uniform"]
         assert menu.handle_event(mouse_event(back.center)) is None
-        assert menu.group is None
+        assert menu.path == ["tilings"]
+        assert menu.handle_event(mouse_event(back.center)) is None
+        assert menu.path == []
 
     def test_escape_goes_back_then_quits(self):
         menu = MenuScreen()
+        self.click_item(menu, "tilings")
         self.click_item(menu, "uniform")
-        self.click_item(menu, "square")
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) is None
-        assert menu.group == "uniform" and menu.tiling is None
+        assert menu.path == ["tilings"]
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) is None
-        assert menu.group is None
+        assert menu.path == []
         assert menu.handle_event(key_event(pygame.K_ESCAPE)) == "quit"
         assert menu.handle_event(pygame.event.Event(pygame.QUIT)) == "quit"
 
@@ -463,16 +564,12 @@ class TestMenu:
 
     def test_all_pages_draw(self, fonts):
         menu = MenuScreen()
-        for step in (None, "uniform", "snubhex"):
-            if step is not None:
-                self.click_item(menu, step)
-            surface = pygame.Surface(menu.size)
-            menu.draw(surface, fonts)
-
-    def test_dual_group_page_draws(self, fonts):
-        menu = MenuScreen()
-        for step in ("dual", "floret"):
-            self.click_item(menu, step)
+        for path in ([], ["tilings"], ["tilings", "uniform"],
+                     ["tilings", "uniform", "snubhex"], ["tilings", "aperiodic"],
+                     ["tilings", "sphere"], ["geometries"], ["geometries", "torus"],
+                     ["geometries", "torus", "uniform"], ["geometries", "flat"],
+                     ["geometries", "cube"], ["geometries", "sphere"]):
+            menu.path = list(path)
             surface = pygame.Surface(menu.size)
             menu.draw(surface, fonts)
 
@@ -498,10 +595,13 @@ class TestIcon:
         from minesweeper.gui import ICON_SIZE, menu_icon
 
         keys = (
-            set(GROUPS)
+            {"start", "tilings", "geometries"}
+            | set(GEOMETRY_ORDER)
+            | set(TILING_GROUPS)
             | set(TILINGS)
             | set(SURFACE_LABELS)
-            | {mode for _, modes in GROUPS.values() for mode in modes}
+            | {m for modes in GEOMETRY_MODES.values() for m in modes}
+            | {m for g in ("aperiodic", "sphere") for m in TILING_GROUPS[g][1]}
         )
         for key in sorted(keys):
             icon = menu_icon(key)
