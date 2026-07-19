@@ -43,12 +43,12 @@ web-prepare:     ## stage the browser app files into $(WEB_STAGE)
 
 web-package: web-prepare  ## build the browser bundle into $(WEB_OUT)
 	$(PY) -m pygbag --ume_block 0 --build $(WEB_STAGE)
-	PYTHONPATH=. $(PY) scripts/make_favicon.py $(WEB_OUT)/favicon.png
+	PYTHONPATH=. $(PY) scripts/make_web_icons.py $(WEB_OUT)
 
 web-run: web-prepare  ## serve the web version at http://localhost:8000
-	@# pygbag regenerates its default favicon at server start; swap in
-	@# ours once the server is up
-	( sleep 5 && PYTHONPATH=. $(PY) scripts/make_favicon.py $(WEB_OUT)/favicon.png ) &
+	@# pygbag regenerates its default favicon and index.html at server
+	@# start; swap in our icons and apple-touch-icon link once it's up
+	( sleep 5 && PYTHONPATH=. $(PY) scripts/make_web_icons.py $(WEB_OUT) ) &
 	$(PY) -m pygbag --ume_block 0 $(WEB_STAGE)
 
 clean:           ## remove build artifacts

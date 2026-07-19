@@ -95,9 +95,14 @@ it: a game keeps the header at the top and centres the board in the space
 below; the menu keeps the title at the top, drops the difficulty row to
 the bottom and centres the mode list between them. The desktop leaves the
 height at each screen's natural size, so its layout is unchanged. pygbag
-also regenerates its default favicon on every build, so `make
-web-package` overwrites it afterwards with scripts/make_favicon.py (the
-in-game mine-in-hexagon icon).
+also regenerates its default favicon and `index.html` on every build, so
+`make web-package` runs scripts/make_web_icons.py afterwards: it
+overwrites the favicon with the in-game mine-in-hexagon icon, writes an
+`apple-touch-icon.png` (the same icon rendered full-bleed so iOS's own
+rounded-square mask makes the iPhone home-screen icon match the macOS
+dock), and injects the `apple-touch-icon` <link> that pygbag's template
+omits (without it iOS shows a screenshot of the page instead of the app
+icon).
 
 Local test — must use pygbag's own server; on any other port the
 template rewrites the CDN to localhost:8000 and pygame fails to load:
