@@ -1,6 +1,6 @@
 [project]
 name = "minesweeper"
-version = "0.1.19"
+version = "0.1.20"
 description = "A minesweeper clone with square, triangle and hexagon boards"
 requires-python = ">=3.13"
 dependencies = ["pygame-ce>=2.5"]
