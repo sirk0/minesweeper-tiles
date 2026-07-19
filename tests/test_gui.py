@@ -486,6 +486,14 @@ class TestIcon:
         assert icon.get_at((256, 256))[3] == 255
         assert icon.get_at((2, 2))[3] == 0
 
+    def test_bleed_icon_fills_corners_for_ios(self):
+        # the iOS home-screen icon is full-bleed and opaque to its edges so
+        # iOS's own rounded-square mask makes it match the macOS dock icon
+        icon = make_icon(180, bleed=True)
+        assert icon.get_size() == (180, 180)
+        assert icon.get_at((90, 90))[3] == 255
+        assert icon.get_at((0, 0))[3] == 255
+
     def test_menu_icons_render_for_every_menu_key(self):
         from minesweeper.gui import ICON_SIZE, menu_icon
 

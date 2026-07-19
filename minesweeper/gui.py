@@ -443,12 +443,18 @@ def _gloss(surface, rect: pygame.Rect, alpha: int = 55, radius: int = 0) -> None
     surface.blit(overlay, (0, 0))
 
 
-def make_icon(size: int = 512) -> pygame.Surface:
-    """App icon: a mine in a hexagon on a macOS-style rounded square."""
+def make_icon(size: int = 512, *, bleed: bool = False) -> pygame.Surface:
+    """App icon: a mine in a hexagon on a macOS-style rounded square.
+
+    With ``bleed`` the steel plate fills the whole canvas with square
+    corners, for the iOS home-screen icon: iOS paints any transparency
+    black and applies its own rounded-square mask, so a full-bleed plate
+    comes out matching the macOS dock icon instead of floating on black.
+    """
     icon = pygame.Surface((size, size), pygame.SRCALPHA)
-    margin = int(size * 0.05)
+    margin = 0 if bleed else int(size * 0.05)
     plate = pygame.Rect(margin, margin, size - 2 * margin, size - 2 * margin)
-    corner = int(size * 0.225)
+    corner = 0 if bleed else int(size * 0.225)
 
     # base plate with a subtle vertical gradient
     steps = 48
