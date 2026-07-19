@@ -1966,18 +1966,29 @@ class App:
         # Redraw only when something changes. The full-scene draw plus
         # supersampled downscale is by far the loop's biggest cost, so an idle
         # screen (the menu, a finished or not-yet-started board) that skips it
-        # drops to near-zero CPU. Frames are paced with an awaited sleep rather
-        # than Clock.tick: on the desktop it caps the rate without busy-waiting,
-        # and in the browser (pygbag) it hands real time back to the event loop
-        # each frame -- Clock.tick spins the wasm main thread to 100% CPU.
+        # drops to near-zero CPU.
+        #
+        # Pacing differs by platform. On the desktop the loop blocks in
+        # pygame.event.wait until real input arrives -- every change (input,
+        # resize, expose) comes as an event -- so an idle app wakes only a
+        # couple of times a second and uses ~0% CPU, instead of spinning the
+        # event pump 30x/s. In the browser (pygbag) blocking would freeze the
+        # single wasm thread, so there the loop yields real time with an awaited
+        # sleep each frame (Clock.tick would busy-wait it to 100% CPU instead).
+        is_web = sys.platform == "emscripten"
         frame = 1.0 / 30.0
         anim_interval = 0.25  # redraw cadence for the ticking timer (~4/s)
+        idle_wait_ms = 1000  # desktop: cap the idle block so a repaint is never
+        # stranded (input still wakes it instantly; this is only a safety net)
         running = True
         dirty = True  # always paint the first frame
         anim_deadline = 0.0
+        pending: list[pygame.event.Event] = []  # event pulled by a blocking wait
         while running:
             start = time.monotonic()
-            for event in pygame.event.get():
+            events = pending + pygame.event.get()
+            pending = []
+            for event in events:
                 dirty = True  # any input may change what is shown
                 result = self.screen.handle_event(_scale_mouse_event(event))
                 if result == "quit":
@@ -2009,8 +2020,22 @@ class App:
                 self.screen.draw(canvas, fonts)
                 presenter.present(canvas, self.screen.web_ref_width)
                 dirty = False
-            # hand control back (browser) and pace to the target frame rate
-            await asyncio.sleep(max(0.0, frame - (time.monotonic() - start)))
+            if is_web:
+                # hand control back to the browser, paced to the frame rate
+                await asyncio.sleep(max(0.0, frame - (time.monotonic() - start)))
+            else:
+                # Block until the next event instead of polling. A running
+                # timer caps the wait at its next tick so the clock still
+                # advances; an idle screen waits up to the safety-net cap.
+                # wait() removes the event it returns, so carry it into the
+                # next iteration's queue (NOEVENT means the wait timed out).
+                if self.screen.wants_animation():
+                    due_ms = max(1, round((anim_deadline - time.monotonic()) * 1000))
+                    ev = pygame.event.wait(min(due_ms, idle_wait_ms))
+                else:
+                    ev = pygame.event.wait(idle_wait_ms)
+                if ev.type != pygame.NOEVENT:
+                    pending.append(ev)
         presenter.close()
         pygame.quit()
 
