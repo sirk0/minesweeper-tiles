@@ -619,7 +619,6 @@ def _icon_badge(s, cx, cy, r, shape: str) -> None:
 _ICON_ALIASES = {
     "tri": "trigrid",
     "aperiodic": "penrose",
-    "shaped": "triangle",
     "polyhedra": "cube",
     "classic": "square",    # the "Classic" home entry: flat squares
     "manifolds": "torus",   # the "Flat manifolds" home entry
@@ -1573,7 +1572,10 @@ class MenuScreen:
             return "Sphere — choose a board", [
                 (m, MODE_LABELS[m], True) for m in SPHERE_MODES
             ]
-        return self._other_page(p[1:])
+        # Other: the solids and the shaped boards, all launching at once
+        return "Other — choose a board", [
+            (m, MODE_LABELS[m], True) for m in OTHER_MODES + SHAPED_MODES
+        ]
 
     def _picker_page(self, surface, surface_label, rest):
         """The tiling picker on `surface` (and its family submenus). The three
@@ -1593,16 +1595,6 @@ class MenuScreen:
         return heading, [
             (t, TILINGS[t][0], TILINGS_BY_KEY[t].allows(SURFACES[surface]))
             for t in FAMILY_MEMBERS[fam]
-        ]
-
-    def _other_page(self, rest):
-        if not rest:  # the solids, plus a Shaped boards submenu
-            return "Other — choose a board", (
-                [(m, MODE_LABELS[m], True) for m in OTHER_MODES]
-                + [("shaped", "Shaped boards", True)]
-            )
-        return "Shaped boards — choose a board", [
-            (m, MODE_LABELS[m], True) for m in SHAPED_MODES
         ]
 
     def _items(self) -> list[tuple[str, str, bool]]:
@@ -1628,9 +1620,8 @@ class MenuScreen:
                 self.path.append(key)
                 return None
             return self._select_picker(p[1], p[2:], key)
-        if p[0] == "sphere":
-            return ("start", key)
-        return self._select_other(p[1:], key)
+        # sphere or other: every row launches its board straight away
+        return ("start", key)
 
     def _select_picker(self, surface, rest, key):
         if not rest:  # the picker's top page
@@ -1643,14 +1634,6 @@ class MenuScreen:
         if rest[0] == "aperiodic":  # penrose / hat, flat only
             return ("start", key)
         return ("start", mode_for(key, surface))  # a uniform / dual tiling
-
-    def _select_other(self, rest, key):
-        if not rest:
-            if key == "shaped":  # open the shaped-boards submenu
-                self.path.append(key)
-                return None
-            return ("start", key)  # a solid
-        return ("start", key)  # a shaped board
 
     def _back(self) -> None:
         if self.path:
@@ -1777,7 +1760,10 @@ class MenuScreen:
         for rect, key, label_text, enabled in layout["items"]:
             hover = enabled and rect.collidepoint(mouse)
             bevel_rect(surface, rect, BUTTON_HOVER if hover else BUTTON)
-            icon = menu_icon(key, icon_size).copy()
+            # the home "Flat" entry (which opens the tiling picker) shows a
+            # hexagon; the flat-plane surface keeps its square icon elsewhere
+            icon_key = "hex" if (not self.path and key == "flat") else key
+            icon = menu_icon(icon_key, icon_size).copy()
             if not enabled:
                 icon.set_alpha(70)
             surface.blit(icon, icon.get_rect(midleft=(rect.left + 10 * S, rect.centery)))

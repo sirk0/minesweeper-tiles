@@ -456,17 +456,13 @@ class TestMenu:
         assert self.items(menu) == set(SPHERE_MODES)
         assert self.click_item(menu, "spheretri") == ("start", "spheretri")
 
-    def test_other_lists_solids_and_a_shaped_submenu(self):
+    def test_other_lists_solids_and_shaped_boards(self):
         menu = MenuScreen()
         self.click_item(menu, "other")
-        assert self.items(menu) == set(OTHER_MODES) | {"shaped"}
+        assert self.items(menu) == set(OTHER_MODES) | set(SHAPED_MODES)
         assert self.click_item(menu, "cubeframe") == ("start", "cubeframe")
-
-    def test_other_shaped_lists_its_boards(self):
         menu = MenuScreen()
         self.click_item(menu, "other")
-        self.click_item(menu, "shaped")
-        assert self.items(menu) == set(SHAPED_MODES)
         assert self.click_item(menu, "hexhex") == ("start", "hexhex")
 
     # -- reachability & gating ---------------------------------------------
@@ -500,10 +496,8 @@ class TestMenu:
             reach("flat", "aperiodic", mode)
         for mode in SPHERE_MODES:
             reach("sphere", mode)
-        for mode in OTHER_MODES:
+        for mode in OTHER_MODES + SHAPED_MODES:
             reach("other", mode)
-        for mode in SHAPED_MODES:
-            reach("other", "shaped", mode)
         assert reached == set(MODE_LABELS)
 
     def test_chiral_tiling_disabled_on_a_mirror_surface(self):
@@ -575,7 +569,7 @@ class TestMenu:
                      ["manifolds"], ["manifolds", "klein"],
                      ["manifolds", "klein", "uniform"],
                      ["manifolds", "mobius", "dual"],
-                     ["sphere"], ["other"], ["other", "shaped"]):
+                     ["sphere"], ["other"]):
             menu.path = list(path)
             surface = pygame.Surface(menu.size)
             menu.draw(surface, fonts)
@@ -603,7 +597,7 @@ class TestIcon:
 
         keys = (
             set(MENU_ROOT)                       # home entries
-            | {"random", "shaped"}               # picker / other submenu rows
+            | {"random", "hex"}                  # random row + home Flat icon
             | set(MANIFOLD_ORDER)                # the flat-manifold surfaces
             | {"uniform", "dual", "aperiodic"}   # tiling families
             | set(TILINGS)                       # every tiling row in the picker
