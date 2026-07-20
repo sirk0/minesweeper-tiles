@@ -22,6 +22,7 @@ import asyncio
 import importlib
 import math
 import os
+import random
 import sys
 import time
 
@@ -29,12 +30,18 @@ import pygame
 
 from minesweeper.boards import (
     DIFFICULTIES,
-    GROUP_TILINGS,
-    GROUPS,
+    FLAT_MODES,
+    GEOMETRY_LABELS,
+    GEOMETRY_MODES,
+    GEOMETRY_ORDER,
     MODE_LABELS,
     MODES_3D,
+    SURFACE_GROUPS,
     SURFACE_LABELS,
+    SURFACES,
+    TILING_GROUPS,
     TILINGS,
+    TILINGS_BY_KEY,
     build_board,
     newell_normal,
     surface_of,
@@ -608,6 +615,8 @@ _ICON_ALIASES = {
     "aperiodic": "penrose",
     "shaped": "triangle",
     "polyhedra": "cube",
+    "tilings": "uniform",   # the "Tilings" home entry
+    "geometries": "torus",  # the "Geometries" home entry
 }
 
 
@@ -619,7 +628,20 @@ def _render_icon(key: str) -> pygame.Surface:
 
     key = _ICON_ALIASES.get(key, key)
 
-    if key == "uniform":
+    if key == "start":
+        # a question mark: a hooked stroke over a dot, for the random-board
+        # Start button
+        control = [
+            (d * 0.34, d * 0.30), (d * 0.38, d * 0.16), (d * 0.54, d * 0.11),
+            (d * 0.70, d * 0.18), (d * 0.72, d * 0.35), (d * 0.58, d * 0.46),
+            (d * 0.50, d * 0.55), (d * 0.50, d * 0.64),
+        ]
+        _icon_shape(s, _tube_polygon(_smooth_curve(control), d * 0.055), width=4)
+        fill_circle(s, int(d * 0.5), int(d * 0.8), int(d * 0.075), ICON_BLUE)
+        pygame.draw.circle(s, ICON_BLUE_DARK, (int(d * 0.5), int(d * 0.8)),
+                           int(d * 0.075), 4)
+        _icon_gloss(s, pygame.Rect(d * 0.3, d * 0.1, d * 0.44, d * 0.5), 70)
+    elif key == "uniform":
         # one shape of each kind: the group of uniform tilings
         _icon_shape(s, [(d * 0.08, d * 0.08), (d * 0.48, d * 0.08),
                         (d * 0.48, d * 0.48), (d * 0.08, d * 0.48)])
@@ -1493,9 +1515,11 @@ def make_screen(mode: str, difficulty: str) -> BaseGameScreen:
 
 
 class MenuScreen:
-    """Up to three pages: pick a group, then a tiling, then — for the
-    periodic tilings — a surface. A surface a tiling cannot wrap (snub
-    hexagonal on the Möbius strip) is shown disabled."""
+    """A home page (Start / Tilings / Geometries) leading into two crossing
+    flows over the same boards: Tilings picks a tiling family, a tiling, then
+    a geometry; Geometries picks a geometry, a tiling family, then a tiling.
+    A tiling a geometry cannot carry (snub hexagonal on the Möbius strip) is
+    shown disabled. Start launches a random flat board."""
 
     WIDTH = 460 * S
     ITEM_HEIGHT = 58 * S
@@ -1503,8 +1527,11 @@ class MenuScreen:
 
     def __init__(self, difficulty: str = "easy") -> None:
         self.difficulty = difficulty
-        self.group: str | None = None  # None = group page
-        self.tiling: str | None = None  # periodic group: tiling page done
+        # navigation breadcrumb; [] is the home page. The first entry is the
+        # chosen entry point ("tilings"/"geometries"), followed by the
+        # selections made under it — the two flows cross the same
+        # (tiling x geometry) space from opposite ends.
+        self.path: list[str] = []
         # extra height handed down by the web presenter to fill the window; the
         # title stays at the top, the difficulty row drops to the bottom and the
         # mode list is centred in the space between
@@ -1517,50 +1544,135 @@ class MenuScreen:
         """The menu is static: it only ever changes in response to input."""
         return False
 
-    def _via_tilings(self) -> bool:
-        """Whether the current group navigates tiling -> surface. Signalled
-        by an empty mode list in GROUPS (the uniform and dual-uniform groups
-        route through GROUP_TILINGS); the others list their modes directly."""
-        return self.group is not None and not GROUPS[self.group][1]
+    # -- navigation -------------------------------------------------------
+
+    def _page(self) -> tuple[str, list[tuple[str, str, bool]]]:
+        """(subtitle, items) for the current path; items are
+        (key, label, enabled) rows."""
+        if not self.path:
+            return "choose a board", [
+                ("start", "Start", True),
+                ("tilings", "Tilings", True),
+                ("geometries", "Geometries", True),
+            ]
+        if self.path[0] == "tilings":
+            return self._tilings_page(self.path[1:])
+        return self._geometries_page(self.path[1:])
+
+    def _tilings_page(self, rest):
+        if not rest:  # choose a tiling family
+            return "choose a tiling", [
+                (g, label, True) for g, (label, _) in TILING_GROUPS.items()
+            ]
+        group = rest[0]
+        label = TILING_GROUPS[group][0]
+        if len(rest) == 1:
+            if group in ("uniform", "dual"):  # choose a tiling
+                return f"{label} — choose a tiling", [
+                    (t, TILINGS[t][0], True) for t in TILING_GROUPS[group][1]
+                ]
+            # aperiodic / sphere fix their own geometry, so their rows are
+            # finished boards
+            return f"{label} — choose a board", [
+                (m, MODE_LABELS[m], True) for m in TILING_GROUPS[group][1]
+            ]
+        tiling = rest[1]  # choose a geometry for this tiling
+        spec = TILINGS_BY_KEY[tiling]
+        return f"{TILINGS[tiling][0]} — choose a geometry", [
+            (s, label_s, spec.allows(SURFACES[s]))
+            for s, label_s in SURFACE_LABELS.items()
+        ]
+
+    def _geometries_page(self, rest):
+        if not rest:  # choose a geometry
+            return "choose a geometry", [
+                (g, GEOMETRY_LABELS[g], True) for g in GEOMETRY_ORDER
+            ]
+        geom = rest[0]
+        label = GEOMETRY_LABELS[geom]
+        if len(rest) == 1:
+            if geom in SURFACE_GROUPS:  # choose a tiling family
+                return f"{label} — choose a tiling", [
+                    (g, TILING_GROUPS[g][0], True) for g in SURFACE_GROUPS[geom]
+                ]
+            # a fixed-geometry solid/shaped geometry: its rows are boards
+            return f"{label} — choose a board", [
+                (m, MODE_LABELS[m], True) for m in GEOMETRY_MODES[geom]
+            ]
+        group = rest[1]  # choose a tiling on this geometry
+        heading = f"{label} · {TILING_GROUPS[group][0]}"
+        if group in ("uniform", "dual"):
+            return heading, [
+                (t, TILINGS[t][0], TILINGS_BY_KEY[t].allows(SURFACES[geom]))
+                for t in TILING_GROUPS[group][1]
+            ]
+        return heading, [
+            (m, MODE_LABELS[m], True) for m in TILING_GROUPS[group][1]
+        ]
 
     def _items(self) -> list[tuple[str, str, bool]]:
         """(key, label, enabled) rows for the current page."""
-        if self.group is None:
-            return [(key, label, True) for key, (label, _) in GROUPS.items()]
-        if self._via_tilings():
-            if self.tiling is None:
-                return [(key, TILINGS[key][0], True)
-                        for key in GROUP_TILINGS[self.group]]
-            surfaces = TILINGS[self.tiling][1]
-            return [
-                (key, label, key in surfaces)
-                for key, label in SURFACE_LABELS.items()
-            ]
-        return [
-            (mode, MODE_LABELS[mode], True) for mode in GROUPS[self.group][1]
-        ]
+        return self._page()[1]
 
     def _subtitle(self) -> str:
-        if self.group is None:
-            return "choose a board"
-        if self._via_tilings():
-            if self.tiling is None:
-                return GROUPS[self.group][0] + " — choose a tiling"
-            return TILINGS[self.tiling][0] + " — choose a surface"
-        return GROUPS[self.group][0] + " — choose a tiling"
+        return self._page()[0]
+
+    def _select(self, key: str):
+        """Advance the navigation for the clicked (enabled) item, returning
+        ("start", mode) to launch a game or None to stay in the menu."""
+        if not self.path:
+            if key == "start":
+                return ("start", random.choice(FLAT_MODES))
+            self.path = [key]
+            return None
+        if self.path[0] == "tilings":
+            return self._select_tilings(self.path[1:], key)
+        return self._select_geometries(self.path[1:], key)
+
+    def _select_tilings(self, rest, key):
+        if not rest:  # picked a family
+            self.path.append(key)
+            return None
+        group = rest[0]
+        if len(rest) == 1:
+            if group in ("uniform", "dual"):  # picked a tiling
+                self.path.append(key)
+                return None
+            return ("start", key)  # aperiodic / sphere board
+        tiling = rest[1]  # picked a geometry (surface) for the tiling
+        return ("start", TILINGS[tiling][1][key])
+
+    def _select_geometries(self, rest, key):
+        if not rest:  # picked a geometry
+            if key in SURFACE_GROUPS:
+                self.path.append(key)
+                return None
+            modes = GEOMETRY_MODES[key]
+            if len(modes) == 1:  # a single-board geometry starts at once
+                return ("start", modes[0])
+            self.path.append(key)
+            return None
+        geom = rest[0]
+        if len(rest) == 1:
+            if geom in SURFACE_GROUPS:  # picked a tiling family
+                self.path.append(key)
+                return None
+            return ("start", key)  # picked a solid / shaped board
+        group = rest[1]  # picked a tiling on this geometry
+        if group in ("uniform", "dual"):
+            return ("start", TILINGS[key][1][geom])
+        return ("start", key)
 
     def _back(self) -> None:
-        if self.tiling is not None:
-            self.tiling = None
-        else:
-            self.group = None
+        if self.path:
+            self.path.pop()
 
     def layout(self):
         items = self._items()
-        # the tiling pages (11 tilings) go in two columns; every other page
-        # is a single column. Two-column rows are narrower, so they use the
-        # tighter compact sizing too.
-        two_col = self._via_tilings() and self.tiling is None
+        # long pages (the 11 tilings, the 10 geometries) go in two columns;
+        # shorter pages stay a single column. Two-column rows are narrower, so
+        # they use the tighter compact sizing too.
+        two_col = len(items) > 8
         compact = two_col or len(items) > 8
         item_height = 42 * S if compact else self.ITEM_HEIGHT
         item_step = 50 * S if compact else self.ITEM_STEP
@@ -1615,7 +1727,7 @@ class MenuScreen:
             x += button_width + 12 * S
         back = (
             pygame.Rect(16 * S, 26 * S, 84 * S, 34 * S)
-            if self.group is not None
+            if self.path
             else None
         )
         return {
@@ -1647,7 +1759,7 @@ class MenuScreen:
             return "quit"
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if self.group is not None:
+                if self.path:
                     self._back()
                     return None
                 return "quit"
@@ -1667,15 +1779,7 @@ class MenuScreen:
                     continue
                 if not enabled:
                     return None
-                if self.group is None:
-                    self.group = key
-                elif self._via_tilings() and self.tiling is None:
-                    self.tiling = key
-                elif self._via_tilings():
-                    return ("start", TILINGS[self.tiling][1][key])
-                else:
-                    return ("start", key)
-                return None
+                return self._select(key)
         return None
 
     def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:

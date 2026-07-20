@@ -46,8 +46,12 @@ tetrahedron, donut, Möbius strip, cylinder, Klein bottle). Python 3.13
   (`penrose_board`, `hat_board`) grow generously and trim to the `keep`
   centremost cells by Chebyshev distance (`max(|dx|, |dy|)`). See the
   `AGENT NOTE` in `boards/tilings.py`.
-- `minesweeper/gui.py` — pygame UI. `MenuScreen` (group → tiling →
-  surface pages), `GameScreen` (flat), `GameScreen3D` (orthographic
+- `minesweeper/gui.py` — pygame UI. `MenuScreen` (a home page — Start
+  random / Tilings / Geometries — leading into two crossing flows over the
+  same boards: tiling family → tiling → geometry, or geometry → tiling
+  family → tiling; navigation is a `path` breadcrumb driven by the
+  `TILING_GROUPS`/`GEOMETRY_*`/`SURFACE_GROUPS` tables in `catalog`),
+  `GameScreen` (flat), `GameScreen3D` (orthographic
   projection, back-face culling or two-sided, depth sort, drag to
   rotate). Everything is drawn on a canvas at `UI_SCALE`(=2)× and
   smooth-downscaled to the window each frame (supersampling); `App`

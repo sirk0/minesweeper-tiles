@@ -163,6 +163,76 @@ GROUPS = {
     "shaped": ("Shaped boards", ("triangle", "hexhex")),
 }
 
+
+# ---------------------------------------------------------------------------
+# Menu navigation taxonomy
+#
+# The menu reaches every board through two crossing entry points, both built
+# from the registries above:
+#
+#   Tilings    -> tiling family -> tiling -> geometry
+#   Geometries -> geometry -> tiling family -> tiling
+#
+# A tiling family that fixes its geometry (aperiodic is flat, sphere is the
+# sphere) is terminal: its rows are modes, not tilings. A geometry with a
+# single tiling family (sphere/cube/tetrahedron/shaped) skips the family step.
+# ---------------------------------------------------------------------------
+
+# Tiling family -> (label, members). The two periodic families list tilings
+# (which then pick a geometry); aperiodic and sphere list finished modes.
+TILING_GROUPS = {
+    "uniform": (GROUPS["uniform"][0], UNIFORM_TILINGS),
+    "dual": (GROUPS["dual"][0], DUAL_TILINGS),
+    "aperiodic": (GROUPS["aperiodic"][0], GROUPS["aperiodic"][1]),
+    "sphere": (GROUPS["sphere"][0], GROUPS["sphere"][1]),
+}
+
+# Geometry -> the tiling families offered for it. Only the flat plane also
+# carries the aperiodic tilings; the wrapped surfaces take the two periodic
+# families (chiral tilings are gated out per surface by TilingSpec.allows).
+SURFACE_GROUPS = {
+    "flat": ("uniform", "dual", "aperiodic"),
+    "mobius": ("uniform", "dual"),
+    "cylinder": ("uniform", "dual"),
+    "torus": ("uniform", "dual"),
+    "klein": ("uniform", "dual"),
+}
+
+# Geometries that are not wrappable surfaces map straight to a fixed mode
+# list (a single mode means the geometry starts a game the moment it is
+# picked). The old "Polyhedra" group is split so cube and tetrahedron each
+# carry their frame variant and the stepped bipyramid stands on its own.
+GEOMETRY_MODES = {
+    "sphere": ("sphere", "c80", "c180", "spheretri", "snubdodec"),
+    "cube": ("cube", "cubeframe"),
+    "tetrahedron": ("tetrahedron", "tetraframe"),
+    "steppedbipyramid": ("steppedbipyramid",),
+    "shaped": ("triangle", "hexhex"),
+}
+
+# Menu order and labels for the Geometries page: the five wrappable surfaces
+# (labelled from SURFACE_SPECS) followed by the fixed-mode geometries.
+GEOMETRY_ORDER = (
+    "flat", "mobius", "cylinder", "torus", "klein",
+    "sphere", "cube", "tetrahedron", "steppedbipyramid", "shaped",
+)
+GEOMETRY_LABELS = {
+    **{s.key: s.label for s in SURFACE_SPECS},
+    "sphere": "Sphere",
+    "cube": "Cube",
+    "tetrahedron": "Tetrahedron",
+    "steppedbipyramid": "Stepped bipyramid",
+    "shaped": "Shaped boards",
+}
+
+# The pool the random "Start" button draws from: every flat tiling board
+# (uniform, dual, and the aperiodic ones) — no wrapped surfaces or solids.
+FLAT_MODES = tuple(dict.fromkeys(
+    [TILINGS_BY_KEY[t].mode(SURFACES["flat"])
+     for t in UNIFORM_TILINGS + DUAL_TILINGS]
+    + list(TILING_GROUPS["aperiodic"][1])
+))
+
 # Labels for the non-periodic (one-off) modes listed in GROUPS.
 SOLO_LABELS = {
     "penrose": "Penrose rhombi",
