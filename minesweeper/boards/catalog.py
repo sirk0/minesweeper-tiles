@@ -1,8 +1,9 @@
 """The menu catalog, derived from two small registries.
 
 Everything the menu and CLI need -- MODE_LABELS, TILINGS, SURFACE_LABELS,
-GROUPS, MODES_3D -- is *derived* here from SURFACE_SPECS and TILING_SPECS
-rather than hand-listed. Adding a periodic tiling means adding one
+the geometry-first menu tables, MODES_3D -- is *derived* here from
+SURFACE_SPECS and TILING_SPECS rather than hand-listed. Adding a periodic
+tiling means adding one
 ArchTiling row (in tilings.py) and one ARCH_PRESETS row (in presets.py);
 adding a surface means adding one SurfaceSpec here plus a builder. See
 AGENTS.md. A mode string is always ``surface.prefix + tiling.key`` unless
@@ -134,106 +135,98 @@ TILINGS = {
     for t in TILING_SPECS
 }
 
-# The two tiling groups route through a tiling then a surface. Each lists
-# its tilings explicitly (the tiling pages), so the 11 uniform tilings and
-# their 11 Laves duals form parallel menus. The three regular tilings are
-# self/mutually dual (square is self-dual, triangle <-> hexagon), so they
-# appear in both groups, reusing the same boards.
-UNIFORM_TILINGS = (
-    "square", "tri", "hex", "elongated", "snubsquare", "kagome", "snubhex",
-    "truncsquare", "trunchex", "rhombitrihex", "trunctrihex",
-)
-DUAL_TILINGS = (
-    "square", "hex", "tri", "prismaticpent", "cairo", "rhombille", "floret",
-    "tetrakis", "triakis", "deltoidal", "kisrhombille",
-)
-GROUP_TILINGS = {"uniform": UNIFORM_TILINGS, "dual": DUAL_TILINGS}
-
-# group -> (label, modes); the two tiling groups route through GROUP_TILINGS
-# (empty modes here is the signal), the rest list their one-off modes.
-GROUPS = {
-    "uniform": ("Uniform tilings", ()),
-    "dual": ("Dual-uniform tilings", ()),
-    "aperiodic": ("Aperiodic", ("penrose", "hat")),
-    "sphere": ("Sphere", ("sphere", "c80", "c180", "spheretri", "snubdodec")),
-    "polyhedra": (
-        "Polyhedra",
-        ("cube", "tetrahedron", "tetraframe", "cubeframe", "steppedbipyramid"),
-    ),
-    "shaped": ("Shaped boards", ("triangle", "hexhex")),
-}
-
-
 # ---------------------------------------------------------------------------
 # Menu navigation taxonomy
 #
-# The menu reaches every board through two crossing entry points, both built
-# from the registries above:
+# The menu is geometry-first: a five-item home page, each leading straight to a
+# geometry (or a group of them) and then, where it applies, to a shared tiling
+# picker.
 #
-#   Tilings    -> tiling family -> tiling -> geometry
-#   Geometries -> geometry -> tiling family -> tiling
+#   Classic         -> flat squares, at once
+#   Flat            -> tiling picker on the plane
+#   Flat manifolds  -> plane / cylinder / Mobius / Klein / torus -> tiling picker
+#   Sphere          -> the spherical tilings
+#   Other           -> the solids, and the shaped boards
 #
-# A tiling family that fixes its geometry (aperiodic is flat, sphere is the
-# sphere) is terminal: its rows are modes, not tilings. A geometry with a
-# single tiling family (sphere/cube/tetrahedron/shaped) skips the family step.
+# The picker shows the three regular tilings directly, then the uniform, dual
+# and (flat-only) aperiodic families as submenus, then a random option; it is
+# parameterised by the surface it was reached through, so the same picker serves
+# the plane and every flat manifold. Chiral tilings are gated out of the Mobius
+# strip / Klein bottle per surface by TilingSpec.allows.
 # ---------------------------------------------------------------------------
 
-# Tiling family -> (label, members). The two periodic families list tilings
-# (which then pick a geometry); aperiodic and sphere list finished modes.
-TILING_GROUPS = {
-    "uniform": (GROUPS["uniform"][0], UNIFORM_TILINGS),
-    "dual": (GROUPS["dual"][0], DUAL_TILINGS),
-    "aperiodic": (GROUPS["aperiodic"][0], GROUPS["aperiodic"][1]),
-    "sphere": (GROUPS["sphere"][0], GROUPS["sphere"][1]),
-}
-
-# Geometry -> the tiling families offered for it. Only the flat plane also
-# carries the aperiodic tilings; the wrapped surfaces take the two periodic
-# families (chiral tilings are gated out per surface by TilingSpec.allows).
-SURFACE_GROUPS = {
-    "flat": ("uniform", "dual", "aperiodic"),
-    "mobius": ("uniform", "dual"),
-    "cylinder": ("uniform", "dual"),
-    "torus": ("uniform", "dual"),
-    "klein": ("uniform", "dual"),
-}
-
-# Geometries that are not wrappable surfaces map straight to a fixed mode
-# list (a single mode means the geometry starts a game the moment it is
-# picked). The old "Polyhedra" group is split so cube and tetrahedron each
-# carry their frame variant and the stepped bipyramid stands on its own.
-GEOMETRY_MODES = {
-    "sphere": ("sphere", "c80", "c180", "spheretri", "snubdodec"),
-    "cube": ("cube", "cubeframe"),
-    "tetrahedron": ("tetrahedron", "tetraframe"),
-    "steppedbipyramid": ("steppedbipyramid",),
-    "shaped": ("triangle", "hexhex"),
-}
-
-# Menu order and labels for the Geometries page: the five wrappable surfaces
-# (labelled from SURFACE_SPECS) followed by the fixed-mode geometries.
-GEOMETRY_ORDER = (
-    "flat", "mobius", "cylinder", "torus", "klein",
-    "sphere", "cube", "tetrahedron", "steppedbipyramid", "shaped",
-)
-GEOMETRY_LABELS = {
-    **{s.key: s.label for s in SURFACE_SPECS},
+# Home page: the five top-level entries, in order.
+MENU_ROOT = ("classic", "flat", "manifolds", "sphere", "other")
+MENU_ROOT_LABELS = {
+    "classic": "Classic",
+    "flat": "Flat",
+    "manifolds": "Flat manifolds",
     "sphere": "Sphere",
-    "cube": "Cube",
-    "tetrahedron": "Tetrahedron",
-    "steppedbipyramid": "Stepped bipyramid",
-    "shaped": "Shaped boards",
+    "other": "Other",
 }
 
-# The pool the random "Start" button draws from: every flat tiling board
-# (uniform, dual, and the aperiodic ones) — no wrapped surfaces or solids.
-FLAT_MODES = tuple(dict.fromkeys(
-    [TILINGS_BY_KEY[t].mode(SURFACES["flat"])
-     for t in UNIFORM_TILINGS + DUAL_TILINGS]
-    + list(TILING_GROUPS["aperiodic"][1])
-))
+# Flat manifolds page: the wrappable surfaces (the plane first). The flat
+# surface is labelled "Plane" here; picking any row opens the tiling picker.
+MANIFOLD_ORDER = ("flat", "cylinder", "mobius", "klein", "torus")
+MANIFOLD_LABELS = {
+    "flat": "Plane",
+    "cylinder": "Cylinder",
+    "mobius": "Möbius strip",
+    "klein": "Klein bottle",
+    "torus": "Torus",
+}
 
-# Labels for the non-periodic (one-off) modes listed in GROUPS.
+# The tiling picker: the three regular tilings are shown directly, then the
+# uniform / dual / aperiodic families as submenus. The uniform and dual family
+# members are exactly the Archimedean (vertex-transitive) tilings and their
+# Laves duals, so they derive from ARCH_TILINGS -- adding a tiling stays a
+# one-row change. Aperiodic tilings only wrap the plane, so that family is
+# offered only when the surface is flat.
+PICKER_REGULAR = ("square", "tri", "hex")
+UNIFORM_ARCH = tuple(t.key for t in ARCH_TILINGS if t.vertex_transitive)
+DUAL_ARCH = tuple(t.key for t in ARCH_TILINGS if not t.vertex_transitive)
+APERIODIC_MODES = ("penrose", "hat")
+FAMILY_LABELS = {
+    "uniform": "Uniform tilings",
+    "dual": "Dual-uniform tilings",
+    "aperiodic": "Aperiodic",
+}
+FAMILY_MEMBERS = {
+    "uniform": UNIFORM_ARCH,
+    "dual": DUAL_ARCH,
+    "aperiodic": APERIODIC_MODES,
+}
+# every tiling reachable through the picker (used for the random button)
+PICKER_TILINGS = PICKER_REGULAR + UNIFORM_ARCH + DUAL_ARCH
+
+# Sphere page: the spherical tilings, none of which wraps a flat surface.
+SPHERE_MODES = ("sphere", "c80", "c180", "spheretri", "snubdodec")
+
+# Other page: the solids launch at once; "Shaped boards" opens the two shaped
+# boards as a submenu.
+OTHER_MODES = ("cube", "cubeframe", "tetrahedron", "tetraframe",
+               "steppedbipyramid")
+SHAPED_MODES = ("triangle", "hexhex")
+
+
+def picker_modes(surface_key: str) -> tuple[str, ...]:
+    """Every mode reachable on a surface through the tiling picker -- the pool
+    the random button draws from (and the reachability guarantee in the tests).
+    The flat picker also carries the aperiodic modes."""
+    modes = [mode_for(t, surface_key) for t in PICKER_TILINGS
+             if TILINGS_BY_KEY[t].allows(SURFACES[surface_key])]
+    if surface_key == "flat":
+        modes += list(APERIODIC_MODES)
+    return tuple(dict.fromkeys(modes))
+
+
+# The pool the random "Random tiling" button draws from on the plane: every
+# flat tiling board (uniform, dual, and the aperiodic ones) -- no wrapped
+# surfaces or solids.
+FLAT_MODES = picker_modes("flat")
+
+# Labels for the non-periodic (one-off) modes (aperiodic, sphere, solids,
+# shaped) listed in the menu tuples above.
 SOLO_LABELS = {
     "penrose": "Penrose rhombi",
     "hat": "The Hat",
@@ -260,7 +253,7 @@ MODE_LABELS = {
     **SOLO_LABELS,
 }
 
-_SOLID_MODES = frozenset(GROUPS["sphere"][1]) | frozenset(GROUPS["polyhedra"][1])
+_SOLID_MODES = frozenset(SPHERE_MODES) | frozenset(OTHER_MODES)
 MODES_3D = frozenset(
     _SOLID_MODES
     | {t.mode(s) for t in TILING_SPECS for s in SURFACE_SPECS

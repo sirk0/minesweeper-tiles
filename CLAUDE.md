@@ -28,14 +28,16 @@ tetrahedron, donut, Möbius strip, cylinder, Klein bottle). Python 3.13
   seam (the same `template.mirror` the Möbius uses); the
   self-intersecting bottle immersion hides some cells behind the neck, so
   every Klein board carries a `cell_cycle` the UI scrolls along to bring
-  them into view. The menu has two parallel tiling groups: **Uniform tilings**
-  (the 11 uniform tilings) and **Dual-uniform tilings** (their 11 duals;
-  the three regular tilings are self/mutually dual, so they appear in
-  both). **To add a tiling or surface, see `AGENTS.md`** — a tiling is
-  one `ARCH_TILINGS` + one `ARCH_PRESETS` row (duals also list their key
-  in `catalog.DUAL_TILINGS`), a surface is one `SurfaceSpec` + an
-  immersion + a wrap builder; the menu, mode strings, `MODES_3D`, and
-  chirality gating all derive from those registries.
+  them into view. In the menu's shared tiling picker the three regular
+  tilings show directly, then the **Uniform tilings** (the eight
+  non-regular uniform tilings, `vertex_transitive=True` in `ARCH_TILINGS`)
+  and **Dual-uniform tilings** (their eight Laves duals) open as submenus.
+  **To add a tiling or surface, see `AGENTS.md`** — a tiling is
+  one `ARCH_TILINGS` + one `ARCH_PRESETS` row (its uniform/dual family
+  membership follows from `vertex_transitive`, no menu edit needed), a
+  surface is one `SurfaceSpec` + an immersion + a wrap builder; the menu,
+  mode strings, `MODES_3D`, and chirality gating all derive from those
+  registries.
   Board-shape convention (applies to all future flat boards): a finite
   flat board should read as a roughly *square* rectangle, not a round
   disc, and a symmetric tiling should give a symmetric board. For periodic
@@ -46,11 +48,14 @@ tetrahedron, donut, Möbius strip, cylinder, Klein bottle). Python 3.13
   (`penrose_board`, `hat_board`) grow generously and trim to the `keep`
   centremost cells by Chebyshev distance (`max(|dx|, |dy|)`). See the
   `AGENT NOTE` in `boards/tilings.py`.
-- `minesweeper/gui.py` — pygame UI. `MenuScreen` (a home page — Start
-  random / Tilings / Geometries — leading into two crossing flows over the
-  same boards: tiling family → tiling → geometry, or geometry → tiling
-  family → tiling; navigation is a `path` breadcrumb driven by the
-  `TILING_GROUPS`/`GEOMETRY_*`/`SURFACE_GROUPS` tables in `catalog`),
+- `minesweeper/gui.py` — pygame UI. `MenuScreen` (a geometry-first home
+  page — Classic / Flat / Flat manifolds / Sphere / Other. Classic launches
+  flat squares; Flat and each flat manifold (plane, cylinder, Möbius, Klein,
+  torus) open a shared tiling picker — regular tilings, uniform/dual family
+  submenus, aperiodic (plane only), and a random option — parameterised by
+  the surface it was reached through; Sphere and Other list their finished
+  boards. Navigation is a `path` breadcrumb driven by the `MENU_ROOT`/
+  `MANIFOLD_*`/`FAMILY_*`/`SPHERE_MODES`/`OTHER_MODES` tables in `catalog`),
   `GameScreen` (flat), `GameScreen3D` (orthographic
   projection, back-face culling or two-sided, depth sort, drag to
   rotate). Everything is drawn on a canvas at `UI_SCALE`(=2)× and
