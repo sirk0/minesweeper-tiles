@@ -57,6 +57,10 @@ def mouse_event(pos, button=1):
     return pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=button)
 
 
+def mouseup_event(pos, button=1):
+    return pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=button)
+
+
 def key_event(key):
     return pygame.event.Event(pygame.KEYDOWN, key=key)
 
@@ -174,6 +178,57 @@ class TestTimerAndState:
         mine = find_mine(gui)
         gui.click(mine)
         assert gui.exploded == mine
+
+
+class TestFlagMode:
+    def hidden_cell(self, screen):
+        return next(
+            cell
+            for cell in screen.game.cells
+            if screen.game.cell_state(cell) is CellState.HIDDEN
+        )
+
+    def test_flag_button_toggles_flag_mode(self, gui):
+        assert gui.flag_mode is False
+        gui.handle_event(mouse_event(gui.flag_rect.center))
+        assert gui.flag_mode is True
+        gui.handle_event(mouse_event(gui.flag_rect.center))
+        assert gui.flag_mode is False
+
+    def test_flag_button_tap_does_not_reach_the_board(self, gui):
+        # the flag button sits in the header, above every cell, but guard
+        # against a future overlap: toggling it never reveals or flags a cell
+        gui.handle_event(mouse_event(gui.flag_rect.center))
+        assert gui.game.state is GameState.PLAYING
+        assert all(
+            gui.game.cell_state(c) is CellState.HIDDEN for c in gui.game.cells
+        )
+
+    def test_left_tap_flags_when_flag_mode_on(self, gui):
+        gui.flag_mode = True
+        cell = (4, 4)
+        gui.handle_event(mouse_event(gui.centers[cell]))
+        assert gui.game.cell_state(cell) is CellState.FLAGGED
+
+    def test_left_tap_reveals_when_flag_mode_off(self, gui):
+        cell = (4, 4)
+        gui.handle_event(mouse_event(gui.centers[cell]))
+        assert gui.game.cell_state(cell) is CellState.REVEALED
+
+    def test_flag_mode_survives_new_game(self, gui):
+        gui.flag_mode = True
+        gui.new_game()
+        assert gui.flag_mode is True
+
+    def test_flag_mode_left_tap_flags_on_3d(self):
+        screen = GameScreen3D("sphere", "easy")
+        screen.flag_mode = True
+        frame = screen._project()
+        _, cell, _, center, _, _ = frame[-1]
+        pos = (int(center[0]), int(center[1]))
+        screen.handle_event(mouse_event(pos))
+        screen.handle_event(mouseup_event(pos))
+        assert screen.game.cell_state(cell) is CellState.FLAGGED
 
 
 class TestRendering:
@@ -352,6 +407,29 @@ class Test3DScreens:
         assert screen.board.cell_cycle is None
         screen.handle_event(wheel_event(3))
         assert screen._remap == {c: c for c in screen.board.polygons}
+
+    def test_scroll_arrows_step_like_the_wheel(self):
+        # the forward/back header arrows are the touch equivalent of a wheel
+        # notch: one cell along the ring, and inverses of each other
+        screen = GameScreen3D("klein", "easy")
+        cycle = screen.board.cell_cycle
+        screen.handle_event(mouse_event(screen.scroll_fwd_rect.center))
+        assert screen._remap == {g: cycle[g] for g in cycle}
+        screen.handle_event(mouse_event(screen.scroll_back_rect.center))
+        assert screen._remap == {c: c for c in screen.board.polygons}
+
+    def test_scroll_arrow_tap_does_not_start_a_drag(self):
+        screen = GameScreen3D("klein", "easy")
+        screen.handle_event(mouse_event(screen.scroll_fwd_rect.center))
+        assert screen._drag_from is None
+
+    def test_non_klein_board_has_no_scroll_arrows(self):
+        # a tap where the arrows would be just begins a rotate-drag instead
+        screen = GameScreen3D("torus", "easy")
+        assert screen.board.cell_cycle is None
+        screen.handle_event(mouse_event(screen.scroll_fwd_rect.center))
+        assert screen._remap == {c: c for c in screen.board.polygons}
+        assert screen._drag_from == screen.scroll_fwd_rect.center
 
 
 class TestMenu:
