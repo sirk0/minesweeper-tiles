@@ -26,7 +26,7 @@ Import order is a strict DAG; a module only imports from the ones above it.
 | `aperiodic.py` | Penrose (P3) and the Hat monotile, each with its own exact-arithmetic vertex ids. |
 | `solids.py` | Closed/convex and polycube 3D boards (sphere, fullerenes, cube, tetrahedron, frames, bipyramid). |
 | `surfaces.py` | Wrapping tilings onto surfaces: the three immersion points (`_torus_point`, `_cylinder_point`, `_mobius_point`), the shared `_assemble` tail, the nine simple `*_board` wrappers, and the Archimedean `arch_torus_board` / `arch_cylinder_board` / `arch_mobius_board`. |
-| `catalog.py` | The menu, **derived**: `SURFACE_SPECS` and `TILING_SPECS` produce `MODE_LABELS`, `TILINGS`, `SURFACE_LABELS`, `GROUPS`, `MODES_3D`, `mode_for`, `surface_of`, `view_hint`. |
+| `catalog.py` | The menu, **derived**: `SURFACE_SPECS` and `TILING_SPECS` produce `MODE_LABELS`, `TILINGS`, `SURFACE_LABELS`, the geometry-first menu tables (`MENU_ROOT`/`MANIFOLD_*`/`FAMILY_*`/`SPHERE_MODES`/`OTHER_MODES`/`SHAPED_MODES`), `MODES_3D`, `mode_for`, `surface_of`, `view_hint`. |
 | `presets.py` | Difficulty presets and `build_board`. Regular/one-off modes are explicit; Archimedean modes come from the **`ARCH_PRESETS`** table. |
 
 `__init__.py` re-exports the whole public surface, so `from
@@ -35,7 +35,8 @@ minesweeper.boards import ...` is unchanged by the split.
 A **mode** is the string `build_board` takes. For a periodic tiling it is
 `surface.prefix + tiling.key` (e.g. `toruskagome`); `catalog.mode_for`
 is the only place that convention lives. Solids/aperiodic/shaped modes
-are one-offs listed directly in `GROUPS` with labels in `SOLO_LABELS`.
+are one-offs listed directly in the `SPHERE_MODES` / `OTHER_MODES` /
+`SHAPED_MODES` / `APERIODIC_MODES` tuples with labels in `SOLO_LABELS`.
 
 ## Recipe: add an Archimedean (periodic) tiling
 
@@ -81,8 +82,10 @@ differ from an Archimedean tiling, both handled for you:
 - A Laves tiling is **face-transitive** (one congruent tile shape, several
   vertex kinds) rather than vertex-transitive. Declare it with
   `vertex_transitive=False` on its `ArchTiling` row; the vertex-config
-  tests then skip it and `TestArchimedean.test_tiles_are_congruent` covers
-  it instead.
+  tests then skip it, `TestArchimedean.test_tiles_are_congruent` covers it
+  instead, and the catalog routes it into the **Dual-uniform tilings** menu
+  submenu automatically (`DUAL_ARCH` is exactly the non-vertex-transitive
+  `ARCH_TILINGS`, so no menu edit is needed).
 - Its handedness (reflective vs chiral, hence Möbius or not) is read from
   the primal's mirror/glide automatically — the floret pentagonal (dual of
   snub hexagonal) is chiral, so like snub hexagonal it has no Möbius wrap.
@@ -94,15 +97,15 @@ Steps (say a new primal `_foo_template` gained a dual `_bar_template`):
 2. Add an `ArchTiling("bar", "Bar label", config, edge_directions,
    _bar_template, vertex_transitive=False)` row to `ARCH_TILINGS` (`config`
    is the Laves symbol, i.e. the primal's vertex configuration).
-3. Add `"bar"` to `DUAL_TILINGS` in `catalog.py` so it shows in the
-   Dual-uniform tilings menu group (the one manual menu edit — the tiling
-   groups list their tilings explicitly).
-4. Add a `"bar"` block to `ARCH_PRESETS` (skip `mobius` if chiral). The
-   windows can copy the primal's — the dual shares its fundamental domain;
-   only retune the mine counts to the dual's tile count.
-5. Add the tiling's wrapped cell counts to
+3. Add a `"bar"` block to `ARCH_PRESETS` (skip `mobius`/`klein` if chiral).
+   The windows can copy the primal's — the dual shares its fundamental
+   domain; only retune the mine counts to the dual's tile count.
+4. Add the tiling's wrapped cell counts to
    `TestWrappedArchimedean.test_cell_counts` (that test asserts the count
    table matches the set of wrapped modes, so it fails until you do).
+
+No `catalog.py` menu edit is needed — the Dual-uniform submenu derives from
+`vertex_transitive`.
 
 Everything else — mode strings, `MODES_3D`, chirality gating, symmetry and
 congruence invariants — derives automatically.
@@ -117,8 +120,9 @@ These are one-offs, not tiling×surface products.
    builders assemble `cells` + `positions` and pick an orientation
    helper (`solids._convex_board3d` for convex solids, the polycube
    assemblers, or `surfaces._assemble`).
-2. Add the mode to the right `GROUPS` entry and its label to
-   `SOLO_LABELS` in `catalog.py`.
+2. Add the mode to the right menu tuple (`SPHERE_MODES`, `OTHER_MODES`,
+   `SHAPED_MODES`, or `APERIODIC_MODES`) and its label to `SOLO_LABELS` in
+   `catalog.py`.
 3. Add a `_PRESETS` block in `presets.py` (explicit lambdas).
 
 ## Recipe: add a surface (worked example — the Klein bottle)
@@ -215,9 +219,13 @@ surface.
    non-chiral tiling's `ARCH_PRESETS` block (the non-glide ones reuse
    their `torus` `nx`/`ny`/mines; snub square and Cairo need odd `nx`).
 
-No menu or `gui.py` menu edits are needed: `MODE_LABELS`, `TILINGS`,
-`MODES_3D`, `mode_for`, `surface_of`, `view_hint` and the menu pages all
-derive from the `SurfaceSpec`. The `klein` modes join the wrapped-surface
+One menu edit is needed: add the surface key to `MANIFOLD_ORDER` and a
+label to `MANIFOLD_LABELS` in `catalog.py` so it appears (in your chosen
+position) on the Flat manifolds page — that page lists its surfaces
+explicitly. Everything else is still derived: `MODE_LABELS`, `TILINGS`,
+`MODES_3D`, `mode_for`, `surface_of`, `view_hint`, the picker's per-surface
+gating and the random pool all follow from the `SurfaceSpec`. The `klein`
+modes join the wrapped-surface
 invariant suite (`TestWrappedArchimedean` / `TestKleinTilings`) so
 χ = 0 / 0 boundary circles are checked automatically; if you add the spec
 but forget a preset, `TestPresets.test_all_presets_build` fails loudly.

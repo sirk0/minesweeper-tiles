@@ -5,11 +5,14 @@ import pytest
 
 from minesweeper.boards import (
     _ARCH_CONFIGS,
+    APERIODIC_MODES,
     ARCH_TILINGS,
     DIFFICULTIES,
-    GROUPS,
     MODE_LABELS,
     MODES_3D,
+    OTHER_MODES,
+    SHAPED_MODES,
+    SPHERE_MODES,
     SURFACE_LABELS,
     TILINGS,
     arch_klein_board,
@@ -1062,7 +1065,8 @@ class TestPresets:
             build_board("square", "nope")
 
     def test_every_mode_appears_exactly_once_in_the_menu(self):
-        modes = [m for _, modes in GROUPS.values() for m in modes]
+        # the one-off (non-periodic) modes, plus every periodic tiling x surface
+        modes = list(APERIODIC_MODES + SPHERE_MODES + OTHER_MODES + SHAPED_MODES)
         modes += [m for _, surfaces in TILINGS.values() for m in surfaces.values()]
         assert sorted(modes) == sorted(MODE_LABELS)
         assert len(modes) == len(set(modes))
