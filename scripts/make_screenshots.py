@@ -23,9 +23,9 @@ from minesweeper.game import CellState  # noqa: E402
 from minesweeper.gui import (  # noqa: E402
     HEADER,
     MARGIN,
-    S,
     FontCache,
     GameScreen3D,
+    S,
     make_screen,
 )
 

@@ -95,14 +95,21 @@ scaled by the ratio of the window width to the screen's `web_ref_width`.
 Every screen reports its own width there (a game board its natural
 width), so boards and the menu all fill the window edge to edge; a
 screen taller than the window is clamped down to stay fully visible, so
-there are never letterbox gaps on a tall phone. Cell size therefore
-varies per board, but the header controls do not: the header row (back
-and flag-mode at the left edge, mine counter / smiley / timer centred,
-Klein scroll arrows at the right edge) is laid out at
-`_header_scale = min(1, canvas width / HEADER_REF_W)`, which shrinks it
-to fit boards narrower than `HEADER_REF_W` and — because the web scale
-is width-proportional — keeps the controls one constant touchable
-physical size across all such boards. The presenter also hands each screen extra height
+there are never letterbox gaps on a tall phone. On a portrait viewport
+(a phone held upright — `is_portrait`, plumbed through
+`set_portrait`) a clearly landscape flat board (width > 1.2× height,
+i.e. the classic 30×16 hard board) is drawn turned a quarter-turn
+(`GameScreen._rotated`) so it fills the width; the desktop presenter
+never reports portrait, so desktop and landscape windows keep boards as
+designed. Cell size still varies per board, but the header controls do
+not: the header row (back and flag-mode at the left edge, mine counter /
+smiley / timer centred, Klein scroll arrows at the right edge) is laid
+out at `_header_scale = board width / HEADER_REF_W`, which shrinks it to
+fit boards narrower than `HEADER_REF_W` and, on the web only, grows it
+(band height included, `_header_height`) on wider boards — because the
+web scale is width-proportional, that keeps the controls one constant
+touchable physical size across **all** boards. The desktop clamps the
+scale at 1 so wide boards keep the normal-size header. The presenter also hands each screen extra height
 (`set_viewport_height`) to fill the window, and the screen distributes
 it: a game keeps the header at the top and centres the board in the space
 below; the menu keeps the title at the top, drops the difficulty row to

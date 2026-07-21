@@ -67,6 +67,8 @@ _GFX = getattr(pygame, "gfxdraw", None)
 UI_SCALE = 2  # supersampling factor: canvas pixels per window pixel
 S = UI_SCALE
 
+IS_WEB = sys.platform == "emscripten"  # the pygbag/browser build
+
 MARGIN = 10 * S
 HEADER = 64 * S
 
@@ -74,7 +76,9 @@ HEADER = 64 * S
 # boards the whole header shrinks proportionally (see ``_header_scale``) so
 # the back/flag group, the centred counters+face and the scroll arrows never
 # collide. On the web -- where each board is scaled to fill the window width
-# -- this makes the controls one constant physical size across those boards.
+# -- the header also grows on boards wider than this, so the controls keep
+# one constant physical size across all boards; the desktop (canvas shown
+# 1:1) clamps at full size instead.
 HEADER_REF_W = 470 * S
 
 # Fallback design width (in canvas pixels) on the web build. Every screen
@@ -1085,6 +1089,10 @@ class BaseGameScreen:
         # extra height handed down by the web presenter to fill the window; the
         # header stays at the top and the board is centred in the space below
         self._view_h: int | None = None
+        # portrait viewport (a phone held upright, web build): clearly
+        # landscape flat boards are shown turned a quarter-turn to use the
+        # window width (see GameScreen._rotated)
+        self._portrait = False
         # flag-mode toggle: off = a tap reveals, on = a tap flags. A control
         # preference (not game state), so new_game leaves it alone. It gives
         # touch/web players a reliable flag action where right-click is out of
@@ -1137,6 +1145,15 @@ class BaseGameScreen:
         self._view_h = height
         self._relayout()
 
+    def set_portrait(self, portrait: bool) -> None:
+        """Whether the window is taller than wide (web build; the desktop
+        presenter always reports False). Landscape flat boards respond by
+        turning a quarter-turn to fill the width."""
+        if portrait == self._portrait:
+            return
+        self._portrait = portrait
+        self._relayout()
+
     def _relayout(self) -> None:
         """Re-place geometry after the viewport height changed."""
 
@@ -1163,13 +1180,41 @@ class BaseGameScreen:
     # Header layout: back and flag-mode hug the left edge, the mine counter /
     # face / timer sit as one centred group, and the scroll arrows (Klein
     # boards) hug the right edge. Everything is sized relative to
-    # ``_header_scale`` so the row also fits boards narrower than
-    # HEADER_REF_W.
+    # ``_header_scale`` so the row fits boards narrower than HEADER_REF_W;
+    # on the web it also grows on wider boards, keeping the controls one
+    # constant physical size on a phone whatever the board.
+
+    @property
+    def _natural_width(self) -> int:
+        """Board width in canvas pixels. Kept separate from ``natural_size``
+        because the header height depends on it (via ``_header_scale``)."""
+        raise NotImplementedError
 
     @property
     def _header_scale(self) -> float:
-        """Shrink factor for the header controls on narrow boards."""
-        return min(1.0, self.size[0] / HEADER_REF_W)
+        """Size factor for the header controls: shrinks them on boards
+        narrower than HEADER_REF_W (everywhere), and grows them on wider
+        boards on the web only -- there the presenter scales the whole canvas
+        by the window width over the board width, so growing the header by
+        width / HEADER_REF_W keeps its on-screen size constant across boards.
+        The desktop shows the canvas 1:1, where a grown header would just be
+        oversized."""
+        scale = self._natural_width / HEADER_REF_W
+        if scale > 1.0 and not IS_WEB:
+            return 1.0
+        return scale
+
+    @property
+    def _header_growth(self) -> float:
+        """How far the header is drawn beyond full size (web, wide boards);
+        the band height and midline scale along so the controls never overlap
+        the board."""
+        return max(1.0, self._header_scale)
+
+    @property
+    def _header_height(self) -> int:
+        """Height of the header band between the top margin and the board."""
+        return round(HEADER * self._header_growth)
 
     @property
     def _button_side(self) -> int:
@@ -1182,7 +1227,7 @@ class BaseGameScreen:
     @property
     def _header_mid(self) -> int:
         """Vertical midline the buttons and counters are centred on."""
-        return MARGIN + 26 * S
+        return MARGIN + round(26 * S * self._header_growth)
 
     def _button_at(self, midleft_x: int) -> pygame.Rect:
         side = self._button_side
@@ -1380,12 +1425,36 @@ class BaseGameScreen:
 class GameScreen(BaseGameScreen):
     """Flat boards: static polygons straight from the board definition."""
 
+    # A clearly landscape board (the classic 30x16 "hard", aspect 1.875) on a
+    # portrait phone would shrink to a sliver of the screen; shown a
+    # quarter-turn sideways it fills the width instead. Roughly square boards
+    # stay as designed -- turning them would look arbitrary for no gain.
+    ROTATE_ASPECT = 1.2  # width/height beyond which a portrait viewport rotates
+
+    @property
+    def _rotated(self) -> bool:
+        return (
+            self._portrait
+            and self.board.width > self.board.height * self.ROTATE_ASPECT
+        )
+
     def _setup_geometry(self) -> None:
-        offset_x, offset_y = MARGIN, MARGIN + HEADER + self.board_shift
-        self.polygons = {
-            cell: [(x * S + offset_x, y * S + offset_y) for x, y in vertices]
-            for cell, vertices in self.board.polygons.items()
-        }
+        offset_x = MARGIN
+        offset_y = MARGIN + self._header_height + self.board_shift
+        if self._rotated:  # quarter-turn: (x, y) -> (height - y, x)
+            bh = self.board.height
+            self.polygons = {
+                cell: [
+                    ((bh - y) * S + offset_x, x * S + offset_y)
+                    for x, y in vertices
+                ]
+                for cell, vertices in self.board.polygons.items()
+            }
+        else:
+            self.polygons = {
+                cell: [(x * S + offset_x, y * S + offset_y) for x, y in vertices]
+                for cell, vertices in self.board.polygons.items()
+            }
         self.centers = {
             cell: centroid(vertices) for cell, vertices in self.polygons.items()
         }
@@ -1395,14 +1464,20 @@ class GameScreen(BaseGameScreen):
             for cell, vertices in self.polygons.items()
         }
 
-    # re-place the polygons when the web viewport height changes
+    # re-place the polygons when the web viewport height or orientation changes
     _relayout = _setup_geometry
 
     @property
+    def _natural_width(self) -> int:
+        w = self.board.height if self._rotated else self.board.width
+        return math.ceil(w * S) + 2 * MARGIN
+
+    @property
     def natural_size(self) -> tuple[int, int]:
+        h = self.board.width if self._rotated else self.board.height
         return (
-            math.ceil(self.board.width * S) + 2 * MARGIN,
-            math.ceil(self.board.height * S) + HEADER + 2 * MARGIN,
+            self._natural_width,
+            math.ceil(h * S) + self._header_height + 2 * MARGIN,
         )
 
     def cell_at(self, pos):
@@ -1464,10 +1539,14 @@ class GameScreen3D(BaseGameScreen):
         self._scroll_accum = 0.0
 
     @property
+    def _natural_width(self) -> int:
+        return self.VIEWPORT + 2 * MARGIN
+
+    @property
     def natural_size(self) -> tuple[int, int]:
         return (
-            self.VIEWPORT + 2 * MARGIN,
-            self.VIEWPORT + HEADER + 2 * MARGIN,
+            self._natural_width,
+            self.VIEWPORT + self._header_height + 2 * MARGIN,
         )
 
     def _relayout(self) -> None:
@@ -1479,7 +1558,7 @@ class GameScreen3D(BaseGameScreen):
         if self._frame is not None:
             return self._frame
         cx = self.size[0] / 2
-        cy = MARGIN + HEADER + self.VIEWPORT / 2 + self.board_shift
+        cy = MARGIN + self._header_height + self.VIEWPORT / 2 + self.board_shift
         two_sided = self.board.two_sided
         frame = []
         for cell, points in self.board.polygons.items():
@@ -1669,6 +1748,9 @@ class MenuScreen:
 
     def set_viewport_height(self, height: int) -> None:
         self._view_h = height
+
+    def set_portrait(self, portrait: bool) -> None:
+        pass  # the menu is portrait-shaped already; nothing to turn
 
     def wants_animation(self) -> bool:
         """The menu is static: it only ever changes in response to input."""
@@ -1988,6 +2070,9 @@ class _DesktopPresenter:
     def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
         return natural[1]  # desktop keeps each screen's natural height
 
+    def is_portrait(self) -> bool:
+        return False  # desktop windows keep every board as designed
+
     def present(self, canvas: pygame.Surface, ref_width: int | None = None) -> None:
         self.ensure(canvas.get_size())
         frame = (
@@ -2076,6 +2161,14 @@ class _WebPresenter:
 
     def ensure(self, canvas_size: tuple[int, int]) -> None:
         self._resize()
+
+    def is_portrait(self) -> bool:
+        """Whether the visible viewport is taller than wide -- a phone held
+        upright. Landscape flat boards respond by turning a quarter-turn
+        (``set_portrait``); a normal desktop browser window is wider than
+        tall, so it never triggers this."""
+        w, h, _ = self._viewport()
+        return h > w
 
     def viewport_height(self, ref_width: int, natural: tuple[int, int]) -> int:
         """Canvas height the screen should fill so it reaches the bottom of the
@@ -2192,6 +2285,10 @@ class App:
                     self.screen = make_screen(result[1], self.menu.difficulty)
             if not running:
                 break
+            # a portrait window (a phone held upright) turns landscape flat
+            # boards sideways; must precede viewport_height, which reads the
+            # possibly-swapped natural size
+            self.screen.set_portrait(presenter.is_portrait())
             # let the presenter grow the screen to fill the window height; the
             # screen distributes the extra room (desktop leaves it at natural)
             self.screen.set_viewport_height(

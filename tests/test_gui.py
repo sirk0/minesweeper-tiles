@@ -7,6 +7,7 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 pygame = pytest.importorskip("pygame")
 
+from minesweeper import gui as gui_mod  # noqa: E402
 from minesweeper.boards import (  # noqa: E402
     APERIODIC_MODES,
     FAMILY_MEMBERS,
@@ -229,6 +230,60 @@ class TestFlagMode:
         screen.handle_event(mouse_event(pos))
         screen.handle_event(mouseup_event(pos))
         assert screen.game.cell_state(cell) is CellState.FLAGGED
+
+
+class TestPhoneLayout:
+    """Web header growth on wide boards and the portrait quarter-turn."""
+
+    def test_desktop_header_clamps_at_full_size_on_wide_boards(self):
+        screen = GameScreen("square", "hard")  # 30x16, wider than HEADER_REF_W
+        assert screen._header_scale == 1.0
+        assert screen._header_height == gui_mod.HEADER
+
+    def test_web_header_grows_with_wide_boards(self, monkeypatch):
+        monkeypatch.setattr(gui_mod, "IS_WEB", True)
+        screen = GameScreen("square", "hard")
+        # header canvas size grows by width / HEADER_REF_W, cancelling the
+        # presenter's width-proportional shrink: constant physical size
+        assert screen._header_scale == pytest.approx(
+            screen.natural_size[0] / gui_mod.HEADER_REF_W
+        )
+        assert screen._header_scale > 1.0
+        # the band grows too, so the controls stay clear of the board
+        header_bottom = gui_mod.MARGIN + screen._header_height
+        assert screen.flag_rect.bottom <= header_bottom
+        assert all(
+            y >= header_bottom
+            for polygon in screen.polygons.values()
+            for _, y in polygon
+        )
+
+    def test_web_header_still_shrinks_on_narrow_boards(self, monkeypatch):
+        monkeypatch.setattr(gui_mod, "IS_WEB", True)
+        screen = GameScreen("square", "easy")
+        assert screen._header_scale < 1.0
+        assert screen._header_height == gui_mod.HEADER
+
+    def test_portrait_turns_landscape_board_sideways(self):
+        screen = GameScreen("square", "hard")
+        w, h = screen.natural_size
+        assert w > h
+        screen.set_portrait(True)
+        rw, rh = screen.natural_size
+        assert (rw, rh) != (w, h) and rw < rh
+        # geometry stays consistent: every cell centre still hits its cell
+        for cell, center in screen.centers.items():
+            assert screen.cell_at(center) == cell
+        screen.set_portrait(False)  # turning back restores the layout
+        assert screen.natural_size == (w, h)
+
+    def test_portrait_leaves_square_boards_alone(self):
+        screen = GameScreen("square", "medium")  # 16x16
+        size = screen.natural_size
+        polygons = screen.polygons
+        screen.set_portrait(True)
+        assert screen.natural_size == size
+        assert screen.polygons == polygons
 
 
 class TestRendering:
