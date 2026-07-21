@@ -1,6 +1,7 @@
 import {
   Color,
   DirectionalLight,
+  Group,
   HemisphereLight,
   OrthographicCamera,
   Raycaster,
@@ -8,18 +9,23 @@ import {
   Vector2,
   WebGLRenderer,
 } from "three";
-import type { BoardMesh } from "./boardMesh";
+import type { CellId } from "../boards/core";
 
-// One rendering pipeline. M0 uses only the orthographic (flat-board) path; the
+// One rendering pipeline. M1 uses the orthographic (flat-board) path; the
 // perspective/trackball path for 3D surfaces arrives in M2. Resize is
 // DPR-aware and clamped to 2 to bound cost on retina displays.
+
+export interface RenderBoard extends Group {
+  readonly extent: { width: number; height: number };
+  cellForFace(faceIndex: number): CellId | null;
+}
 
 export class BoardRenderer {
   readonly renderer: WebGLRenderer;
   readonly scene: Scene;
   readonly camera: OrthographicCamera;
   private readonly raycaster = new Raycaster();
-  private board: BoardMesh | null = null;
+  private board: RenderBoard | null = null;
   private frameHandle = 0;
   private dirty = true;
 
@@ -44,7 +50,7 @@ export class BoardRenderer {
     this.scene.add(key);
   }
 
-  setBoard(board: BoardMesh): void {
+  setBoard(board: RenderBoard): void {
     if (this.board) this.scene.remove(this.board);
     this.board = board;
     this.scene.add(board);
@@ -64,10 +70,9 @@ export class BoardRenderer {
     this.renderer.setSize(w, h, false);
 
     if (this.board) {
-      // Fit the board (spanning cols x rows around the origin) with a margin.
-      const margin = 1.1;
-      const halfW = (this.board.cols * margin) / 2;
-      const halfH = (this.board.rows * margin) / 2;
+      const margin = 1.06;
+      const halfW = (this.board.extent.width * margin) / 2;
+      const halfH = (this.board.extent.height * margin) / 2;
       const aspect = w / h;
       let x = halfW;
       let y = halfH;
@@ -82,15 +87,15 @@ export class BoardRenderer {
     this.dirty = true;
   }
 
-  /** Cell under normalized device coords (-1..1), or -1. */
-  pick(ndc: Vector2): number {
-    if (!this.board) return -1;
+  /** Cell under normalized device coords (-1..1), or null. */
+  pick(ndc: Vector2): CellId | null {
+    if (!this.board) return null;
     this.raycaster.setFromCamera(ndc, this.camera);
     const cells = this.board.getObjectByName("cells");
-    if (!cells) return -1;
+    if (!cells) return null;
     const hits = this.raycaster.intersectObject(cells, false);
     const hit = hits[0];
-    if (!hit || hit.faceIndex == null) return -1;
+    if (!hit || hit.faceIndex == null) return null;
     return this.board.cellForFace(hit.faceIndex);
   }
 

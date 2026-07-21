@@ -5,25 +5,18 @@ import { CanvasTexture, LinearFilter, SRGBColorSpace, Texture } from "three";
 // couple of draw calls. Rebake (`makeGlyphAtlas`) when the device pixel ratio
 // changes so glyphs stay crisp.
 
-export type Glyph =
-  | 0 // empty
-  | 1
-  | 2
-  | 3
-  | 4
-  | 5
-  | 6
-  | 7
-  | 8
-  | "flag"
-  | "mine";
+// A digit 1..12 (shared-vertex adjacency on triangles/hexagons can exceed 8),
+// a flag or a mine. 0 means empty.
+export type Glyph = number | "flag" | "mine";
 
 // Slot order in the atlas grid. Index 0 (empty) is intentionally blank.
-const SLOTS: Glyph[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, "flag", "mine"];
+const SLOTS: Glyph[] = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, "flag", "mine",
+];
 const COLS = 4;
-const ROWS = 3; // 4x3 = 12 slots, 11 used
+const ROWS = 4; // 4x4 = 16 slots, 15 used
 
-// Classic minesweeper digit colours.
+// Classic minesweeper digit colours; 9+ reuse a neutral dark tone.
 const DIGIT_COLORS: Record<number, string> = {
   1: "#2f6bff",
   2: "#2e9e3f",
@@ -61,7 +54,8 @@ export function makeGlyphAtlas(cellPx = 128): GlyphAtlas {
     const cy = Math.floor(i / COLS) * cellPx + cellPx / 2;
     if (typeof glyph === "number") {
       ctx.fillStyle = DIGIT_COLORS[glyph] ?? "#202020";
-      ctx.font = `bold ${Math.round(cellPx * 0.7)}px sans-serif`;
+      const scale = glyph >= 10 ? 0.5 : 0.7; // two digits fit narrower
+      ctx.font = `bold ${Math.round(cellPx * scale)}px sans-serif`;
       ctx.fillText(String(glyph), cx, cy + cellPx * 0.03);
     } else if (glyph === "flag") {
       drawFlag(ctx, cx, cy, cellPx);

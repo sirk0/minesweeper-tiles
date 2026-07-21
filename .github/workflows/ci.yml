@@ -32,6 +32,27 @@ jobs:
       - name: Lint
         run: make lint PY=python
 
+  data-sync:
+    # The shared JSON config (data/*.json) is the single source both front-ends
+    # read. Regenerate it from the Python side and fail if it drifts from what
+    # is committed (run scripts/export_data.py + export_conformance.py locally
+    # and commit the result to fix).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements-test.txt
+      - name: Regenerate shared data
+        run: |
+          PYTHONPATH=. python scripts/export_data.py
+          PYTHONPATH=. python scripts/export_conformance.py
+      - name: Check for drift
+        run: git diff --exit-code data/
+
   web:
     # TypeScript app (web/): typecheck, unit tests, production build, and the
     # Playwright e2e + visual-regression suite under deterministic software

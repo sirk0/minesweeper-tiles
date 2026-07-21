@@ -1,15 +1,33 @@
-// Tiny, typed test seam bridging the canvas game to Playwright. A canvas has
-// no per-cell DOM, so e2e tests translate a cell id to current screen
-// coordinates through `cellScreenXY` and read a state summary. Kept minimal and
-// always installed (harmless in production); richer hooks (setMines, rotation)
-// arrive with the game logic in M1+.
+import type { CellId } from "./boards/core";
+
+// The typed test seam Playwright drives. A canvas has no per-cell DOM, so e2e
+// tests translate a cell id to current screen coordinates via `cellScreenXY`
+// and read a state summary. `startBoard` accepts an explicit mine layout for
+// deterministic win/lose flows. Kept small and always installed.
+
+export interface MsState {
+  screen: "menu" | "game";
+  mode: string | null;
+  difficulty: string | null;
+  status: "playing" | "won" | "lost";
+  minesRemaining: number;
+  revealed: number;
+  cellCount: number;
+}
 
 export interface MsHook {
   ready(): boolean;
-  cellCount(): number;
-  cellScreenXY(cell: number): { x: number; y: number } | null;
-  state(): { screen: string; cells: number; hovered: number };
-  setHover(cell: number): void;
+  cells(): CellId[];
+  cellScreenXY(cell: CellId): { x: number; y: number } | null;
+  state(): MsState;
+  startBoard(
+    mode: string,
+    difficulty: string,
+    opts?: { seed?: number; mines?: CellId[] },
+  ): void;
+  reveal(cell: CellId): void;
+  flag(cell: CellId): void;
+  chord(cell: CellId): void;
 }
 
 declare global {

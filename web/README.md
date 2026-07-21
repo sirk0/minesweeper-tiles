@@ -1,10 +1,19 @@
 # Minesweeper Tiles — TypeScript + Three.js app (`web/`)
 
 The in-progress TypeScript rewrite (Three.js / WebGL), living alongside the
-Python game per `docs/plans/typescript-rewrite-same-repo.md`. This is **M0 —
-scaffold + pipeline proof**: it renders a hard-coded beveled square grid with
-hover picking and a glyph atlas, ships an installable PWA shell, and wires the
-full test/CI pipeline. Board porting starts in M1.
+Python game per `docs/plans/typescript-rewrite-same-repo.md`.
+
+**M1 — core game + flat regular boards.** Ports the game rules and the five
+flat regular boards (square / triangle / triangle-grid / hexagon /
+hexagon-of-hexagons) from Python, rendered as real beveled polygon meshes with
+mouse + touch input (reveal / flag / chord / long-press), a HUD and menu driven
+from shared config, deep links (`?mode=&difficulty=&seed=`), and a
+`window.__ms` test seam. Boards are built from the **same** `data/*.json` the
+Python game reads, and a conformance oracle (`data/conformance.json`) asserts
+the two implementations produce identical boards.
+
+M0 (scaffold + pipeline proof: Vite, strict TS, PWA shell, CI/Pages, the
+render-pipeline proof) is the foundation this builds on.
 
 ## Commands
 
@@ -24,14 +33,20 @@ Cloud sessions: the preinstalled Chromium is used by pointing Playwright at it �
 
 ## Layout
 
+- `src/game.ts`, `src/rng.ts` — pure game rules (port of `game.py`) and a
+  seedable RNG.
+- `src/boards/` — `core.ts` (Board, adjacency, topology), `tilings.ts` (the
+  flat regular builders), `catalog.ts` / `presets.ts` (read `data/*.json`).
 - `src/render/` — one Three.js pipeline: `renderer.ts` (scene/ortho camera/
-  resize/picking), `boardMesh.ts` (merged beveled-cell geometry, per-cell
-  colours, hover), `glyphAtlas.ts` (canvas-baked digit/flag/mine texture),
-  `demoBoard.ts` (the M0 hard-coded board).
-- `src/ui/` — HTML/CSS overlay chrome: `hud.ts` (header) and `menu.ts` (home
-  shell), both **rendered from the shared UI-screen config**.
+  resize/picking), `polygonBoard.ts` (merged beveled polygon geometry, per-cell
+  colours, hover, glyph quads), `glyphAtlas.ts` (canvas-baked digit/flag/mine
+  texture).
+- `src/session.ts` — `GameSession`: Game ↔ mesh ↔ HUD.
+- `src/input/controls.ts` — pointer/touch (tap, long-press, right-click).
+- `src/ui/` — HTML/CSS overlay chrome: `hud.ts` (header) and `menu.ts` (home),
+  both **rendered from the shared UI-screen config**.
 - `src/config/screens.ts` — typed accessor over `../data/ui/screens.json`.
-- `src/testHook.ts` — the tiny `window.__ms` seam Playwright drives.
+- `src/testHook.ts` — the `window.__ms` seam Playwright drives.
 
 ## Shared configuration
 

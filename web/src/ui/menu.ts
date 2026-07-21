@@ -1,14 +1,19 @@
-import { screens, type MenuEntry } from "../config/screens";
+import { screens } from "../config/screens";
+import { MODE_LABELS } from "../boards/catalog";
+import { MODES } from "../boards/presets";
 
-// A minimal menu shell rendered from the shared UI-screen config. M0 ships the
-// home page (title, top-level groups, difficulty row) as a config-driven shell;
-// the full drill-down (group → tiling → surface) and mode launching arrive in
-// M1 once boards are ported.
+// M1 minimal menu: launches the ported flat regular boards. Title, difficulty
+// row and theme still come from the shared UI-screen config
+// (data/ui/screens.json); the mode list comes from the ported board catalog.
+// The full geometry-first drill-down returns as more modes are ported.
 
 export interface MenuSelection {
-  entry: MenuEntry;
+  mode: string;
   difficulty: string;
 }
+
+// Present the ported modes in a friendly order with their catalog labels.
+const MODE_ORDER = ["square", "trigrid", "hex", "triangle", "hexhex"];
 
 export class Menu {
   readonly root: HTMLElement;
@@ -17,17 +22,20 @@ export class Menu {
   constructor(private readonly onSelect: (sel: MenuSelection) => void) {
     this.root = document.createElement("section");
     this.root.className = "menu";
-    this.root.hidden = true;
 
     const title = document.createElement("h1");
     title.className = "menu-title";
     title.textContent = screens.menu.title;
 
+    const subtitle = document.createElement("p");
+    subtitle.className = "menu-subtitle";
+    subtitle.textContent = "Flat boards";
+
     const list = document.createElement("ul");
     list.className = "menu-list";
-    for (const entry of screens.menu.root) list.append(this.entryRow(entry));
+    for (const mode of this.orderedModes()) list.append(this.entryRow(mode));
 
-    this.root.append(title, list, this.difficultyRow());
+    this.root.append(title, subtitle, list, this.difficultyRow());
   }
 
   show(): void {
@@ -37,23 +45,23 @@ export class Menu {
     this.root.hidden = true;
   }
 
-  private entryRow(entry: MenuEntry): HTMLElement {
+  private orderedModes(): string[] {
+    const known = MODE_ORDER.filter((m) => MODES.includes(m));
+    const rest = MODES.filter((m) => !known.includes(m));
+    return [...known, ...rest];
+  }
+
+  private entryRow(mode: string): HTMLElement {
     const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.className = "menu-entry";
-    btn.dataset.key = entry.key;
+    btn.dataset.mode = mode;
     const label = document.createElement("span");
     label.className = "menu-entry-label";
-    label.textContent = entry.label;
+    label.textContent = MODE_LABELS[mode] ?? mode;
     btn.append(label);
-    if (entry.hint) {
-      const hint = document.createElement("span");
-      hint.className = "menu-entry-hint";
-      hint.textContent = entry.hint;
-      btn.append(hint);
-    }
     btn.addEventListener("click", () =>
-      this.onSelect({ entry, difficulty: this.difficulty }),
+      this.onSelect({ mode, difficulty: this.difficulty }),
     );
     li.append(btn);
     return li;

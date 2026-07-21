@@ -26,11 +26,36 @@ Import order is a strict DAG; a module only imports from the ones above it.
 | `aperiodic.py` | Penrose (P3) and the Hat monotile, each with its own exact-arithmetic vertex ids. |
 | `solids.py` | Closed/convex and polycube 3D boards (sphere, fullerenes, cube, tetrahedron, frames, bipyramid). |
 | `surfaces.py` | Wrapping tilings onto surfaces: the three immersion points (`_torus_point`, `_cylinder_point`, `_mobius_point`), the shared `_assemble` tail, the nine simple `*_board` wrappers, and the Archimedean `arch_torus_board` / `arch_cylinder_board` / `arch_mobius_board`. |
-| `catalog.py` | The menu, **derived**: `SURFACE_SPECS` and `TILING_SPECS` produce `MODE_LABELS`, `TILINGS`, `SURFACE_LABELS`, the geometry-first menu tables (`MENU_ROOT`/`MANIFOLD_*`/`FAMILY_*`/`SPHERE_MODES`/`OTHER_MODES`/`SHAPED_MODES`), `MODES_3D`, `mode_for`, `surface_of`, `view_hint`. |
-| `presets.py` | Difficulty presets and `build_board`. Regular/one-off modes are explicit; Archimedean modes come from the **`ARCH_PRESETS`** table. |
+| `catalog.py` | The menu, **derived**: `SURFACE_SPECS` and `TILING_SPECS` (leaf data loaded from `data/catalog.json`) produce `MODE_LABELS`, `TILINGS`, `SURFACE_LABELS`, the geometry-first menu tables (`MENU_ROOT`/`MANIFOLD_*`/`FAMILY_*`/`SPHERE_MODES`/`OTHER_MODES`/`SHAPED_MODES`), `MODES_3D`, `mode_for`, `surface_of`, `view_hint`. |
+| `presets.py` | Difficulty presets and `build_board`. Flat regular presets load from `data/presets.json` (shared with the web port); other one-off modes are explicit; Archimedean modes come from the **`ARCH_PRESETS`** table. |
 
 `__init__.py` re-exports the whole public surface, so `from
 minesweeper.boards import ...` is unchanged by the split.
+
+### Shared JSON config (`data/*.json`) — single source of truth
+
+A TypeScript/Three.js port of the game lives in `web/` (see
+`docs/plans/typescript-rewrite-same-repo.md`). To keep the two
+implementations from drifting, the *pure-data leaves* of the config live
+in repo-root JSON that **both** front-ends read — so a value is never
+written twice:
+
+- `data/catalog.json` — `SURFACE_SPECS`, the regular `TilingSpec` rows,
+  `DIFFICULTIES`, `SOLO_LABELS`, and the menu taxonomy/labels. `catalog.py`
+  loads these via `boards/_data.py`; the *derivations* stay in code.
+- `data/presets.json` — the difficulty presets for the **ported** modes
+  (currently the flat regular ones: square/triangle/trigrid/hex/hexhex),
+  as `{mode: {builder, args}}`. `presets.py` loads these into `_PRESETS`
+  via `_FLAT_BUILDERS`; the not-yet-ported presets (3D, surfaces,
+  Archimedean) stay as explicit `_PRESETS` / `ARCH_PRESETS` entries until
+  their milestone ports them, at which point they move into the JSON.
+- `data/conformance.json` — board statistics (cell/mine/euler/boundary/…)
+  per ported mode × difficulty, the TypeScript conformance oracle.
+
+`scripts/export_data.py` and `scripts/export_conformance.py` regenerate
+these from the Python side; the CI `data-sync` job re-runs them and fails
+on any diff. `make web-prepare` copies `data/` into the pygbag stage so
+the Python web build finds it at runtime.
 
 A **mode** is the string `build_board` takes. For a periodic tiling it is
 `surface.prefix + tiling.key` (e.g. `toruskagome`); `catalog.mode_for`

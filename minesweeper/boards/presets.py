@@ -9,6 +9,7 @@ tiling is one ARCH_PRESETS row. See AGENTS.md.
 
 from __future__ import annotations
 
+from minesweeper.boards._data import load
 from minesweeper.boards.aperiodic import hat_board, penrose_board
 from minesweeper.boards.catalog import mode_for
 from minesweeper.boards.core import DIFFICULTIES, ROOT3, Board, Board3D
@@ -51,33 +52,20 @@ from minesweeper.boards.tilings import (
     triangle_grid_board,
 )
 
-# Explicit presets for the regular tilings and the one-off boards.
+# Flat regular presets (square/triangle/trigrid/hex/hexhex) live in
+# data/presets.json, the single source both front-ends read; they are loaded
+# below into _PRESETS via _FLAT_BUILDERS. The remaining explicit presets stay
+# here until their milestones port them to the TypeScript app.
+_FLAT_BUILDERS = {
+    "square_board": square_board,
+    "triangle_board": triangle_board,
+    "triangle_grid_board": triangle_grid_board,
+    "hex_board": hex_board,
+    "hexhex_board": hexhex_board,
+}
+
+# Explicit presets for the one-off boards (solids, aperiodic, surfaces).
 _PRESETS = {
-    "square": {
-        "easy": lambda: square_board(9, 9, 10, scale=32),
-        "medium": lambda: square_board(16, 16, 40, scale=32),
-        "hard": lambda: square_board(16, 30, 99, scale=32),
-    },
-    "triangle": {
-        "easy": lambda: triangle_board(8, 10, scale=60),
-        "medium": lambda: triangle_board(12, 24, scale=52),
-        "hard": lambda: triangle_board(16, 48, scale=44),
-    },
-    "trigrid": {
-        "easy": lambda: triangle_grid_board(7, 11, 11, scale=52),
-        "medium": lambda: triangle_grid_board(10, 16, 26, scale=44),
-        "hard": lambda: triangle_grid_board(14, 23, 62, scale=36),
-    },
-    "hex": {
-        "easy": lambda: hex_board(11, 9, 12, scale=24),
-        "medium": lambda: hex_board(15, 13, 30, scale=20),
-        "hard": lambda: hex_board(20, 17, 68, scale=17),
-    },
-    "hexhex": {
-        "easy": lambda: hexhex_board(5, 12, scale=25),
-        "medium": lambda: hexhex_board(7, 28, scale=21),
-        "hard": lambda: hexhex_board(9, 58, scale=18),
-    },
     "penrose": {
         "easy": lambda: penrose_board(4, 9, scale=310, keep=60),
         "medium": lambda: penrose_board(5, 25, scale=390, keep=160),
@@ -319,6 +307,16 @@ ARCH_PRESETS = {
         "klein": {"easy": (5, 2, 34), "medium": (7, 2, 52), "hard": (8, 3, 90)},
     },
 }
+
+# Load the shared flat-regular presets (data/presets.json) into _PRESETS. Each
+# row is {builder, args: {difficulty: [positional args]}}.
+for _mode, _spec in load("presets")["presets"].items():
+    _fn = _FLAT_BUILDERS[_spec["builder"]]
+    _PRESETS[_mode] = {
+        _difficulty: (lambda fn=_fn, a=_args: fn(*a))
+        for _difficulty, _args in _spec["args"].items()
+    }
+
 
 _ARCH_BUILDERS = {
     "flat": archimedean_board,
