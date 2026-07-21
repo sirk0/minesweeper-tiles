@@ -91,14 +91,18 @@ On the web the framebuffer and canvas CSS box fill the visible viewport
 (`_WebPresenter`, using `visualViewport` so the mobile address bar is
 excluded; set on every frame since pygbag's template only sizes the
 canvas once at boot). The current screen is drawn on its own canvas, then
-scaled by a factor fixed by the window width and the screen's
-`web_ref_width` — not by how big the current board happens to be, so
-boards keep one constant scale as you switch between them (the menu
-reports its own width, so it fills the window edge to edge) — then
-centred horizontally, with the background filling the rest. So there are
-no letterbox gaps on a tall phone and switching boards does not resize
-the UI; a screen wider or taller than the window is clamped down to stay
-fully visible. The presenter also hands each screen extra height
+scaled by the ratio of the window width to the screen's `web_ref_width`.
+Every screen reports its own width there (a game board its natural
+width), so boards and the menu all fill the window edge to edge; a
+screen taller than the window is clamped down to stay fully visible, so
+there are never letterbox gaps on a tall phone. Cell size therefore
+varies per board, but the header controls do not: the header row (back
+and flag-mode at the left edge, mine counter / smiley / timer centred,
+Klein scroll arrows at the right edge) is laid out at
+`_header_scale = min(1, canvas width / HEADER_REF_W)`, which shrinks it
+to fit boards narrower than `HEADER_REF_W` and — because the web scale
+is width-proportional — keeps the controls one constant touchable
+physical size across all such boards. The presenter also hands each screen extra height
 (`set_viewport_height`) to fill the window, and the screen distributes
 it: a game keeps the header at the top and centres the board in the space
 below; the menu keeps the title at the top, drops the difficulty row to

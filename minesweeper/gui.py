@@ -68,15 +68,19 @@ UI_SCALE = 2  # supersampling factor: canvas pixels per window pixel
 S = UI_SCALE
 
 MARGIN = 10 * S
-HEADER = 56 * S
+HEADER = 64 * S
 
-# Fallback design width (in canvas pixels) for boards on the web build: the
-# on-screen scale is derived from it and the window width alone -- never from
-# the board currently showing -- so the UI keeps one constant size as you move
-# between boards of different sizes. A board narrower than this is centred with
-# background to the sides; a wider or taller one is shrunk just enough to stay
-# fully visible. Each screen may override it via ``web_ref_width`` (the menu
-# reports its own width so it fills the window edge to edge).
+# Canvas width at which the header controls are drawn full-size. On narrower
+# boards the whole header shrinks proportionally (see ``_header_scale``) so
+# the back/flag group, the centred counters+face and the scroll arrows never
+# collide. On the web -- where each board is scaled to fill the window width
+# -- this makes the controls one constant physical size across those boards.
+HEADER_REF_W = 470 * S
+
+# Fallback design width (in canvas pixels) on the web build. Every screen
+# reports its own width via ``web_ref_width`` (game boards their natural
+# width, so each fills the window edge to edge); this constant is only the
+# presenter's fallback when none is given.
 WEB_REF_WIDTH = 560 * S
 
 # Upper bound on the web framebuffer's longest side, to stay well under the
@@ -1142,9 +1146,12 @@ class BaseGameScreen:
         Everything else on a board changes solely in response to events."""
         return self.started_at is not None and self.finished_at is None
 
-    # Boards share one fixed web scale (see WEB_REF_WIDTH) so switching boards
-    # never resizes the UI; a board wider than this is shrunk to fit.
-    web_ref_width = WEB_REF_WIDTH
+    # Each board scales by its own width on the web, filling the window edge
+    # to edge; the header stays one constant physical size across boards via
+    # _header_scale.
+    @property
+    def web_ref_width(self) -> int:
+        return self.natural_size[0]
 
     @property
     def elapsed(self) -> int:
@@ -1153,19 +1160,49 @@ class BaseGameScreen:
         end = self.finished_at if self.finished_at is not None else time.monotonic()
         return min(999, int(end - self.started_at))
 
+    # Header layout: back and flag-mode hug the left edge, the mine counter /
+    # face / timer sit as one centred group, and the scroll arrows (Klein
+    # boards) hug the right edge. Everything is sized relative to
+    # ``_header_scale`` so the row also fits boards narrower than
+    # HEADER_REF_W.
+
+    @property
+    def _header_scale(self) -> float:
+        """Shrink factor for the header controls on narrow boards."""
+        return min(1.0, self.size[0] / HEADER_REF_W)
+
+    @property
+    def _button_side(self) -> int:
+        return round(48 * S * self._header_scale)
+
+    @property
+    def _header_gap(self) -> int:
+        return round(6 * S * self._header_scale)
+
+    @property
+    def _header_mid(self) -> int:
+        """Vertical midline the buttons and counters are centred on."""
+        return MARGIN + 26 * S
+
+    def _button_at(self, midleft_x: int) -> pygame.Rect:
+        side = self._button_side
+        rect = pygame.Rect(0, 0, side, side)
+        rect.midleft = (midleft_x, self._header_mid)
+        return rect
+
     @property
     def face_rect(self) -> pygame.Rect:
-        return pygame.Rect(self.size[0] // 2 - 20 * S, MARGIN + 2 * S, 40 * S, 40 * S)
+        return self._button_at(self.size[0] // 2 - self._button_side // 2)
 
     @property
     def flag_rect(self) -> pygame.Rect:
-        """The flag-mode toggle, just right of the centred face button."""
-        return pygame.Rect(self.size[0] // 2 + 24 * S, MARGIN + 2 * S, 40 * S, 40 * S)
+        """The flag-mode toggle, right of the back button at the left edge."""
+        return self._button_at(MARGIN + self._button_side + self._header_gap)
 
     @property
     def menu_rect(self) -> pygame.Rect:
-        """The back-to-menu button in the header."""
-        return pygame.Rect(MARGIN, MARGIN + 4 * S, 40 * S, 36 * S)
+        """The back-to-menu button in the header's left corner."""
+        return self._button_at(MARGIN)
 
     # -- input ------------------------------------------------------------
 
@@ -1279,30 +1316,26 @@ class BaseGameScreen:
                 text = fonts.get(size).render(str(n), True, color)
                 surface.blit(text, text.get_rect(center=center))
 
+    def _draw_chevron(self, surface, rect: pygame.Rect, *, pointing_left: bool) -> None:
+        u = self._header_scale
+        arm, half_h = 6 * S * u, 10 * S * u
+        tip_x = rect.centerx + (-arm if pointing_left else arm)
+        base_x = rect.centerx + (arm if pointing_left else -arm)
+        chevron = [
+            (base_x, rect.centery - half_h),
+            (tip_x, rect.centery),
+            (base_x, rect.centery + half_h),
+        ]
+        pygame.draw.lines(surface, TEXT, False, chevron, max(2, round(3 * S * u)))
+
     def draw_header(self, surface, fonts: FontCache) -> None:
-        width = self.size[0]
         mouse = canvas_mouse()
+        u = self._header_scale
+        gap = self._header_gap
 
         rect = self.menu_rect
         bevel_rect(surface, rect, BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON)
-        arrow = [
-            (rect.centerx + 5 * S, rect.centery - 8 * S),
-            (rect.centerx - 5 * S, rect.centery),
-            (rect.centerx + 5 * S, rect.centery + 8 * S),
-        ]
-        pygame.draw.lines(surface, TEXT, False, arrow, 3 * S)
-
-        counter = f"{max(-99, min(999, self.game.flags_remaining)):03d}"
-        self.draw_counter(surface, fonts, counter, x=rect.right + 8 * S)
-
-        timer = f"{self.elapsed:03d}"
-        timer_width = fonts.counter(24 * S).size(timer)[0] + 20 * S
-        self.draw_counter(surface, fonts, timer, x=width - MARGIN - timer_width)
-
-        face = self.face_rect
-        bevel_rect(surface, face, BUTTON_HOVER if face.collidepoint(mouse) else BUTTON)
-        sprite = smiley_sprite(14 * S, self.game.state)
-        surface.blit(sprite, sprite.get_rect(center=face.center))
+        self._draw_chevron(surface, rect, pointing_left=True)
 
         flag = self.flag_rect
         if self.flag_mode:
@@ -1310,7 +1343,20 @@ class BaseGameScreen:
         else:
             fill = BUTTON_HOVER if flag.collidepoint(mouse) else BUTTON
         bevel_rect(surface, flag, fill, pressed=self.flag_mode)
-        draw_flag(surface, flag.center, 11 * S, wrong=False)
+        draw_flag(surface, flag.center, 13 * S * u, wrong=False)
+
+        face = self.face_rect
+        bevel_rect(surface, face, BUTTON_HOVER if face.collidepoint(mouse) else BUTTON)
+        sprite = smiley_sprite(round(17 * S * u), self.game.state)
+        surface.blit(sprite, sprite.get_rect(center=face.center))
+
+        counter = f"{max(-99, min(999, self.game.flags_remaining)):03d}"
+        counter_width = fonts.counter(self._counter_font_size).size(counter)[0]
+        counter_width += round(20 * S * u)
+        self.draw_counter(surface, fonts, counter, x=face.left - gap - counter_width)
+
+        timer = f"{self.elapsed:03d}"
+        self.draw_counter(surface, fonts, timer, x=face.right + gap)
 
         self._draw_nav_arrows(surface)
 
@@ -1318,10 +1364,16 @@ class BaseGameScreen:
         """Hook for extra header controls (the Klein scroll arrows in
         GameScreen3D). No-op for boards that do not scroll."""
 
+    @property
+    def _counter_font_size(self) -> int:
+        return round(26 * S * self._header_scale)
+
     def draw_counter(self, surface, fonts: FontCache, value: str, *, x: int) -> None:
-        text = fonts.counter(24 * S).render(value, True, COUNTER_FG)
-        box = pygame.Rect(x, MARGIN + 4 * S, text.get_width() + 20 * S, 36 * S)
-        pygame.draw.rect(surface, PANEL, box, border_radius=6 * S)
+        u = self._header_scale
+        text = fonts.counter(self._counter_font_size).render(value, True, COUNTER_FG)
+        box = pygame.Rect(0, 0, text.get_width() + round(20 * S * u), round(44 * S * u))
+        box.midleft = (x, self._header_mid)
+        pygame.draw.rect(surface, PANEL, box, border_radius=round(6 * S * u))
         surface.blit(text, text.get_rect(center=box.center))
 
 
@@ -1397,7 +1449,7 @@ class GameScreen3D(BaseGameScreen):
 
     def _setup_geometry(self) -> None:
         self.rotation = self._initial_rotation()
-        self.scale = (self.VIEWPORT / 2 - 24 * S) / self.board.radius
+        self.scale = (self.VIEWPORT / 2 - 10 * S) / self.board.radius
         self._drag_from = None
         self._dragged = False
         self._frame = None  # projected geometry, rebuilt after rotation
@@ -1485,17 +1537,16 @@ class GameScreen3D(BaseGameScreen):
         cyc = self._cycle if direction > 0 else self._cycle_inv
         self._remap = {g: cyc[c] for g, c in self._remap.items()}
 
-    # the two Klein scroll arrows, left of the face so they never overlap the
-    # flag toggle (right of the face); shown only when the board scrolls
+    # the two Klein scroll arrows, hugging the header's right edge; shown
+    # only when the board scrolls
     @property
     def scroll_back_rect(self) -> pygame.Rect:
-        face = self.face_rect
-        return pygame.Rect(face.left - (2 * 40 + 2 * 8) * S, MARGIN + 2 * S, 40 * S, 40 * S)
+        side, gap = self._button_side, self._header_gap
+        return self._button_at(self.size[0] - MARGIN - 2 * side - gap)
 
     @property
     def scroll_fwd_rect(self) -> pygame.Rect:
-        face = self.face_rect
-        return pygame.Rect(face.left - (40 + 8) * S, MARGIN + 2 * S, 40 * S, 40 * S)
+        return self._button_at(self.size[0] - MARGIN - self._button_side)
 
     def _handle_wheel(self, event) -> None:
         """Scroll the cell contents one step along the ring per notch,
@@ -1578,14 +1629,7 @@ class GameScreen3D(BaseGameScreen):
         ):
             fill = BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
             bevel_rect(surface, rect, fill)
-            tip_x = rect.centerx + (-5 * S if pointing_left else 5 * S)
-            base_x = rect.centerx + (5 * S if pointing_left else -5 * S)
-            chevron = [
-                (base_x, rect.centery - 8 * S),
-                (tip_x, rect.centery),
-                (base_x, rect.centery + 8 * S),
-            ]
-            pygame.draw.lines(surface, TEXT, False, chevron, 3 * S)
+            self._draw_chevron(surface, rect, pointing_left=pointing_left)
 
     def draw_board(self, surface, fonts: FontCache) -> None:
         for _, cell, polygon, center, glyph_radius, shade in self._project():
