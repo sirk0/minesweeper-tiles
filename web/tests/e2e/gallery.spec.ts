@@ -15,9 +15,8 @@ test.describe("M1 board gallery", () => {
       await page.goto(`/?mode=${mode}&difficulty=easy&seed=1`);
       await expect(page.locator("body[data-ready]")).toBeVisible();
       await page.waitForTimeout(150);
-      await expect(page).toHaveScreenshot(`board-${mode}.png`, {
-        mask: [page.locator('.hud-counter[data-slot="timer"]')],
-      });
+      // No mask needed: with no interaction the timer never starts (reads 000).
+      await expect(page).toHaveScreenshot(`board-${mode}.png`);
     });
   }
 
@@ -34,8 +33,8 @@ test.describe("M1 board gallery", () => {
       ms.reveal("4,2"); // detonate a mine -> exploded + revealed mines
     });
     await page.waitForTimeout(150);
-    await expect(page).toHaveScreenshot("square-revealed.png", {
-      mask: [page.locator('.hud-counter[data-slot="timer"]')],
-    });
+    // The game ends in a loss, which freezes the timer at 0s (reads 000), so
+    // the shot is deterministic without masking.
+    await expect(page).toHaveScreenshot("square-revealed.png");
   });
 });
