@@ -107,6 +107,7 @@ TEXT = (38, 40, 44)
 MUTED = (108, 112, 120)
 BUTTON = (202, 202, 202)
 BUTTON_HOVER = (216, 216, 216)
+BUTTON_ARMED = (236, 150, 144)  # flag-mode toggle when switched on
 SELECTED = (170, 182, 202)
 FLAG_COLOR = (216, 32, 32)
 MINE_COLOR = (34, 36, 40)
@@ -1080,6 +1081,11 @@ class BaseGameScreen:
         # extra height handed down by the web presenter to fill the window; the
         # header stays at the top and the board is centred in the space below
         self._view_h: int | None = None
+        # flag-mode toggle: off = a tap reveals, on = a tap flags. A control
+        # preference (not game state), so new_game leaves it alone. It gives
+        # touch/web players a reliable flag action where right-click is out of
+        # reach; on the desktop right-click still flags regardless.
+        self.flag_mode = False
         self.new_game()
 
     def new_game(self, difficulty: str | None = None) -> None:
@@ -1152,6 +1158,11 @@ class BaseGameScreen:
         return pygame.Rect(self.size[0] // 2 - 20 * S, MARGIN + 2 * S, 40 * S, 40 * S)
 
     @property
+    def flag_rect(self) -> pygame.Rect:
+        """The flag-mode toggle, just right of the centred face button."""
+        return pygame.Rect(self.size[0] // 2 + 24 * S, MARGIN + 2 * S, 40 * S, 40 * S)
+
+    @property
     def menu_rect(self) -> pygame.Rect:
         """The back-to-menu button in the header."""
         return pygame.Rect(MARGIN, MARGIN + 4 * S, 40 * S, 36 * S)
@@ -1176,12 +1187,12 @@ class BaseGameScreen:
             pygame.MOUSEBUTTONUP,
             pygame.MOUSEMOTION,
         ):
-            if (
-                event.type == pygame.MOUSEBUTTONDOWN
-                and event.button == 1
-                and self.menu_rect.collidepoint(event.pos)
-            ):
-                return "menu"
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.menu_rect.collidepoint(event.pos):
+                    return "menu"
+                if self.flag_rect.collidepoint(event.pos):
+                    self.flag_mode = not self.flag_mode
+                    return None  # consumed: don't fall through to the board
             self._handle_mouse(event)
         if event.type == pygame.MOUSEWHEEL:
             self._handle_wheel(event)
@@ -1202,7 +1213,10 @@ class BaseGameScreen:
         cell = self.cell_at(event.pos)
         if cell is not None:
             if event.button == 1:
-                self.click(cell)
+                if self.flag_mode:
+                    self.game.toggle_flag(cell)
+                else:
+                    self.click(cell)
             elif event.button == 3:
                 self.game.toggle_flag(cell)
 
@@ -1289,6 +1303,20 @@ class BaseGameScreen:
         bevel_rect(surface, face, BUTTON_HOVER if face.collidepoint(mouse) else BUTTON)
         sprite = smiley_sprite(14 * S, self.game.state)
         surface.blit(sprite, sprite.get_rect(center=face.center))
+
+        flag = self.flag_rect
+        if self.flag_mode:
+            fill = BUTTON_ARMED
+        else:
+            fill = BUTTON_HOVER if flag.collidepoint(mouse) else BUTTON
+        bevel_rect(surface, flag, fill, pressed=self.flag_mode)
+        draw_flag(surface, flag.center, 11 * S, wrong=False)
+
+        self._draw_nav_arrows(surface)
+
+    def _draw_nav_arrows(self, surface) -> None:
+        """Hook for extra header controls (the Klein scroll arrows in
+        GameScreen3D). No-op for boards that do not scroll."""
 
     def draw_counter(self, surface, fonts: FontCache, value: str, *, x: int) -> None:
         text = fonts.counter(24 * S).render(value, True, COUNTER_FG)
@@ -1449,6 +1477,26 @@ class GameScreen3D(BaseGameScreen):
             return None
         return self._remap.get(geom, geom)
 
+    def _scroll_step(self, direction: int) -> None:
+        """Walk every face one cell along the ring: ``direction`` > 0 forward
+        (``_cycle``), < 0 backward (``_cycle_inv``). No-op off a Klein board."""
+        if not self._cycle:
+            return
+        cyc = self._cycle if direction > 0 else self._cycle_inv
+        self._remap = {g: cyc[c] for g, c in self._remap.items()}
+
+    # the two Klein scroll arrows, left of the face so they never overlap the
+    # flag toggle (right of the face); shown only when the board scrolls
+    @property
+    def scroll_back_rect(self) -> pygame.Rect:
+        face = self.face_rect
+        return pygame.Rect(face.left - (2 * 40 + 2 * 8) * S, MARGIN + 2 * S, 40 * S, 40 * S)
+
+    @property
+    def scroll_fwd_rect(self) -> pygame.Rect:
+        face = self.face_rect
+        return pygame.Rect(face.left - (40 + 8) * S, MARGIN + 2 * S, 40 * S, 40 * S)
+
     def _handle_wheel(self, event) -> None:
         """Scroll the cell contents one step along the ring per notch,
         rotating cells hidden by the self-intersection into view. The
@@ -1460,10 +1508,10 @@ class GameScreen3D(BaseGameScreen):
         self._scroll_accum += getattr(event, "precise_y", event.y)
         while self._scroll_accum >= 1.0:
             self._scroll_accum -= 1.0
-            self._remap = {g: self._cycle[c] for g, c in self._remap.items()}
+            self._scroll_step(1)
         while self._scroll_accum <= -1.0:
             self._scroll_accum += 1.0
-            self._remap = {g: self._cycle_inv[c] for g, c in self._remap.items()}
+            self._scroll_step(-1)
 
     def _handle_key(self, event) -> None:
         step = 40 * S  # canvas-pixels-worth of rotation per key press
@@ -1482,6 +1530,13 @@ class GameScreen3D(BaseGameScreen):
                 if self.face_rect.collidepoint(event.pos):
                     self.new_game()
                     return
+                if self._cycle:  # Klein scroll arrows (touch's mouse-wheel)
+                    if self.scroll_back_rect.collidepoint(event.pos):
+                        self._scroll_step(-1)
+                        return
+                    if self.scroll_fwd_rect.collidepoint(event.pos):
+                        self._scroll_step(1)
+                        return
                 self._drag_from = event.pos
                 self._dragged = False
             elif event.button == 3:
@@ -1503,9 +1558,34 @@ class GameScreen3D(BaseGameScreen):
             if self._drag_from is not None and not self._dragged:
                 cell = self._game_cell(self.cell_at(event.pos))
                 if cell is not None:
-                    self.click(cell)
+                    if self.flag_mode:
+                        self.game.toggle_flag(cell)
+                    else:
+                        self.click(cell)
             self._drag_from = None
             self._dragged = False
+
+    def _draw_nav_arrows(self, surface) -> None:
+        """Two chevron buttons that step the cell contents along the ring,
+        the touch equivalent of the mouse wheel. Shown only on boards that
+        scroll (the Klein bottle)."""
+        if not self._cycle:
+            return
+        mouse = canvas_mouse()
+        for rect, pointing_left in (
+            (self.scroll_back_rect, True),
+            (self.scroll_fwd_rect, False),
+        ):
+            fill = BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
+            bevel_rect(surface, rect, fill)
+            tip_x = rect.centerx + (-5 * S if pointing_left else 5 * S)
+            base_x = rect.centerx + (5 * S if pointing_left else -5 * S)
+            chevron = [
+                (base_x, rect.centery - 8 * S),
+                (tip_x, rect.centery),
+                (base_x, rect.centery + 8 * S),
+            ]
+            pygame.draw.lines(surface, TEXT, False, chevron, 3 * S)
 
     def draw_board(self, surface, fonts: FontCache) -> None:
         for _, cell, polygon, center, glyph_radius, shade in self._project():
