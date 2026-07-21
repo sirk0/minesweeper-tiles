@@ -24,4 +24,12 @@ fi
 # locked file. These resolve from PyPI, which is reachable.
 VIRTUAL_ENV="$VENV" uv pip install -r requirements-test.txt
 
+# Install the TypeScript app's dependencies so `npm run test`/`typecheck`/
+# `build`/`e2e` work in cloud sessions (npm registry is reachable). Playwright
+# uses the preinstalled Chromium; point the config at it via
+# PLAYWRIGHT_CHROMIUM_EXECUTABLE when running e2e.
+if [ -f web/package-lock.json ] && command -v npm >/dev/null 2>&1; then
+  (cd web && npm ci) || echo "session-start: web npm ci failed (non-fatal)" >&2
+fi
+
 echo "session-start: environment ready ($($VENV/bin/python --version))" >&2
