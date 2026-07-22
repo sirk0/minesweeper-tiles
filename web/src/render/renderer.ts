@@ -36,17 +36,25 @@ export class BoardRenderer {
       alpha: false,
       powerPreference: "high-performance",
     });
-    this.renderer.setClearColor(new Color("#1b1f24"), 1);
+    // Classic minesweeper silver-gray field (no dark background).
+    this.renderer.setClearColor(new Color("#c0c0c0"), 1);
 
     this.scene = new Scene();
-    this.camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
-    this.camera.position.set(0, 0, 10);
+    // The board lives in pixel units (hundreds wide) with per-cell bevel
+    // heights that scale with cell size, so place the camera far back in z and
+    // give it a deep frustum: otherwise big cells (e.g. triangle boards) poke
+    // past a nearby near plane and become invisible to the picking ray.
+    this.camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 4000);
+    this.camera.position.set(0, 0, 2000);
     this.camera.lookAt(0, 0, 0);
 
-    const hemi = new HemisphereLight(0xffffff, 0x404650, 0.85);
+    // Soft ambient plus a directional key from the top-left so the tile bevels
+    // catch a highlight/shadow (the classic raised-button look) without
+    // blowing the light-gray faces out to white.
+    const hemi = new HemisphereLight(0xffffff, 0x9a9a9a, 0.9);
     this.scene.add(hemi);
-    const key = new DirectionalLight(0xffffff, 1.1);
-    key.position.set(-3, 5, 8);
+    const key = new DirectionalLight(0xffffff, 0.55);
+    key.position.set(-4, 6, 8);
     this.scene.add(key);
   }
 

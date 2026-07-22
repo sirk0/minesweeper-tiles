@@ -25,16 +25,18 @@ export type CellVisual =
   | { kind: "mine" }
   | { kind: "exploded" };
 
-const SHRINK = 0.05; // pull the whole cell in from shared edges -> visible gaps
+const SHRINK = 0.04; // pull the whole cell in from shared edges -> visible gaps
 const BEVEL = 0.16; // extra inset of the raised top face
-const HEIGHT_FRAC = 0.35; // bevel height as a fraction of the cell's "radius"
+const HEIGHT_FRAC = 0.24; // bevel height as a fraction of the cell's "radius"
 
+// Classic minesweeper gray palette: raised silver tiles, a lighter flat face
+// for opened cells, a red exploded cell.
 const COLORS = {
-  hidden: new Color("#b9c0c9"),
-  revealed: new Color("#e7e9ee"),
-  flagged: new Color("#c7ccd4"),
-  mine: new Color("#cdd2d9"),
-  exploded: new Color("#e5534b"),
+  hidden: new Color("#c6c6c6"),
+  revealed: new Color("#dedede"),
+  flagged: new Color("#c6c6c6"),
+  mine: new Color("#c6c6c6"),
+  exploded: new Color("#e05a5a"),
 };
 
 interface CellGeom {

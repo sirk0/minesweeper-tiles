@@ -30,8 +30,8 @@ export default defineConfig({
         short_name: "Minesweeper",
         description:
           "Minesweeper over exotic boards — flat tilings and 3D surfaces.",
-        theme_color: "#1b1f24",
-        background_color: "#1b1f24",
+        theme_color: "#c0c0c0",
+        background_color: "#c0c0c0",
         display: "standalone",
         orientation: "any",
         icons: [

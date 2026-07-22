@@ -8,8 +8,9 @@ test.describe("M1 app", () => {
     await expect(page.locator("body[data-ready]")).toBeVisible();
   });
 
-  test("starts on the menu", async ({ page }) => {
+  test("starts on the menu with the HUD hidden", async ({ page }) => {
     await expect(page.locator(".menu-title")).toBeVisible();
+    await expect(page.locator(".hud")).toBeHidden();
     const state = await page.evaluate(() => window.__ms?.state());
     expect(state?.screen).toBe("menu");
   });
