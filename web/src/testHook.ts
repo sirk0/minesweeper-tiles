@@ -32,6 +32,9 @@ export interface MsHook {
   /** Rotate a 3D board as a drag of (dx, dy) CSS pixels would; no-op on
    * flat boards. */
   rotate(dxPx: number, dyPx: number): void;
+  /** Walk the Klein cell cycle one step (+1 forward, -1 back); no-op on boards
+   * without one. */
+  scroll(direction: number): void;
 }
 
 declare global {

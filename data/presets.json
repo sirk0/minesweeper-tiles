@@ -110,6 +110,246 @@
         ]
       }
     },
+    "torus": {
+      "builder": "torus_board",
+      "args": {
+        "easy": [
+          12,
+          6,
+          9
+        ],
+        "medium": [
+          16,
+          8,
+          20
+        ],
+        "hard": [
+          24,
+          10,
+          48
+        ]
+      }
+    },
+    "torustri": {
+      "builder": "torus_triangle_board",
+      "args": {
+        "easy": [
+          10,
+          5,
+          12
+        ],
+        "medium": [
+          14,
+          7,
+          30
+        ],
+        "hard": [
+          18,
+          9,
+          60
+        ]
+      }
+    },
+    "torushex": {
+      "builder": "torus_hex_board",
+      "args": {
+        "easy": [
+          6,
+          12,
+          9
+        ],
+        "medium": [
+          8,
+          16,
+          20
+        ],
+        "hard": [
+          10,
+          24,
+          44
+        ]
+      }
+    },
+    "mobius": {
+      "builder": "mobius_board",
+      "args": {
+        "easy": [
+          20,
+          4,
+          10
+        ],
+        "medium": [
+          28,
+          5,
+          22
+        ],
+        "hard": [
+          36,
+          6,
+          40
+        ]
+      }
+    },
+    "mobiustri": {
+      "builder": "mobius_triangle_board",
+      "args": {
+        "easy": [
+          14,
+          4,
+          13
+        ],
+        "medium": [
+          20,
+          5,
+          30
+        ],
+        "hard": [
+          28,
+          6,
+          62
+        ]
+      }
+    },
+    "mobiushex": {
+      "builder": "mobius_hex_board",
+      "args": {
+        "easy": [
+          14,
+          3,
+          6
+        ],
+        "medium": [
+          20,
+          5,
+          16
+        ],
+        "hard": [
+          26,
+          7,
+          34
+        ]
+      }
+    },
+    "klein": {
+      "builder": "klein_board",
+      "args": {
+        "easy": [
+          12,
+          6,
+          9
+        ],
+        "medium": [
+          16,
+          8,
+          20
+        ],
+        "hard": [
+          24,
+          10,
+          48
+        ]
+      }
+    },
+    "kleintri": {
+      "builder": "klein_triangle_board",
+      "args": {
+        "easy": [
+          12,
+          6,
+          14
+        ],
+        "medium": [
+          14,
+          10,
+          34
+        ],
+        "hard": [
+          18,
+          14,
+          88
+        ]
+      }
+    },
+    "kleinhex": {
+      "builder": "klein_hex_board",
+      "args": {
+        "easy": [
+          6,
+          4,
+          9
+        ],
+        "medium": [
+          8,
+          6,
+          20
+        ],
+        "hard": [
+          11,
+          8,
+          44
+        ]
+      }
+    },
+    "cylinder": {
+      "builder": "cylinder_board",
+      "args": {
+        "easy": [
+          12,
+          7,
+          10
+        ],
+        "medium": [
+          16,
+          10,
+          26
+        ],
+        "hard": [
+          22,
+          13,
+          60
+        ]
+      }
+    },
+    "cyltri": {
+      "builder": "cylinder_triangle_board",
+      "args": {
+        "easy": [
+          16,
+          6,
+          11
+        ],
+        "medium": [
+          22,
+          9,
+          32
+        ],
+        "hard": [
+          28,
+          12,
+          64
+        ]
+      }
+    },
+    "cylhex": {
+      "builder": "cylinder_hex_board",
+      "args": {
+        "easy": [
+          12,
+          6,
+          9
+        ],
+        "medium": [
+          16,
+          9,
+          24
+        ],
+        "hard": [
+          20,
+          12,
+          46
+        ]
+      }
+    },
     "sphere": {
       "builder": "sphere_board",
       "args": {

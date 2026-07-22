@@ -72,6 +72,18 @@ _JSON_BUILDERS = {
     "tetrahedron_board": tetrahedron_board,
     "tetrahedron_frame_board": tetrahedron_frame_board,
     "stepped_bipyramid_board": stepped_bipyramid_board,
+    "torus_board": torus_board,
+    "torus_triangle_board": torus_triangle_board,
+    "torus_hex_board": torus_hex_board,
+    "mobius_board": mobius_board,
+    "mobius_triangle_board": mobius_triangle_board,
+    "mobius_hex_board": mobius_hex_board,
+    "klein_board": klein_board,
+    "klein_triangle_board": klein_triangle_board,
+    "klein_hex_board": klein_hex_board,
+    "cylinder_board": cylinder_board,
+    "cylinder_triangle_board": cylinder_triangle_board,
+    "cylinder_hex_board": cylinder_hex_board,
 }
 
 # Explicit presets for the one-off boards (solids, aperiodic, surfaces).
@@ -85,66 +97,6 @@ _PRESETS = {
         "easy": lambda: hat_board(2, 10, keep=64, scale=12),
         "medium": lambda: hat_board(3, 28, keep=150, scale=9.5),
         "hard": lambda: hat_board(3, 65, keep=430, scale=7),
-    },
-    "torus": {
-        "easy": lambda: torus_board(12, 6, 9),
-        "medium": lambda: torus_board(16, 8, 20),
-        "hard": lambda: torus_board(24, 10, 48),
-    },
-    "torustri": {
-        "easy": lambda: torus_triangle_board(10, 5, 12),
-        "medium": lambda: torus_triangle_board(14, 7, 30),
-        "hard": lambda: torus_triangle_board(18, 9, 60),
-    },
-    "torushex": {
-        "easy": lambda: torus_hex_board(6, 12, 9),
-        "medium": lambda: torus_hex_board(8, 16, 20),
-        "hard": lambda: torus_hex_board(10, 24, 44),
-    },
-    "mobius": {
-        "easy": lambda: mobius_board(20, 4, 10),
-        "medium": lambda: mobius_board(28, 5, 22),
-        "hard": lambda: mobius_board(36, 6, 40),
-    },
-    "mobiustri": {
-        "easy": lambda: mobius_triangle_board(14, 4, 13),
-        "medium": lambda: mobius_triangle_board(20, 5, 30),
-        "hard": lambda: mobius_triangle_board(28, 6, 62),
-    },
-    "mobiushex": {
-        "easy": lambda: mobius_hex_board(14, 3, 6),
-        "medium": lambda: mobius_hex_board(20, 5, 16),
-        "hard": lambda: mobius_hex_board(26, 7, 34),
-    },
-    "klein": {
-        "easy": lambda: klein_board(12, 6, 9),
-        "medium": lambda: klein_board(16, 8, 20),
-        "hard": lambda: klein_board(24, 10, 48),
-    },
-    "kleintri": {  # tube = 2 (mod 4) so the ring-translation scroll exists
-        "easy": lambda: klein_triangle_board(12, 6, 14),
-        "medium": lambda: klein_triangle_board(14, 10, 34),
-        "hard": lambda: klein_triangle_board(18, 14, 88),
-    },
-    "kleinhex": {
-        "easy": lambda: klein_hex_board(6, 4, 9),
-        "medium": lambda: klein_hex_board(8, 6, 20),
-        "hard": lambda: klein_hex_board(11, 8, 44),
-    },
-    "cylinder": {
-        "easy": lambda: cylinder_board(12, 7, 10),
-        "medium": lambda: cylinder_board(16, 10, 26),
-        "hard": lambda: cylinder_board(22, 13, 60),
-    },
-    "cyltri": {
-        "easy": lambda: cylinder_triangle_board(16, 6, 11),
-        "medium": lambda: cylinder_triangle_board(22, 9, 32),
-        "hard": lambda: cylinder_triangle_board(28, 12, 64),
-    },
-    "cylhex": {
-        "easy": lambda: cylinder_hex_board(12, 6, 9),
-        "medium": lambda: cylinder_hex_board(16, 9, 24),
-        "hard": lambda: cylinder_hex_board(20, 12, 46),
     },
 }
 
