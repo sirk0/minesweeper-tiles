@@ -1,0 +1,91 @@
+{
+  "_comment": "Declarative UI-screen configuration shared across implementations. This describes screen chrome (headers, menus, difficulty rows) so the pygame (Python) and Three.js (TypeScript) front-ends can be kept in sync from one source instead of hand-matching layouts. Board geometry lives elsewhere (see docs/plans/typescript-rewrite-same-repo.md); this file is UI only. Schema: web/src/config/screens.ts.",
+  "version": 1,
+  "theme": {
+    "background": "#c0c0c0",
+    "panel": "#c0c0c0",
+    "accent": "#000080",
+    "text": "#000000",
+    "muted": "#3a3a3a",
+    "danger": "#c00000"
+  },
+  "difficulties": [
+    { "key": "easy", "label": "Easy" },
+    { "key": "medium", "label": "Medium" },
+    { "key": "hard", "label": "Hard" }
+  ],
+  "defaultDifficulty": "medium",
+  "hud": {
+    "_comment": "Header row: left cluster, centred status cluster, right cluster. Slots are rendered left-to-right within each cluster; a front-end shows only the slots it supports at a given board.",
+    "left": [
+      { "slot": "back", "label": "Back", "icon": "arrow-left", "action": "menu" },
+      {
+        "slot": "flag-mode",
+        "label": "Flag mode",
+        "icon": "flag",
+        "action": "toggle-flag-mode",
+        "toggle": true
+      }
+    ],
+    "center": [
+      { "slot": "mine-counter", "kind": "counter", "source": "minesRemaining", "digits": 3 },
+      { "slot": "smiley", "kind": "reset", "action": "restart" },
+      { "slot": "timer", "kind": "counter", "source": "elapsedSeconds", "digits": 3 }
+    ],
+    "right": [
+      {
+        "slot": "klein-scroll",
+        "label": "Scroll",
+        "icon": "chevrons",
+        "action": "klein-scroll",
+        "visibleWhen": "hasCellCycle"
+      }
+    ]
+  },
+  "smiley": {
+    "playing": "🙂",
+    "won": "😎",
+    "lost": "😵",
+    "pressed": "😮"
+  },
+  "menu": {
+    "title": "Minesweeper Tiles",
+    "root": [
+      {
+        "key": "classic",
+        "label": "Classic",
+        "kind": "mode",
+        "mode": "square",
+        "hint": "Flat squares — the original."
+      },
+      {
+        "key": "flat",
+        "label": "Flat",
+        "kind": "surface",
+        "surface": "flat",
+        "hint": "Regular, uniform, dual and aperiodic flat tilings."
+      },
+      {
+        "key": "manifolds",
+        "label": "Flat manifolds",
+        "kind": "group",
+        "hint": "Wrap a flat tiling onto a cylinder, Möbius strip, torus or Klein bottle.",
+        "children": ["cylinder", "mobius", "torus", "klein"]
+      },
+      {
+        "key": "sphere",
+        "label": "Sphere",
+        "kind": "group",
+        "hint": "Spherical tilings and fullerenes.",
+        "children": []
+      },
+      {
+        "key": "other",
+        "label": "Other",
+        "kind": "group",
+        "hint": "Polyhedra, frames and oddities.",
+        "children": []
+      }
+    ]
+  }
+}

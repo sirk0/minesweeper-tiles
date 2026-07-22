@@ -40,6 +40,7 @@ web-prepare:     ## stage the browser app files into $(WEB_STAGE)
 	mkdir -p $(WEB_STAGE)
 	cp main.py $(WEB_STAGE)/
 	cp -r minesweeper $(WEB_STAGE)/minesweeper
+	cp -r data $(WEB_STAGE)/data  # shared JSON config read at runtime
 
 web-package: web-prepare  ## build the browser bundle into $(WEB_OUT)
 	$(PY) -m pygbag --ume_block 0 --build $(WEB_STAGE)

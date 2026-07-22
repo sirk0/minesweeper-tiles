@@ -1,0 +1,213 @@
+:root {
+  /* Classic minesweeper gray. Raised chrome uses the bevel border colours. */
+  --bg: #c0c0c0;
+  --panel: #c0c0c0;
+  --text: #000000;
+  --muted: #3a3a3a;
+  --danger: #c00000;
+  --bevel-light: #ffffff;
+  --bevel-dark: #808080;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overscroll-behavior: none;
+}
+
+#board {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+}
+
+#ui > * {
+  pointer-events: auto;
+}
+
+/* --- HUD header --- */
+.hud[hidden] {
+  display: none;
+}
+
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(10px, env(safe-area-inset-top)) 14px 10px;
+  background: transparent;
+}
+
+.hud-cluster {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud-center {
+  gap: 14px;
+}
+
+/* Raised classic bevel: light top/left, dark bottom/right. */
+.hud-btn,
+.hud-smiley {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 3px solid;
+  border-color: var(--bevel-light) var(--bevel-dark) var(--bevel-dark)
+    var(--bevel-light);
+  border-radius: 0;
+  padding: 6px 12px;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+/* Pressed / active: invert the bevel so the control looks sunken. */
+.hud-btn.active,
+.hud-btn:active,
+.hud-smiley:active {
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light)
+    var(--bevel-dark);
+  background: #b8b8b8;
+}
+
+.hud-smiley {
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+/* Classic LED display: red digits on a black inset panel. */
+.hud-counter {
+  font-family: "DSEG7 Classic", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #ff2b2b;
+  background: #200000;
+  border: 3px solid;
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light)
+    var(--bevel-dark);
+  padding: 6px 10px;
+  min-width: 62px;
+  text-align: center;
+}
+
+/* --- Menu shell --- */
+.menu[hidden] {
+  display: none;
+}
+
+.menu {
+  margin: auto;
+  width: min(520px, 92vw);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.menu-title {
+  margin: 0 0 2px;
+  text-align: center;
+  font-size: 28px;
+}
+
+.menu-subtitle {
+  margin: 0 0 8px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-entry {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 3px solid;
+  border-color: var(--bevel-light) var(--bevel-dark) var(--bevel-dark)
+    var(--bevel-light);
+  border-radius: 0;
+  padding: 12px 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.menu-entry:active {
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light)
+    var(--bevel-dark);
+}
+
+.menu-entry-label {
+  font-weight: 600;
+  font-size: 17px;
+}
+
+.menu-entry-hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.menu-difficulty {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.difficulty-btn {
+  flex: 1;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 3px solid;
+  border-color: var(--bevel-light) var(--bevel-dark) var(--bevel-dark)
+    var(--bevel-light);
+  border-radius: 0;
+  padding: 10px;
+  cursor: pointer;
+}
+
+/* Selected difficulty: sunken bevel + slightly darker face. */
+.difficulty-btn.active {
+  border-color: var(--bevel-dark) var(--bevel-light) var(--bevel-light)
+    var(--bevel-dark);
+  background: #b0b0b0;
+  font-weight: 700;
+}

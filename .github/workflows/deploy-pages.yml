@@ -26,8 +26,27 @@ jobs:
           python-version-file: .python-version
       - name: Install dependencies
         run: pip install -r requirements-web.txt
-      - name: Build web bundle
+      - name: Build web bundle (pygbag, site root)
         run: make web-package PY=python
+      # During the TypeScript transition the Pages artifact hosts both apps:
+      # the pygbag build stays at the site root (existing URLs unchanged) and
+      # the new TS build mounts under /next/. At parity the two swap.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build TypeScript app (mounts at /next/)
+        working-directory: web
+        env:
+          VITE_BASE: /minesweeper-tiles/next/
+        run: |
+          npm ci
+          npm run build
+      - name: Compose /next/ into the Pages artifact
+        run: |
+          mkdir -p build/minesweeper/build/web/next
+          cp -r web/dist/. build/minesweeper/build/web/next/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

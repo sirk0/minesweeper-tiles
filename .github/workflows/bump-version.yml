@@ -14,19 +14,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Increase patch version in pyproject.toml
+      - name: Increment the shared version (Python + TypeScript in sync)
         id: bump
         run: |
           new_version=$(python3 - <<'EOF'
           import re
           from pathlib import Path
 
-          path = Path("pyproject.toml")
-          text = path.read_text()
-          match = re.search(r'^version = "(\d+)\.(\d+)\.(\d+)"$', text, re.M)
-          major, minor, patch = map(int, match.groups())
+          # pyproject.toml is the source of truth; bump its patch level.
+          py = Path("pyproject.toml")
+          text = py.read_text()
+          m = re.search(r'^version = "(\d+)\.(\d+)\.(\d+)"$', text, re.M)
+          major, minor, patch = map(int, m.groups())
           new = f"{major}.{minor}.{patch + 1}"
-          path.write_text(text[: match.start()] + f'version = "{new}"' + text[match.end():])
+          py.write_text(text[: m.start()] + f'version = "{new}"' + text[m.end():])
+
+          # Keep the TypeScript app (web/) locked to the same version.
+          pkg = Path("web/package.json")
+          pkg.write_text(
+              re.sub(r'("version":\s*")\d+\.\d+\.\d+(")', rf'\g<1>{new}\g<2>',
+                     pkg.read_text(), count=1)
+          )
+          lock = Path("web/package-lock.json")
+          lock.write_text(
+              re.sub(
+                  r'("name": "minesweeper-tiles-web",\s*\n\s*"version": ")\d+\.\d+\.\d+(")',
+                  rf'\g<1>{new}\g<2>', lock.read_text())
+          )
           print(new)
           EOF
           )
@@ -35,6 +49,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml
+          git add pyproject.toml web/package.json web/package-lock.json
           git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
           git push

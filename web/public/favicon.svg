@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef0f4"/><stop offset="1" stop-color="#c6cad2"/>
+    </linearGradient>
+    <linearGradient id="pent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6a94e0"/><stop offset="1" stop-color="#3a68b8"/>
+    </linearGradient>
+  </defs>
+  <rect x="26" y="26" width="460" height="460" rx="112" fill="url(#plate)" stroke="#969aa2" stroke-width="4"/>
+  
+  <polygon points="256,81 422,202 359,398 153,398 90,202"
+           fill="url(#pent)" stroke="#2a4c8e" stroke-width="8" stroke-linejoin="round"/>
+  <g stroke="#141414" stroke-width="22" stroke-linecap="round">
+    <line x1="164" y1="262" x2="348" y2="262"/>
+    <line x1="256" y1="170" x2="256" y2="354"/>
+    <line x1="191" y1="197" x2="321" y2="327"/>
+    <line x1="191" y1="327" x2="321" y2="197"/>
+  </g>
+  <circle cx="256" cy="262" r="58" fill="#141414"/>
+  <circle cx="235" cy="241" r="17" fill="#ffffff"/>
+</svg>

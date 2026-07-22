@@ -31,3 +31,60 @@ jobs:
         run: pip install -r requirements-test.txt
       - name: Lint
         run: make lint PY=python
+
+  data-sync:
+    # The shared JSON config (data/*.json) is the single source both front-ends
+    # read. Regenerate it from the Python side and fail if it drifts from what
+    # is committed (run scripts/export_data.py + export_conformance.py locally
+    # and commit the result to fix).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements-test.txt
+      - name: Regenerate shared data
+        run: |
+          PYTHONPATH=. python scripts/export_data.py
+          PYTHONPATH=. python scripts/export_conformance.py
+      - name: Check for drift
+        run: git diff --exit-code data/
+
+  web:
+    # TypeScript app (web/): typecheck, unit tests, production build, and the
+    # Playwright e2e + visual-regression suite under deterministic software
+    # WebGL (see web/playwright.config.ts). Visual baselines are only
+    # authoritative in this pinned CI environment.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test
+      - name: Build
+        run: npm run build
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: E2E + visual tests
+        run: npm run e2e
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
