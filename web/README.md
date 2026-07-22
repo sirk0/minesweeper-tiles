@@ -36,6 +36,44 @@ npm run e2e:update  # refresh visual baselines
 Cloud sessions: the preinstalled Chromium is used by pointing Playwright at it —
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-<build>/chrome-linux/chrome npm run e2e`.
 
+## Agent notes: driving the app headless
+
+Practical knowledge for verifying changes by actually running the app
+(screenshots are the primary review artifact in this repo):
+
+- **Ad-hoc screenshots**: `npm run build`, `npx vite preview --port 4173`
+  in the background, then a small Playwright script against
+  `http://localhost:4173/?mode=X&difficulty=Y&seed=N`. Launch Chromium with
+  `executablePath` set to the preinstalled browser and the SwiftShader args
+  from `playwright.config.ts` so output matches CI. Wait for
+  `body[data-ready]` before shooting. **Put the script inside `web/`** —
+  Node resolves `@playwright/test` from the script's location, not the cwd.
+- **The `window.__ms` seam** is the way in: `cells()`, `startBoard(mode,
+  difficulty, {mines|seed})`, `reveal/flag/chord(cell)`, `rotate(dx, dy)`
+  (drag-pixels), `state()`. On 3D boards `cellScreenXY(cell)` returns
+  `null` for cells facing away — filter for a visible cell instead of
+  indexing blindly.
+- **Flood-fill eats sparse fixtures**: on a closed surface a reveal floods
+  around the whole solid past a thin mine wall, instantly winning the game
+  (auto-flagging every mine). To stage a mixed hidden/revealed screenshot,
+  reveal only cells adjacent to mines (each shows a number, so nothing
+  cascades), or use a mine-dense fixture.
+- **`--update-snapshots` does not touch a baseline that passes within
+  `maxDiffPixelRatio` tolerance** (5% here). After an intentional small
+  visual change (e.g. header tweaks), delete the affected
+  `tests/e2e/gallery.spec.ts-snapshots/*.png` and regenerate, or the
+  committed baselines silently keep the old pixels. Baselines are only
+  authoritative under the pinned software-WebGL environment (CI, or a
+  cloud session with the same launch args); regenerate them there, then
+  re-run the spec to confirm determinism.
+- **Playwright's `webServer` reuses a running port-4173 server** outside
+  CI. `vite preview` serves `dist/` from disk, so an `npm run build` is
+  enough to refresh it — but stale servers are a classic source of
+  "my change has no effect".
+- The Python game is the behavior reference; run it headless per the
+  "Screenshots" section in the repo-root CLAUDE.md when unsure how
+  something is supposed to look or feel.
+
 ## Layout
 
 - `src/game.ts`, `src/rng.ts` — pure game rules (port of `game.py`) and a

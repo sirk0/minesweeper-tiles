@@ -255,19 +255,19 @@
       "builder": "stepped_bipyramid_board",
       "args": {
         "easy": [
-          6,
-          3,
-          20
+          7,
+          4,
+          27
         ],
         "medium": [
-          8,
-          4,
-          40
+          9,
+          5,
+          51
         ],
         "hard": [
-          10,
-          5,
-          72
+          11,
+          6,
+          88
         ]
       }
     }

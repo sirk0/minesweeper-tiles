@@ -145,6 +145,16 @@ body {
   gap: 14px;
 }
 
+.menu-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-back .menu-entry-label {
+  color: var(--muted);
+}
+
 .menu-title {
   margin: 0 0 2px;
   text-align: center;

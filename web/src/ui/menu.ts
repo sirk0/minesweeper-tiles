@@ -2,11 +2,12 @@ import { screens } from "../config/screens";
 import { MENU, MODE_LABELS, OTHER_MODES, SPHERE_MODES } from "../boards/catalog";
 import { MODES } from "../boards/presets";
 
-// Minimal menu: the ported modes in labelled groups (flat boards, then the
-// Sphere and Other solids per the shared catalog's menu taxonomy). Title,
-// difficulty row and theme still come from the shared UI-screen config
-// (data/ui/screens.json). The full geometry-first drill-down returns as the
-// surface wraps and tiling families are ported.
+// Two-level menu: the root screen lists the board groups (flat boards, then
+// the Sphere and Other solids per the shared catalog's menu taxonomy);
+// picking one shows that group's modes with a back row — so no screen needs
+// to scroll. Title, difficulty row and theme still come from the shared
+// UI-screen config (data/ui/screens.json). The full geometry-first
+// drill-down returns as the surface wraps and tiling families are ported.
 
 export interface MenuSelection {
   mode: string;
@@ -18,44 +19,85 @@ const FLAT_ORDER = ["square", "trigrid", "hex", "triangle", "hexhex"];
 
 const ROOT_LABELS = MENU.rootLabels as Record<string, string>;
 
+interface Group {
+  key: string;
+  label: string;
+  modes: string[];
+}
+
 export class Menu {
   readonly root: HTMLElement;
   private difficulty = screens.defaultDifficulty;
+  private readonly groups: Group[];
+  private readonly body: HTMLElement;
 
   constructor(private readonly onSelect: (sel: MenuSelection) => void) {
+    this.groups = [
+      { key: "flat", label: "Flat boards", modes: this.orderedFlatModes() },
+      { key: "sphere", label: ROOT_LABELS["sphere"] ?? "Sphere", modes: SPHERE_MODES },
+      { key: "other", label: ROOT_LABELS["other"] ?? "Other", modes: OTHER_MODES },
+    ]
+      .map((g) => ({ ...g, modes: g.modes.filter((m) => MODES.includes(m)) }))
+      .filter((g) => g.modes.length > 0);
+
     this.root = document.createElement("section");
     this.root.className = "menu";
 
     const title = document.createElement("h1");
     title.className = "menu-title";
     title.textContent = screens.menu.title;
-    this.root.append(title);
 
-    const groups: [string, string[]][] = [
-      ["Flat boards", this.orderedFlatModes()],
-      [ROOT_LABELS["sphere"] ?? "Sphere", SPHERE_MODES],
-      [ROOT_LABELS["other"] ?? "Other", OTHER_MODES],
-    ];
-    for (const [label, modes] of groups) {
-      const ported = modes.filter((m) => MODES.includes(m));
-      if (!ported.length) continue;
-      const subtitle = document.createElement("p");
-      subtitle.className = "menu-subtitle";
-      subtitle.textContent = label;
-      const list = document.createElement("ul");
-      list.className = "menu-list";
-      for (const mode of ported) list.append(this.entryRow(mode));
-      this.root.append(subtitle, list);
-    }
+    this.body = document.createElement("div");
+    this.body.className = "menu-body";
 
-    this.root.append(this.difficultyRow());
+    this.root.append(title, this.body, this.difficultyRow());
+    this.showRoot();
   }
 
   show(): void {
     this.root.hidden = false;
+    this.showRoot();
   }
   hide(): void {
     this.root.hidden = true;
+  }
+
+  private showRoot(): void {
+    const list = document.createElement("ul");
+    list.className = "menu-list";
+    for (const group of this.groups) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.className = "menu-entry";
+      btn.dataset.group = group.key;
+      const label = document.createElement("span");
+      label.className = "menu-entry-label";
+      label.textContent = group.label;
+      const hint = document.createElement("span");
+      hint.className = "menu-entry-hint";
+      hint.textContent = group.modes.map((m) => MODE_LABELS[m] ?? m).join(" · ");
+      btn.append(label, hint);
+      btn.addEventListener("click", () => this.showGroup(group));
+      li.append(btn);
+      list.append(li);
+    }
+    this.body.replaceChildren(list);
+  }
+
+  private showGroup(group: Group): void {
+    const back = document.createElement("button");
+    back.className = "menu-entry menu-back";
+    back.dataset.action = "back";
+    const backLabel = document.createElement("span");
+    backLabel.className = "menu-entry-label";
+    backLabel.textContent = `‹ ${group.label}`;
+    back.append(backLabel);
+    back.addEventListener("click", () => this.showRoot());
+
+    const list = document.createElement("ul");
+    list.className = "menu-list";
+    for (const mode of group.modes) list.append(this.entryRow(mode));
+    this.body.replaceChildren(back, list);
   }
 
   private orderedFlatModes(): string[] {

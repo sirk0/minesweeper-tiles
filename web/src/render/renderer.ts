@@ -90,6 +90,7 @@ export class BoardRenderer {
       // Scale the solid into the unit sphere so one camera setup frames all.
       board.scale.setScalar(1 / board.view.radius);
     }
+    board.orient?.(board.quaternion);
     this.scene.add(board);
     this.resize();
     this.dirty = true;
@@ -99,20 +100,23 @@ export class BoardRenderer {
   setOrientation(q: Quaternion): void {
     if (!this.board) return;
     this.board.quaternion.copy(q);
+    this.board.orient?.(this.board.quaternion);
     this.dirty = true;
   }
 
   /** Trackball: rotate the board by a drag of (dx, dy) CSS pixels — yaw
    * around the world y-axis, pitch around the world x-axis, premultiplied so
-   * the board turns under the cursor regardless of its current orientation. */
+   * the board turns under the cursor regardless of its current orientation.
+   * Dragging down tilts the top toward the viewer. */
   rotateBy(dxPx: number, dyPx: number): void {
     if (!this.board || this.board.view.kind !== "solid") return;
     const turn = new Quaternion()
-      .setFromAxisAngle(X_AXIS, -dyPx * ROTATE_SPEED)
+      .setFromAxisAngle(X_AXIS, dyPx * ROTATE_SPEED)
       .multiply(
         new Quaternion().setFromAxisAngle(Y_AXIS, dxPx * ROTATE_SPEED),
       );
     this.board.quaternion.premultiply(turn);
+    this.board.orient?.(this.board.quaternion);
     this.dirty = true;
   }
 

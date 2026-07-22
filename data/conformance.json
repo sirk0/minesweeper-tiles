@@ -409,30 +409,30 @@
     },
     "steppedbipyramid": {
       "easy": {
-        "cellCount": 144,
-        "mineCount": 20,
+        "cellCount": 198,
+        "mineCount": 27,
         "euler": 2,
         "boundaryComponents": 0,
-        "edgeCount": 288,
-        "vertexCount": 146,
+        "edgeCount": 396,
+        "vertexCount": 200,
         "hasCellCycle": false
       },
       "medium": {
-        "cellCount": 256,
-        "mineCount": 40,
+        "cellCount": 326,
+        "mineCount": 51,
         "euler": 2,
         "boundaryComponents": 0,
-        "edgeCount": 512,
-        "vertexCount": 258,
+        "edgeCount": 652,
+        "vertexCount": 328,
         "hasCellCycle": false
       },
       "hard": {
-        "cellCount": 400,
-        "mineCount": 72,
+        "cellCount": 486,
+        "mineCount": 88,
         "euler": 2,
         "boundaryComponents": 0,
-        "edgeCount": 800,
-        "vertexCount": 402,
+        "edgeCount": 972,
+        "vertexCount": 488,
         "hasCellCycle": false
       }
     }

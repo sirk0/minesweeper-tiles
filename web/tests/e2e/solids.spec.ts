@@ -34,8 +34,12 @@ test.describe("M2 solids", () => {
   test("menu lists the Sphere and Other groups and launches a solid", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("body[data-ready]")).toBeVisible();
-    await expect(page.locator(".menu-subtitle", { hasText: "Sphere" })).toBeVisible();
-    await expect(page.locator(".menu-subtitle", { hasText: "Other" })).toBeVisible();
+    await expect(page.locator('.menu-entry[data-group="sphere"]')).toBeVisible();
+    await expect(page.locator('.menu-entry[data-group="other"]')).toBeVisible();
+    // Drill in, back out, drill in again — then launch.
+    await page.locator('.menu-entry[data-group="sphere"]').click();
+    await page.locator('.menu-entry[data-action="back"]').click();
+    await page.locator('.menu-entry[data-group="sphere"]').click();
     await page.locator('.menu-entry[data-mode="sphere"]').click();
     const state = await page.evaluate(() => window.__ms!.state());
     expect(state.screen).toBe("game");
