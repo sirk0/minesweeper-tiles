@@ -21,6 +21,7 @@ import {
 import {
   COLORS,
   glyphFor,
+  polygonInradius,
   type BoardMesh,
   type BoardView,
   type CellAnchor,
@@ -342,12 +343,29 @@ export class SolidBoard extends Group implements BoardMesh {
       ) {
         continue;
       }
-      const s = g.radius * 0.62;
+      // Fit the glyph inside the cell as the viewer sees it: project the
+      // cell polygon into the billboard plane and size/centre the quad by
+      // the projected footprint's inradius (as the pygame renderer does per
+      // frame), so a number never crosses its cell's edges however tilted
+      // the cell currently is.
       const c = g.center;
+      const projected = g.poly.map((p): [number, number] => {
+        const d: Vec3 = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+        return [
+          d[0] * u[0] + d[1] * u[1] + d[2] * u[2],
+          d[0] * v[0] + d[1] * v[1] + d[2] * v[2],
+        ];
+      });
+      const px =
+        projected.reduce((a, q) => a + q[0], 0) / projected.length;
+      const py =
+        projected.reduce((a, q) => a + q[1], 0) / projected.length;
+      const s = polygonInradius(projected, [px, py]) * 0.9;
+      if (!(s > 0)) continue;
       const at = (du: number, dv: number): Vec3 => [
-        c[0] + u[0] * s * du + v[0] * s * dv,
-        c[1] + u[1] * s * du + v[1] * s * dv,
-        c[2] + u[2] * s * du + v[2] * s * dv,
+        c[0] + u[0] * (px + s * du) + v[0] * (py + s * dv),
+        c[1] + u[1] * (px + s * du) + v[1] * (py + s * dv),
+        c[2] + u[2] * (px + s * du) + v[2] * (py + s * dv),
       ];
       const bl = at(-1, -1);
       const br = at(1, -1);

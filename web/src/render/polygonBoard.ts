@@ -11,6 +11,7 @@ import type { Board, CellId, Vertex } from "../boards/core";
 import {
   baseColorFor,
   glyphFor,
+  polygonInradius,
   type BoardMesh,
   type BoardView,
   type CellAnchor,
@@ -33,7 +34,8 @@ interface CellGeom {
   start: number; // first vertex index in the position/color buffers
   count: number; // vertex count for this cell
   center: Vertex; // render-space centroid (x, y)
-  radius: number; // mean distance centroid -> vertices (glyph sizing)
+  radius: number; // mean distance centroid -> vertices (bevel height)
+  inradius: number; // distance centroid -> nearest edge (glyph sizing)
 }
 
 export class PolygonBoard extends Group implements BoardMesh {
@@ -104,6 +106,7 @@ export class PolygonBoard extends Group implements BoardMesh {
         count: positions.length / 3 - start,
         center: centroid,
         radius,
+        inradius: polygonInradius(poly, centroid),
       });
     });
 
@@ -204,7 +207,9 @@ export class PolygonBoard extends Group implements BoardMesh {
       if (!uv) continue;
       const g = this.geom[i]!;
       const [cxp, cyp] = g.center;
-      const s = g.radius * 0.62;
+      // Sized by the inradius so the glyph stays inside the cell even on
+      // pointy cells (triangles) where the mean vertex distance overshoots.
+      const s = g.inradius * 0.9;
       const z = g.radius * HEIGHT_FRAC + 0.01;
       const [u0, v0, u1, v1] = uv;
       pos.push(

@@ -63,6 +63,30 @@ export interface CellAnchor {
   normal: Vec3;
 }
 
+/** Distance from `center` to the nearest polygon edge (port of gui.py's
+ * `inradius`) — how big a glyph fits inside the cell without crossing its
+ * edges. Zero/negative means the polygon is degenerate (e.g. seen edge-on). */
+export function polygonInradius(
+  points: readonly (readonly [number, number])[],
+  center: readonly [number, number],
+): number {
+  let best = Infinity;
+  const [px, py] = center;
+  for (let i = 0; i < points.length; i++) {
+    const [ax, ay] = points[i]!;
+    const [bx, by] = points[(i + 1) % points.length]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSq = dx * dx + dy * dy;
+    const t =
+      lengthSq === 0
+        ? 0
+        : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq));
+    best = Math.min(best, Math.hypot(px - (ax + t * dx), py - (ay + t * dy)));
+  }
+  return best;
+}
+
 export interface BoardMesh extends Group {
   readonly view: BoardView;
   cellForFace(faceIndex: number): CellId | null;
