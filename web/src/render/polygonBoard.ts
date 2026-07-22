@@ -1,7 +1,6 @@
 import {
   BufferAttribute,
   BufferGeometry,
-  Color,
   DoubleSide,
   Group,
   Mesh,
@@ -9,45 +8,38 @@ import {
   MeshStandardMaterial,
 } from "three";
 import type { Board, CellId, Vertex } from "../boards/core";
-import { makeGlyphAtlas, type Glyph, type GlyphAtlas } from "./glyphAtlas";
+import {
+  baseColorFor,
+  glyphFor,
+  polygonInradius,
+  type BoardMesh,
+  type BoardView,
+  type CellAnchor,
+  type CellVisual,
+} from "./boardMesh";
+import { makeGlyphAtlas, type GlyphAtlas } from "./glyphAtlas";
 
 // Renders an arbitrary flat polygon board (square / triangle / hex / ...) as
 // one merged beveled geometry: each convex cell becomes a raised top face
 // (fan-triangulated) ringed by bevel quads, giving real normals for lighting.
 // Per-cell colour is a ranged update; a single glyph-atlas mesh batches the
-// number/flag/mine quads. This is the M1 flat renderer — the same approach the
-// 3D milestones extend.
-
-export type CellVisual =
-  | { kind: "hidden" }
-  | { kind: "flagged" }
-  | { kind: "revealed"; mines: number }
-  | { kind: "mine" }
-  | { kind: "exploded" };
+// number/flag/mine quads. The 3D SolidBoard lays the same construction out on
+// a solid's surface.
 
 const SHRINK = 0.04; // pull the whole cell in from shared edges -> visible gaps
 const BEVEL = 0.16; // extra inset of the raised top face
 const HEIGHT_FRAC = 0.24; // bevel height as a fraction of the cell's "radius"
 
-// Classic minesweeper gray palette: raised silver tiles, a lighter flat face
-// for opened cells, a red exploded cell.
-const COLORS = {
-  hidden: new Color("#c6c6c6"),
-  revealed: new Color("#dedede"),
-  flagged: new Color("#c6c6c6"),
-  mine: new Color("#c6c6c6"),
-  exploded: new Color("#e05a5a"),
-};
-
 interface CellGeom {
   start: number; // first vertex index in the position/color buffers
   count: number; // vertex count for this cell
   center: Vertex; // render-space centroid (x, y)
-  radius: number; // mean distance centroid -> vertices (glyph sizing)
+  radius: number; // mean distance centroid -> vertices (bevel height)
+  inradius: number; // distance centroid -> nearest edge (glyph sizing)
 }
 
-export class PolygonBoard extends Group {
-  readonly extent: { width: number; height: number };
+export class PolygonBoard extends Group implements BoardMesh {
+  readonly view: BoardView;
   private readonly order: CellId[];
   private readonly cellIndex = new Map<CellId, number>();
   private readonly geom: CellGeom[] = [];
@@ -69,7 +61,7 @@ export class PolygonBoard extends Group {
     // renders upright (y up).
     const cx = board.width / 2;
     const cy = board.height / 2;
-    this.extent = { width: board.width, height: board.height };
+    this.view = { kind: "flat", width: board.width, height: board.height };
 
     const positions: number[] = [];
     const faceCell: number[] = [];
@@ -114,6 +106,7 @@ export class PolygonBoard extends Group {
         count: positions.length / 3 - start,
         center: centroid,
         radius,
+        inradius: polygonInradius(poly, centroid),
       });
     });
 
@@ -168,10 +161,11 @@ export class PolygonBoard extends Group {
     return ci == null ? null : (this.order[ci] ?? null);
   }
 
-  screenCenter(cell: CellId): Vertex | null {
+  cellAnchor(cell: CellId): CellAnchor | null {
     const i = this.cellIndex.get(cell);
     if (i == null) return null;
-    return this.geom[i]!.center;
+    const g = this.geom[i]!;
+    return { center: [g.center[0], g.center[1], 0], normal: [0, 0, 1] };
   }
 
   setVisual(cell: CellId, visual: CellVisual): void {
@@ -191,23 +185,8 @@ export class PolygonBoard extends Group {
     if (i >= 0) this.writeColor(i);
   }
 
-  private baseColor(i: number): Color {
-    switch (this.states[i]!.kind) {
-      case "hidden":
-        return COLORS.hidden;
-      case "flagged":
-        return COLORS.flagged;
-      case "revealed":
-        return COLORS.revealed;
-      case "mine":
-        return COLORS.mine;
-      case "exploded":
-        return COLORS.exploded;
-    }
-  }
-
   private writeColor(i: number): void {
-    const col = this.baseColor(i).clone();
+    const col = baseColorFor(this.states[i]!).clone();
     if (i === this.hovered && this.states[i]!.kind === "hidden") {
       col.offsetHSL(0, 0, 0.08);
     }
@@ -218,25 +197,19 @@ export class PolygonBoard extends Group {
     this.colorAttr.needsUpdate = true;
   }
 
-  private glyphOf(i: number): Glyph | null {
-    const s = this.states[i]!;
-    if (s.kind === "flagged") return "flag";
-    if (s.kind === "mine" || s.kind === "exploded") return "mine";
-    if (s.kind === "revealed" && s.mines > 0) return Math.min(s.mines, 12);
-    return null;
-  }
-
   private rebuildGlyphs(): void {
     const pos: number[] = [];
     const uvs: number[] = [];
     for (let i = 0; i < this.order.length; i++) {
-      const glyph = this.glyphOf(i);
+      const glyph = glyphFor(this.states[i]!);
       if (glyph === null) continue;
       const uv = this.atlas.uv(glyph);
       if (!uv) continue;
       const g = this.geom[i]!;
       const [cxp, cyp] = g.center;
-      const s = g.radius * 0.62;
+      // Sized by the inradius so the glyph stays inside the cell even on
+      // pointy cells (triangles) where the mean vertex distance overshoots.
+      const s = g.inradius * 0.9;
       const z = g.radius * HEIGHT_FRAC + 0.01;
       const [u0, v0, u1, v1] = uv;
       pos.push(

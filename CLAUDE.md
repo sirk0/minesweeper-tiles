@@ -167,6 +167,19 @@ Note: the saved image is the 2x supersampled canvas; the real window
 shows it downscaled by `UI_SCALE`. To preview what the user sees,
 `pygame.transform.smoothscale` it to half size first.
 
+## TypeScript app (`web/`)
+
+The in-progress TypeScript/Three.js rewrite lives in `web/` and shares its
+config and conformance oracle with the Python game through `data/*.json`
+(see AGENTS.md). Commands (`npm run typecheck/test/build`, Playwright
+`e2e`) and — important when changing anything visual or interactive —
+**how to drive and screenshot the app headless, plus the gotchas that
+actually bite** (the `window.__ms` seam, flood-fill devouring sparse mine
+fixtures, `--update-snapshots` silently keeping baselines that pass within
+tolerance, ESM script placement) are documented in `web/README.md` under
+"Agent notes". Verify UI changes by looking at real screenshots, not just
+by the test suite passing.
+
 ## Pull requests
 
 When a PR adds a new level/board or changes the UI, include a screenshot

@@ -6,14 +6,19 @@ import { DIFFICULTIES } from "./boards/catalog";
 import { screens } from "./config/screens";
 import { GameSession } from "./session";
 import { attachControls } from "./input/controls";
-import { BoardRenderer } from "./render/renderer";
+import {
+  BoardRenderer,
+  initialOrientation,
+  KEY_ROTATE_STEP,
+} from "./render/renderer";
 import { Hud } from "./ui/hud";
 import { Menu } from "./ui/menu";
 import { installTestHook } from "./testHook";
 
-// M1 bootstrap: menu launches a ported flat board; deep links start one
-// directly; input drives reveal/flag/chord through the GameSession; the HUD and
-// menu render from the shared UI-screen config; the test seam is exposed.
+// App bootstrap: menu launches a ported board; deep links start one directly;
+// input drives reveal/flag/chord (and, on 3D boards, drag/arrow-key rotation)
+// through the GameSession; the HUD and menu render from the shared UI-screen
+// config; the test seam is exposed.
 class App {
   private readonly renderer: BoardRenderer;
   private readonly hud: Hud;
@@ -34,12 +39,15 @@ class App {
     this.hud.root.hidden = true;
 
     window.addEventListener("resize", () => this.renderer.resize());
+    window.addEventListener("keydown", (e) => this.onKey(e));
     attachControls(canvas, {
       pick: (ndc) => this.renderer.pick(ndc),
       onTap: (cell) => this.onTap(cell),
       onLongPress: (cell) => this.flag(cell),
       onSecondary: (cell) => this.flag(cell),
       onHover: (cell) => this.hover(cell),
+      rotates: () => this.screen === "game" && (this.session?.is3d ?? false),
+      onRotate: (dx, dy) => this.rotate(dx, dy),
     });
     this.renderer.start();
     window.setInterval(() => this.tickTimer(), 250);
@@ -72,6 +80,7 @@ class App {
       ...(opts.mines ? { minePositions: opts.mines } : {}),
     });
     this.renderer.setBoard(this.session.mesh);
+    if (this.session.is3d) this.renderer.setOrientation(initialOrientation(mode));
     this.screen = "game";
     this.menu.hide();
     this.hud.root.hidden = false;
@@ -125,6 +134,22 @@ class App {
     this.renderer.markDirty();
   }
 
+  private rotate(dxPx: number, dyPx: number): void {
+    if (!this.session?.is3d || this.screen !== "game") return;
+    this.renderer.rotateBy(dxPx, dyPx);
+  }
+
+  private onKey(e: KeyboardEvent): void {
+    if (!this.session?.is3d || this.screen !== "game") return;
+    const step = KEY_ROTATE_STEP;
+    if (e.key === "ArrowLeft") this.rotate(-step, 0);
+    else if (e.key === "ArrowRight") this.rotate(step, 0);
+    else if (e.key === "ArrowUp") this.rotate(0, -step);
+    else if (e.key === "ArrowDown") this.rotate(0, step);
+    else return;
+    e.preventDefault();
+  }
+
   private afterMove(): void {
     this.syncHud();
     this.renderer.markDirty();
@@ -148,12 +173,22 @@ class App {
 
   // -- test seam -------------------------------------------------------------
 
+  /** Screen coords of a cell's centre, or null when the cell currently faces
+   * away from the camera (3D boards) — tests pick a visible cell instead. */
   private cellScreenXY(cell: CellId): { x: number; y: number } | null {
     if (!this.session) return null;
-    const c = this.session.mesh.screenCenter(cell);
-    if (!c) return null;
-    const world = new Vector3(c[0], c[1], 0).add(this.session.mesh.position);
-    const ndc = world.project(this.renderer.camera);
+    const mesh = this.session.mesh;
+    const anchor = mesh.cellAnchor(cell);
+    if (!anchor) return null;
+    mesh.updateWorldMatrix(true, false);
+    const world = new Vector3(...anchor.center).applyMatrix4(mesh.matrixWorld);
+    const camera = this.renderer.camera;
+    if (this.session.is3d) {
+      const normal = new Vector3(...anchor.normal).transformDirection(mesh.matrixWorld);
+      const toCamera = camera.position.clone().sub(world);
+      if (normal.dot(toCamera) <= 1e-6) return null; // back-facing
+    }
+    const ndc = world.project(camera);
     const r = this.canvas.getBoundingClientRect();
     return {
       x: r.left + ((ndc.x + 1) / 2) * r.width,
@@ -178,6 +213,7 @@ class App {
         this.session?.chord(cell);
         this.afterMove();
       },
+      rotate: (dxPx, dyPx) => this.rotate(dxPx, dyPx),
       state: () => {
         const s = this.session;
         return {
@@ -188,6 +224,7 @@ class App {
           minesRemaining: s ? s.hud().minesRemaining : 0,
           revealed: s ? s.game.revealed : 0,
           cellCount: s ? s.game.cells.length : 0,
+          is3d: s?.is3d ?? false,
         };
       },
     });

@@ -17,6 +17,7 @@ test.describe("M1 app", () => {
 
   test("menu launches a flat board at the chosen difficulty", async ({ page }) => {
     await page.locator('.difficulty-btn[data-key="easy"]').click();
+    await page.locator('.menu-entry[data-group="flat"]').click();
     await page.locator('.menu-entry[data-mode="square"]').click();
     const state = await page.evaluate(() => window.__ms?.state());
     expect(state?.screen).toBe("game");

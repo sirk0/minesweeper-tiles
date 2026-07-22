@@ -5,6 +5,17 @@ import { screens, type HudSlot } from "../config/screens";
 // front-ends can share one description of the chrome. M0 renders the header
 // statically; wiring the actions to a live game session lands in M1.
 
+// Inline SVGs for slots whose config declares an `icon` we can draw; slots
+// with no entry here fall back to their text label. The flag mirrors the
+// in-game glyph (glyphAtlas.ts drawFlag): dark pole and base, red pennant.
+const ICONS: Record<string, string> = {
+  flag: `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+    <path d="M10.2 5.8 V18.6" stroke="#202020" stroke-width="1.7" fill="none"/>
+    <rect x="7.2" y="18.2" width="9.7" height="1.8" fill="#202020"/>
+    <path d="M10.2 5.8 L16.4 8.9 L10.2 12 Z" fill="#e5534b"/>
+  </svg>`,
+};
+
 export interface HudState {
   minesRemaining: number;
   elapsedSeconds: number;
@@ -71,7 +82,15 @@ export class Hud {
     const btn = document.createElement("button");
     btn.className = "hud-btn";
     btn.dataset.slot = slot.slot;
-    btn.textContent = slot.label ?? slot.slot;
+    const icon = slot.icon ? ICONS[slot.icon] : undefined;
+    if (icon) {
+      btn.classList.add("hud-icon-btn");
+      btn.innerHTML = icon;
+      btn.setAttribute("aria-label", slot.label ?? slot.slot);
+      btn.title = slot.label ?? slot.slot;
+    } else {
+      btn.textContent = slot.label ?? slot.slot;
+    }
     if (slot.action) btn.addEventListener("click", () => this.onAction(slot.action!));
     if (slot.slot === "flag-mode") this.flagBtn = btn;
     if (slot.visibleWhen) btn.dataset.visibleWhen = slot.visibleWhen;
