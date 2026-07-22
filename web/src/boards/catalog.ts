@@ -37,16 +37,19 @@ export function modeFor(tilingKey: string, surfaceKey: string): string {
   return tiling.modeOverrides[surfaceKey] ?? surface.prefix + tiling.key;
 }
 
-// mode -> label for the ported (flat regular) modes. Regular periodic modes
-// take the tiling's label; the flat triangle grid keeps its historical label.
+// mode -> label for the ported modes. Regular periodic modes take the
+// tiling's label; the flat triangle grid keeps its historical label; the
+// one-off boards (shaped flats, solids) take their solo labels.
 export const MODE_LABELS: Record<string, string> = (() => {
-  const labels: Record<string, string> = {};
+  const labels: Record<string, string> = { ...SOLO_LABELS };
   for (const t of REGULAR_TILINGS) {
     const flat = t.modeOverrides["flat"] ?? t.key;
     labels[flat] = t.label;
   }
   labels["trigrid"] = "Triangle grid";
-  labels["triangle"] = SOLO_LABELS["triangle"] ?? "Triangle of triangles";
-  labels["hexhex"] = SOLO_LABELS["hexhex"] ?? "Hexagon of hexagons";
   return labels;
 })();
+
+// Menu groupings for the 3D one-off boards (M2: Sphere and Other).
+export const SPHERE_MODES = MENU.sphereModes as string[];
+export const OTHER_MODES = MENU.otherModes as string[];

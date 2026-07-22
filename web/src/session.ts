@@ -1,12 +1,14 @@
 import { buildBoard } from "./boards/presets";
-import type { Board, CellId } from "./boards/core";
+import { isBoard3D, type AnyBoard, type CellId } from "./boards/core";
 import { Game } from "./game";
 import { mulberry32, type Rng } from "./rng";
-import { PolygonBoard, type CellVisual } from "./render/polygonBoard";
+import type { BoardMesh, CellVisual } from "./render/boardMesh";
+import { PolygonBoard } from "./render/polygonBoard";
+import { SolidBoard } from "./render/solidBoard";
 
-// GameSession mediates between the pure Game (rules), the PolygonBoard (mesh),
-// and the HUD. Each move syncs only the changed cells into the mesh and reports
-// HUD state. This is the seam the M2+ 3D screens plug a different mesh into.
+// GameSession mediates between the pure Game (rules), the board mesh (flat
+// PolygonBoard or 3D SolidBoard), and the HUD. Each move syncs only the
+// changed cells into the mesh and reports HUD state.
 
 export interface HudSnapshot {
   minesRemaining: number;
@@ -15,8 +17,8 @@ export interface HudSnapshot {
 }
 
 export class GameSession {
-  readonly board: Board;
-  readonly mesh: PolygonBoard;
+  readonly board: AnyBoard;
+  readonly mesh: BoardMesh;
   readonly game: Game;
   readonly mode: string;
   readonly difficulty: string;
@@ -33,7 +35,9 @@ export class GameSession {
     this.mode = mode;
     this.difficulty = difficulty;
     this.board = buildBoard(mode, difficulty);
-    this.mesh = new PolygonBoard(this.board);
+    this.mesh = isBoard3D(this.board)
+      ? new SolidBoard(this.board)
+      : new PolygonBoard(this.board);
     const rng: Rng | undefined =
       opts.seed !== undefined ? mulberry32(opts.seed >>> 0) : undefined;
     this.game = new Game(this.board.adjacency, {
@@ -45,6 +49,10 @@ export class GameSession {
 
   get status() {
     return this.game.state;
+  }
+
+  get is3d(): boolean {
+    return isBoard3D(this.board);
   }
 
   hud(): HudSnapshot {

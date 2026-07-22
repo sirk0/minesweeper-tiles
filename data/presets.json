@@ -109,6 +109,167 @@
           18
         ]
       }
+    },
+    "sphere": {
+      "builder": "sphere_board",
+      "args": {
+        "easy": [
+          7
+        ],
+        "medium": [
+          10
+        ],
+        "hard": [
+          14
+        ]
+      }
+    },
+    "c80": {
+      "builder": "c80_board",
+      "args": {
+        "easy": [
+          5
+        ],
+        "medium": [
+          8
+        ],
+        "hard": [
+          11
+        ]
+      }
+    },
+    "c180": {
+      "builder": "c180_board",
+      "args": {
+        "easy": [
+          10
+        ],
+        "medium": [
+          14
+        ],
+        "hard": [
+          19
+        ]
+      }
+    },
+    "spheretri": {
+      "builder": "sphere_triangle_board",
+      "args": {
+        "easy": [
+          10
+        ],
+        "medium": [
+          14
+        ],
+        "hard": [
+          18
+        ]
+      }
+    },
+    "snubdodec": {
+      "builder": "snub_dodecahedron_board",
+      "args": {
+        "easy": [
+          10
+        ],
+        "medium": [
+          14
+        ],
+        "hard": [
+          19
+        ]
+      }
+    },
+    "cube": {
+      "builder": "cube_board",
+      "args": {
+        "easy": [
+          4,
+          12
+        ],
+        "medium": [
+          6,
+          38
+        ],
+        "hard": [
+          8,
+          84
+        ]
+      }
+    },
+    "cubeframe": {
+      "builder": "cube_frame_board",
+      "args": {
+        "easy": [
+          6,
+          2,
+          40
+        ],
+        "medium": [
+          9,
+          3,
+          104
+        ],
+        "hard": [
+          12,
+          4,
+          200
+        ]
+      }
+    },
+    "tetrahedron": {
+      "builder": "tetrahedron_board",
+      "args": {
+        "easy": [
+          8,
+          4
+        ],
+        "medium": [
+          24,
+          6
+        ],
+        "hard": [
+          55,
+          8
+        ]
+      }
+    },
+    "tetraframe": {
+      "builder": "tetrahedron_frame_board",
+      "args": {
+        "easy": [
+          8,
+          2
+        ],
+        "medium": [
+          26,
+          3
+        ],
+        "hard": [
+          54,
+          4
+        ]
+      }
+    },
+    "steppedbipyramid": {
+      "builder": "stepped_bipyramid_board",
+      "args": {
+        "easy": [
+          6,
+          3,
+          20
+        ],
+        "medium": [
+          8,
+          4,
+          40
+        ],
+        "hard": [
+          10,
+          5,
+          72
+        ]
+      }
     }
   }
 }

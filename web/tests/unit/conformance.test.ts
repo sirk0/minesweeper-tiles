@@ -5,8 +5,9 @@ import {
   boundaryComponents,
   edgeCount,
   eulerCharacteristic,
+  isBoard3D,
   vertexCount,
-  type Board,
+  type AnyBoard,
 } from "../../src/boards/core";
 import { buildBoard, MODES } from "../../src/boards/presets";
 
@@ -27,7 +28,7 @@ const MODE_STATS = conformance.modes as Record<
   }>
 >;
 
-function checkInvariants(board: Board): void {
+function checkInvariants(board: AnyBoard): void {
   const cells = new Set(board.adjacency.keys());
   for (const [cell, neighbors] of board.adjacency) {
     expect(neighbors).not.toContain(cell); // no self-loops
@@ -54,6 +55,9 @@ describe("board conformance oracle", () => {
         expect(boundaryComponents(board)).toBe(want.boundaryComponents);
         expect(edgeCount(board)).toBe(want.edgeCount);
         expect(vertexCount(board)).toBe(want.vertexCount);
+        expect(isBoard3D(board) && board.cellCycle != null).toBe(
+          want.hasCellCycle,
+        );
         checkInvariants(board);
       });
     }

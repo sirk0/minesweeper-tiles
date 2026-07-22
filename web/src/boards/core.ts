@@ -1,4 +1,5 @@
-// Port of minesweeper/boards/core.py (the flat-board parts used by M1).
+// Port of minesweeper/boards/core.py (the flat-board parts used by M1 and,
+// since M2, the 3D helpers the solids use).
 //
 // Python keys cells and vertices by hashable tuples; here a CellId is a
 // canonical string built by `cid(...)`, used in Map/Set. Adjacency ordering
@@ -7,6 +8,7 @@
 
 export type CellId = string;
 export type Vertex = [number, number];
+export type Vec3 = [number, number, number];
 
 export function cid(...parts: (number | string)[]): CellId {
   return parts.join(",");
@@ -18,8 +20,8 @@ export function q(c: number): number {
   return Math.round(c * 1e6) / 1e6 || 0;
 }
 
-function vkey(x: number, y: number): string {
-  return `${q(x)},${q(y)}`;
+function vkey(p: readonly number[]): string {
+  return p.map(q).join(",");
 }
 
 export interface Board {
@@ -29,6 +31,24 @@ export interface Board {
   mineCount: number;
   width: number;
   height: number;
+}
+
+export interface Board3D {
+  mode: string;
+  polygons: Map<CellId, Vec3[]>; // vertices on the surface, origin-centered
+  adjacency: Map<CellId, CellId[]>;
+  mineCount: number;
+  radius: number; // max vertex distance from the origin
+  twoSided: boolean; // open/non-orientable surfaces show both sides
+  // One-step ring translation (a graph automorphism); when set, the UI lets
+  // the player scroll the cell contents along it (Klein bottle, M3+).
+  cellCycle: Map<CellId, CellId> | null;
+}
+
+export type AnyBoard = Board | Board3D;
+
+export function isBoard3D(board: AnyBoard): board is Board3D {
+  return "radius" in board;
 }
 
 /** Two cells are neighbours when they share a vertex (exact vertex keys). */
@@ -96,10 +116,10 @@ export function buildLattice(
 
 // -- topology (surface invariants; shared with the conformance oracle) -------
 
-function edgesOf(board: Board): Map<string, number> {
+function edgesOf(board: AnyBoard): Map<string, number> {
   const count = new Map<string, number>();
   for (const poly of board.polygons.values()) {
-    const pts = poly.map(([x, y]) => vkey(x, y));
+    const pts = poly.map((p: readonly number[]) => vkey(p));
     for (let i = 0; i < pts.length; i++) {
       const a = pts[i]!;
       const b = pts[(i + 1) % pts.length]!;
@@ -111,25 +131,25 @@ function edgesOf(board: Board): Map<string, number> {
 }
 
 /** Distinct polygon corners (V). */
-export function vertexCount(board: Board): number {
+export function vertexCount(board: AnyBoard): number {
   const seen = new Set<string>();
   for (const poly of board.polygons.values()) {
-    for (const [x, y] of poly) seen.add(vkey(x, y));
+    for (const p of poly) seen.add(vkey(p));
   }
   return seen.size;
 }
 
-/** V - E + F over the polygon mesh (1 for a flat disc). */
-export function eulerCharacteristic(board: Board): number {
+/** V - E + F over the polygon mesh (1 for a flat disc, 2 for a sphere). */
+export function eulerCharacteristic(board: AnyBoard): number {
   return vertexCount(board) - edgesOf(board).size + board.polygons.size;
 }
 
-export function edgeCount(board: Board): number {
+export function edgeCount(board: AnyBoard): number {
   return edgesOf(board).size;
 }
 
 /** Number of connected boundary circles (edges belonging to a single cell). */
-export function boundaryComponents(board: Board): number {
+export function boundaryComponents(board: AnyBoard): number {
   const graph = new Map<string, Set<string>>();
   const link = (a: string, b: string) => {
     let s = graph.get(a);
@@ -156,4 +176,66 @@ export function boundaryComponents(board: Board): number {
     }
   }
   return components;
+}
+
+// -- 3D helpers (port of core.py's vector section) ---------------------------
+
+export function normalize(v: Vec3): Vec3 {
+  const length = Math.hypot(v[0], v[1], v[2]);
+  return [v[0] / length, v[1] / length, v[2] / length];
+}
+
+export function cross(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+export function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+/** Normal of a (near-)planar 3D polygon, right-hand rule. */
+export function newellNormal(points: readonly Vec3[]): Vec3 {
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!;
+    const qq = points[(i + 1) % points.length]!;
+    nx += (p[1] - qq[1]) * (p[2] + qq[2]);
+    ny += (p[2] - qq[2]) * (p[0] + qq[0]);
+    nz += (p[0] - qq[0]) * (p[1] + qq[1]);
+  }
+  return [nx, ny, nz];
+}
+
+/** Order vertices counterclockwise as seen from outside the surface. */
+export function orientOutward(polygon: Vec3[], outward: Vec3): Vec3[] {
+  return dot(newellNormal(polygon), outward) > 0
+    ? polygon
+    : [...polygon].reverse();
+}
+
+/** Order (key, position) pairs by angle around `center` (for points lying
+ * roughly on a circle around it, e.g. on a sphere). */
+export function tangentOrder<K>(center: Vec3, items: [K, Vec3][]): K[] {
+  const n = normalize(center);
+  const reference: Vec3 = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  const a = normalize(cross(n, reference));
+  const b = cross(n, a);
+  const angle = (position: Vec3): number => {
+    const d: Vec3 = [
+      position[0] - center[0],
+      position[1] - center[1],
+      position[2] - center[2],
+    ];
+    return Math.atan2(dot(d, b), dot(d, a));
+  };
+  return items
+    .map(([key, position]) => [key, angle(position)] as const)
+    .sort((x, y) => x[1] - y[1])
+    .map(([key]) => key);
 }

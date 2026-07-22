@@ -3,17 +3,22 @@
 The in-progress TypeScript rewrite (Three.js / WebGL), living alongside the
 Python game per `docs/plans/typescript-rewrite-same-repo.md`.
 
-**M1 — core game + flat regular boards.** Ports the game rules and the five
-flat regular boards (square / triangle / triangle-grid / hexagon /
-hexagon-of-hexagons) from Python, rendered as real beveled polygon meshes with
-mouse + touch input (reveal / flag / chord / long-press), a HUD and menu driven
-from shared config, deep links (`?mode=&difficulty=&seed=`), and a
-`window.__ms` test seam. Boards are built from the **same** `data/*.json` the
-Python game reads, and a conformance oracle (`data/conformance.json`) asserts
-the two implementations produce identical boards.
+**M2 — 3D renderer + solids.** Ports the ten closed 3D boards (sphere,
+snub dodecahedron, C80/C180 fullerenes, geodesic triangles, cube,
+tetrahedron, cube frame, tetrahedron frame, stepped bipyramid) and adds the
+3D half of the render pipeline: perspective camera, a custom trackball
+(drag to rotate, arrow keys too), per-mode starting orientations, back-face
+culling with an opaque base layer under the tile gaps, and a
+`gl_FrontFacing` dimming shader ready for M3's two-sided surfaces. The
+input state machine disambiguates tap / long-press / drag-rotate. 15 modes.
 
-M0 (scaffold + pipeline proof: Vite, strict TS, PWA shell, CI/Pages, the
-render-pipeline proof) is the foundation this builds on.
+M0 (scaffold + pipeline proof: Vite, strict TS, PWA shell, CI/Pages) and M1
+(core game rules, the five flat regular boards, HUD/menu from shared
+config, deep links `?mode=&difficulty=&seed=`, the `window.__ms` test seam)
+are the foundation this builds on. Boards are built from the **same**
+`data/*.json` the Python game reads, and a conformance oracle
+(`data/conformance.json`) asserts the two implementations produce identical
+boards.
 
 ## Commands
 
@@ -35,14 +40,18 @@ Cloud sessions: the preinstalled Chromium is used by pointing Playwright at it �
 
 - `src/game.ts`, `src/rng.ts` — pure game rules (port of `game.py`) and a
   seedable RNG.
-- `src/boards/` — `core.ts` (Board, adjacency, topology), `tilings.ts` (the
-  flat regular builders), `catalog.ts` / `presets.ts` (read `data/*.json`).
-- `src/render/` — one Three.js pipeline: `renderer.ts` (scene/ortho camera/
-  resize/picking), `polygonBoard.ts` (merged beveled polygon geometry, per-cell
-  colours, hover, glyph quads), `glyphAtlas.ts` (canvas-baked digit/flag/mine
-  texture).
+- `src/boards/` — `core.ts` (Board/Board3D, adjacency, topology, vector
+  helpers), `tilings.ts` (the flat regular builders), `solids.ts` (the
+  closed 3D boards), `catalog.ts` / `presets.ts` (read `data/*.json`).
+- `src/render/` — one Three.js pipeline: `renderer.ts` (scene, ortho +
+  perspective cameras, trackball rotation, resize, picking),
+  `boardMesh.ts` (shared cell-visual vocabulary), `polygonBoard.ts` /
+  `solidBoard.ts` (merged beveled cell geometry — flat plane vs. solid
+  surface — per-cell colours, hover, glyph quads), `glyphAtlas.ts`
+  (canvas-baked digit/flag/mine texture).
 - `src/session.ts` — `GameSession`: Game ↔ mesh ↔ HUD.
-- `src/input/controls.ts` — pointer/touch (tap, long-press, right-click).
+- `src/input/controls.ts` — pointer/touch state machine (tap, long-press,
+  right-click, drag-rotate on 3D boards).
 - `src/ui/` — HTML/CSS overlay chrome: `hud.ts` (header) and `menu.ts` (home),
   both **rendered from the shared UI-screen config**.
 - `src/config/screens.ts` — typed accessor over `../data/ui/screens.json`.

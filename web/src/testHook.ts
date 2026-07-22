@@ -13,6 +13,7 @@ export interface MsState {
   minesRemaining: number;
   revealed: number;
   cellCount: number;
+  is3d: boolean;
 }
 
 export interface MsHook {
@@ -28,6 +29,9 @@ export interface MsHook {
   reveal(cell: CellId): void;
   flag(cell: CellId): void;
   chord(cell: CellId): void;
+  /** Rotate a 3D board as a drag of (dx, dy) CSS pixels would; no-op on
+   * flat boards. */
+  rotate(dxPx: number, dyPx: number): void;
 }
 
 declare global {

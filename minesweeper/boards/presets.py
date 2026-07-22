@@ -52,16 +52,26 @@ from minesweeper.boards.tilings import (
     triangle_grid_board,
 )
 
-# Flat regular presets (square/triangle/trigrid/hex/hexhex) live in
+# Presets for the ported modes (flat regular boards and the solids) live in
 # data/presets.json, the single source both front-ends read; they are loaded
-# below into _PRESETS via _FLAT_BUILDERS. The remaining explicit presets stay
+# below into _PRESETS via _JSON_BUILDERS. The remaining explicit presets stay
 # here until their milestones port them to the TypeScript app.
-_FLAT_BUILDERS = {
+_JSON_BUILDERS = {
     "square_board": square_board,
     "triangle_board": triangle_board,
     "triangle_grid_board": triangle_grid_board,
     "hex_board": hex_board,
     "hexhex_board": hexhex_board,
+    "sphere_board": sphere_board,
+    "c80_board": c80_board,
+    "c180_board": c180_board,
+    "sphere_triangle_board": sphere_triangle_board,
+    "snub_dodecahedron_board": snub_dodecahedron_board,
+    "cube_board": cube_board,
+    "cube_frame_board": cube_frame_board,
+    "tetrahedron_board": tetrahedron_board,
+    "tetrahedron_frame_board": tetrahedron_frame_board,
+    "stepped_bipyramid_board": stepped_bipyramid_board,
 }
 
 # Explicit presets for the one-off boards (solids, aperiodic, surfaces).
@@ -75,56 +85,6 @@ _PRESETS = {
         "easy": lambda: hat_board(2, 10, keep=64, scale=12),
         "medium": lambda: hat_board(3, 28, keep=150, scale=9.5),
         "hard": lambda: hat_board(3, 65, keep=430, scale=7),
-    },
-    "sphere": {
-        "easy": lambda: sphere_board(7),
-        "medium": lambda: sphere_board(10),
-        "hard": lambda: sphere_board(14),
-    },
-    "snubdodec": {
-        "easy": lambda: snub_dodecahedron_board(10),
-        "medium": lambda: snub_dodecahedron_board(14),
-        "hard": lambda: snub_dodecahedron_board(19),
-    },
-    "c80": {
-        "easy": lambda: c80_board(5),
-        "medium": lambda: c80_board(8),
-        "hard": lambda: c80_board(11),
-    },
-    "c180": {
-        "easy": lambda: c180_board(10),
-        "medium": lambda: c180_board(14),
-        "hard": lambda: c180_board(19),
-    },
-    "spheretri": {
-        "easy": lambda: sphere_triangle_board(10),
-        "medium": lambda: sphere_triangle_board(14),
-        "hard": lambda: sphere_triangle_board(18),
-    },
-    "cube": {
-        "easy": lambda: cube_board(4, 12),
-        "medium": lambda: cube_board(6, 38),
-        "hard": lambda: cube_board(8, 84),
-    },
-    "tetrahedron": {
-        "easy": lambda: tetrahedron_board(8, 4),
-        "medium": lambda: tetrahedron_board(24, 6),
-        "hard": lambda: tetrahedron_board(55, 8),
-    },
-    "tetraframe": {  # level-1 Sierpiński tetrahedron; 16 * frequency**2 cells
-        "easy": lambda: tetrahedron_frame_board(8, 2),
-        "medium": lambda: tetrahedron_frame_board(26, 3),
-        "hard": lambda: tetrahedron_frame_board(54, 4),
-    },
-    "cubeframe": {  # n x n x n frame, thickness = hole = n / 3
-        "easy": lambda: cube_frame_board(6, 2, 40),
-        "medium": lambda: cube_frame_board(9, 3, 104),
-        "hard": lambda: cube_frame_board(12, 4, 200),
-    },
-    "steppedbipyramid": {  # stepped bipyramid, base x base, `levels` terraces
-        "easy": lambda: stepped_bipyramid_board(6, 3, 20),
-        "medium": lambda: stepped_bipyramid_board(8, 4, 40),
-        "hard": lambda: stepped_bipyramid_board(10, 5, 72),
     },
     "torus": {
         "easy": lambda: torus_board(12, 6, 9),
@@ -308,10 +268,10 @@ ARCH_PRESETS = {
     },
 }
 
-# Load the shared flat-regular presets (data/presets.json) into _PRESETS. Each
-# row is {builder, args: {difficulty: [positional args]}}.
+# Load the shared presets (data/presets.json) into _PRESETS. Each row is
+# {builder, args: {difficulty: [positional args]}}.
 for _mode, _spec in load("presets")["presets"].items():
-    _fn = _FLAT_BUILDERS[_spec["builder"]]
+    _fn = _JSON_BUILDERS[_spec["builder"]]
     _PRESETS[_mode] = {
         _difficulty: (lambda fn=_fn, a=_args: fn(*a))
         for _difficulty, _args in _spec["args"].items()
