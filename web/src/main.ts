@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import "./ui/styles.css";
-import type { CellId } from "./boards/core";
+import { isBoard3D, type CellId } from "./boards/core";
 import { hasMode } from "./boards/presets";
 import { DIFFICULTIES } from "./boards/catalog";
 import { screens } from "./config/screens";
@@ -104,7 +104,9 @@ class App {
       this.hud.setState({ flagMode: this.flagMode });
     } else if (action === "restart" && this.session) {
       this.startGame(this.session.mode, this.session.difficulty);
-    } else if (action === "klein-scroll") {
+    } else if (action === "klein-scroll-back") {
+      this.scroll(-1);
+    } else if (action === "klein-scroll-fwd") {
       this.scroll(1);
     }
   }
@@ -203,7 +205,10 @@ class App {
     mesh.updateWorldMatrix(true, false);
     const world = new Vector3(...anchor.center).applyMatrix4(mesh.matrixWorld);
     const camera = this.renderer.camera;
-    if (this.session.is3d) {
+    const board = this.session.board;
+    // A closed solid hides a cell that faces away; a two-sided surface shows
+    // its cells from both faces, so it is never culled here.
+    if (this.session.is3d && !(isBoard3D(board) && board.twoSided)) {
       const normal = new Vector3(...anchor.normal).transformDirection(mesh.matrixWorld);
       const toCamera = camera.position.clone().sub(world);
       if (normal.dot(toCamera) <= 1e-6) return null; // back-facing

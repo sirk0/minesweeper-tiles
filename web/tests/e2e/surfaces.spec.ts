@@ -91,10 +91,11 @@ test.describe("M3 surfaces", () => {
   test("a wrapped board has no cell cycle unless it is a Klein bottle", async ({ page }) => {
     await page.goto("/?mode=torus&difficulty=easy&seed=1");
     await expect(page.locator("body[data-ready]")).toBeVisible();
-    // The Klein scroll control is hidden on non-Klein surfaces.
-    await expect(page.locator('.hud-btn[data-slot="klein-scroll"]')).toBeHidden();
+    // The two Klein scroll controls are hidden on non-Klein surfaces.
+    await expect(page.locator('.hud-btn[data-slot="klein-scroll-fwd"]')).toBeHidden();
     await page.goto("/?mode=klein&difficulty=easy&seed=1");
     await expect(page.locator("body[data-ready]")).toBeVisible();
-    await expect(page.locator('.hud-btn[data-slot="klein-scroll"]')).toBeVisible();
+    await expect(page.locator('.hud-btn[data-slot="klein-scroll-back"]')).toBeVisible();
+    await expect(page.locator('.hud-btn[data-slot="klein-scroll-fwd"]')).toBeVisible();
   });
 });

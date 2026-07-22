@@ -34,10 +34,17 @@
     ],
     "right": [
       {
-        "slot": "klein-scroll",
-        "label": "Scroll",
-        "icon": "chevrons",
-        "action": "klein-scroll",
+        "slot": "klein-scroll-back",
+        "label": "Scroll back",
+        "icon": "chevrons-left",
+        "action": "klein-scroll-back",
+        "visibleWhen": "hasCellCycle"
+      },
+      {
+        "slot": "klein-scroll-fwd",
+        "label": "Scroll forward",
+        "icon": "chevrons-right",
+        "action": "klein-scroll-fwd",
         "visibleWhen": "hasCellCycle"
       }
     ]

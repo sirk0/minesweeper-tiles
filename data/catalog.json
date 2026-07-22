@@ -117,10 +117,10 @@
     },
     "manifoldOrder": [
       "flat",
-      "cylinder",
       "mobius",
-      "klein",
-      "torus"
+      "cylinder",
+      "torus",
+      "klein"
     ],
     "manifoldLabels": {
       "flat": "Plane",

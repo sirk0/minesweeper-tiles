@@ -94,7 +94,7 @@ export interface BoardMesh extends Group {
   setVisual(cell: CellId, visual: CellVisual): void;
   setHover(cell: CellId | null): void;
   /** Told the current board rotation and camera position so view-dependent
-   * content (billboarded glyphs, back-face culling) can follow; meshes
-   * without any may omit it. */
+   * content (billboarded glyphs, per-cell glyph culling on closed surfaces)
+   * can follow; meshes without any may omit it. */
   orient?(rotation: Quaternion, cameraWorldPos: Vector3): void;
 }

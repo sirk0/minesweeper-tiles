@@ -6,15 +6,18 @@ Python game per `docs/plans/typescript-rewrite-same-repo.md`.
 **M3 — Surface wraps (regular tilings).** Wraps the square / triangle /
 hexagon tilings onto the four surfaces (`src/boards/surfaces.ts`): the closed
 torus, the open two-sided cylinder, and the non-orientable Möbius strip and
-Klein bottle — twelve new modes. The two-sided surfaces reuse M2's
-`DoubleSide` + `gl_FrontFacing` dimming shader (kept opaque so the depth
-buffer resolves the Klein bottle's self-intersection). The Klein bottle
-carries a `cellCycle` (a ring-translation graph automorphism); the session
-scrolls it as a **view-layer permutation** — a `remap` between geometric
-faces and the game cells painted on them — so cells hidden behind the neck
-rotate into view (mouse wheel / two-finger scroll / `[` `]` keys / the header
-chevrons) while the geometry and game state stay put. The Flat-manifolds menu
-drills surface → tiling → difficulty. 27 modes.
+Klein bottle — twelve new modes. Two-sided surfaces draw each cell as a flat
+`DoubleSide` tile on the surface (no raised bevel, which would read as a recess
+from the inside), so a cell looks and plays the same from either face; grout
+under the tile gaps and depth-tested glyphs (occluded numbers hidden by nearer
+geometry — also fixing bleed-through on the closed frames) complete the look.
+The Klein bottle carries a `cellCycle` (a ring-translation graph
+automorphism); the session scrolls it as a **view-layer permutation** — a
+`remap` between geometric faces and the game cells painted on them — so cells
+hidden behind the neck rotate into view (mouse wheel / two-finger scroll /
+`[` `]` keys / the two header chevrons, back and forward) while the geometry
+and game state stay put. The Flat-manifolds menu drills surface → tiling →
+difficulty. 27 modes.
 
 **M2 — 3D renderer + solids.** Ports the ten closed 3D boards (sphere,
 snub dodecahedron, C80/C180 fullerenes, geodesic triangles, cube,
