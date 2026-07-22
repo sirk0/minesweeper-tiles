@@ -101,6 +101,18 @@ body {
   padding: 4px 8px;
 }
 
+/* Icon-only header buttons (e.g. the flag-mode toggle). */
+.hud-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+}
+
+.hud-icon-btn svg {
+  display: block;
+}
+
 /* Classic LED display: red digits on a black inset panel. */
 .hud-counter {
   font-family: "DSEG7 Classic", "Courier New", monospace;
