@@ -69,4 +69,21 @@ test.describe("board gallery", () => {
     await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot("cube-revealed.png");
   });
+
+  test("sphere glyphs stay on the visible hemisphere", async ({ page }) => {
+    // Flagging every cell makes any glyph that leaks past the silhouette onto
+    // the back surface plainly visible — the regression guard for the
+    // perspective-correct glyph cull.
+    await page.goto("/");
+    await expect(page.locator("body[data-ready]")).toBeVisible();
+    await page.evaluate(() => {
+      const ms = window.__ms!;
+      ms.startBoard("sphere", "easy"); // build it first to enumerate cells
+      const cells = ms.cells();
+      ms.startBoard("sphere", "easy", { mines: cells.slice(0, 7) });
+      for (const c of cells) ms.flag(c);
+    });
+    await page.waitForTimeout(150);
+    await expect(page).toHaveScreenshot("sphere-flagged.png");
+  });
 });

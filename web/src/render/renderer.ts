@@ -90,9 +90,8 @@ export class BoardRenderer {
       // Scale the solid into the unit sphere so one camera setup frames all.
       board.scale.setScalar(1 / board.view.radius);
     }
-    board.orient?.(board.quaternion);
     this.scene.add(board);
-    this.resize();
+    this.resize(); // frames the camera, then re-orients the board (below)
     this.dirty = true;
   }
 
@@ -100,7 +99,7 @@ export class BoardRenderer {
   setOrientation(q: Quaternion): void {
     if (!this.board) return;
     this.board.quaternion.copy(q);
-    this.board.orient?.(this.board.quaternion);
+    this.board.orient?.(this.board.quaternion, this.perspCamera.position);
     this.dirty = true;
   }
 
@@ -116,7 +115,7 @@ export class BoardRenderer {
         new Quaternion().setFromAxisAngle(Y_AXIS, dxPx * ROTATE_SPEED),
       );
     this.board.quaternion.premultiply(turn);
-    this.board.orient?.(this.board.quaternion);
+    this.board.orient?.(this.board.quaternion, this.perspCamera.position);
     this.dirty = true;
   }
 
@@ -157,6 +156,8 @@ export class BoardRenderer {
       this.perspCamera.near = Math.max(0.05, dist - 2);
       this.perspCamera.far = dist + 2;
       this.perspCamera.updateProjectionMatrix();
+      // The camera distance sets the perspective horizon, so re-cull glyphs.
+      this.board?.orient?.(this.board.quaternion, this.perspCamera.position);
     }
     this.dirty = true;
   }

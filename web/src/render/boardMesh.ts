@@ -1,4 +1,4 @@
-import { Color, type Group, type Quaternion } from "three";
+import { Color, type Group, type Quaternion, type Vector3 } from "three";
 import type { CellId, Vec3 } from "../boards/core";
 import type { Glyph } from "./glyphAtlas";
 
@@ -93,7 +93,8 @@ export interface BoardMesh extends Group {
   cellAnchor(cell: CellId): CellAnchor | null;
   setVisual(cell: CellId, visual: CellVisual): void;
   setHover(cell: CellId | null): void;
-  /** Told the current board rotation so view-dependent content (billboarded
-   * glyphs) can follow; meshes without any may omit it. */
-  orient?(rotation: Quaternion): void;
+  /** Told the current board rotation and camera position so view-dependent
+   * content (billboarded glyphs, back-face culling) can follow; meshes
+   * without any may omit it. */
+  orient?(rotation: Quaternion, cameraWorldPos: Vector3): void;
 }

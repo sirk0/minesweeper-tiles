@@ -5,6 +5,7 @@ import {
   DoubleSide,
   FrontSide,
   Group,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -53,6 +54,8 @@ const FLAT_FRAC = 0.02;
 const BACK_DIM = 0.82; // matches the pygame two-sided back-face dimming
 const BASE_COLOR = "#8e8e8e"; // grout surface showing through the tile gaps
 
+const _inv = /* @__PURE__ */ new Matrix4(); // scratch for the world→local map
+
 // Wider hidden/revealed split than the flat palette: under 3D lighting the
 // faces of a curved surface pick up large shading differences of their own,
 // so the flat renderer's subtle tone step is not readable. Hidden tiles are
@@ -88,11 +91,13 @@ export class SolidBoard extends Group implements BoardMesh {
   private readonly atlas: GlyphAtlas;
   private readonly states: CellVisual[];
   private hovered = -1;
-  // Billboard basis in board-local coordinates: screen-right, screen-up and
-  // the direction toward the camera, updated from the current rotation.
+  // Billboard basis in board-local coordinates: screen-right and screen-up,
+  // updated from the current rotation. `cameraLocal` is the camera position
+  // mapped into the same board-local frame, so a cell's visibility can be
+  // tested per-cell against the true (perspective) viewing direction.
   private viewRight: Vec3 = [1, 0, 0];
   private viewUp: Vec3 = [0, 1, 0];
-  private viewOut: Vec3 = [0, 0, 1];
+  private cameraLocal: Vec3 = [0, 0, 1];
 
   constructor(board: Board3D) {
     super();
@@ -252,14 +257,20 @@ export class SolidBoard extends Group implements BoardMesh {
     if (i >= 0) this.writeColor(i);
   }
 
-  /** Update the billboard basis from the board's current rotation so glyphs
-   * stay screen-upright; called by the renderer whenever the board turns. */
-  orient(rotation: Quaternion): void {
+  /** Update the billboard basis (screen-upright glyphs) from the board's
+   * current rotation, and record the camera position in board-local space so
+   * `rebuildGlyphs` can cull cells that face away under perspective. Called
+   * by the renderer whenever the board turns, is (re)framed, or is set. */
+  orient(rotation: Quaternion, cameraWorldPos: Vector3): void {
     const inverse = rotation.clone().invert();
     const toVec3 = (v: Vector3): Vec3 => [v.x, v.y, v.z];
     this.viewRight = toVec3(new Vector3(1, 0, 0).applyQuaternion(inverse));
     this.viewUp = toVec3(new Vector3(0, 1, 0).applyQuaternion(inverse));
-    this.viewOut = toVec3(new Vector3(0, 0, 1).applyQuaternion(inverse));
+    this.updateWorldMatrix(true, false);
+    const camLocal = cameraWorldPos
+      .clone()
+      .applyMatrix4(_inv.copy(this.matrixWorld).invert());
+    this.cameraLocal = [camLocal.x, camLocal.y, camLocal.z];
     this.rebuildGlyphs();
   }
 
@@ -327,19 +338,26 @@ export class SolidBoard extends Group implements BoardMesh {
   private rebuildGlyphs(): void {
     const pos: number[] = [];
     const uvs: number[] = [];
-    const { viewRight: u, viewUp: v, viewOut: w } = this;
+    const { viewRight: u, viewUp: v, cameraLocal: cam } = this;
     for (let i = 0; i < this.order.length; i++) {
       const glyph = glyphFor(this.states[i]!);
       if (glyph === null) continue;
       const uv = this.atlas.uv(glyph);
       if (!uv) continue;
       const g = this.geom[i]!;
-      // Only front-facing cells carry a glyph (the pygame renderer culls the
-      // same way) — with no depth test a back cell's number must not bleed
-      // through the board.
+      const c = g.center;
+      // Only cells whose top face the camera can actually see carry a glyph
+      // (the glyph mesh has no depth test, so a back cell's number would
+      // otherwise bleed through the board). The direction from the cell to
+      // the camera is computed per-cell, so the horizon is the true
+      // perspective silhouette — a constant view-forward would keep cells
+      // that have already curved onto the back near the rim.
+      const toCam = normalize([cam[0] - c[0], cam[1] - c[1], cam[2] - c[2]]);
       if (
-        g.normal[0] * w[0] + g.normal[1] * w[1] + g.normal[2] * w[2] <=
-        0.02
+        toCam[0] * g.normal[0] +
+          toCam[1] * g.normal[1] +
+          toCam[2] * g.normal[2] <=
+        0.05
       ) {
         continue;
       }
@@ -348,7 +366,6 @@ export class SolidBoard extends Group implements BoardMesh {
       // the projected footprint's inradius (as the pygame renderer does per
       // frame), so a number never crosses its cell's edges however tilted
       // the cell currently is.
-      const c = g.center;
       const projected = g.poly.map((p): [number, number] => {
         const d: Vec3 = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
         return [
