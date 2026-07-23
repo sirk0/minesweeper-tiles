@@ -27,7 +27,7 @@ Import order is a strict DAG; a module only imports from the ones above it.
 | `solids.py` | Closed/convex and polycube 3D boards (sphere, fullerenes, cube, tetrahedron, frames, bipyramid). |
 | `surfaces.py` | Wrapping tilings onto surfaces: the three immersion points (`_torus_point`, `_cylinder_point`, `_mobius_point`), the shared `_assemble` tail, the nine simple `*_board` wrappers, and the Archimedean `arch_torus_board` / `arch_cylinder_board` / `arch_mobius_board`. |
 | `catalog.py` | The menu, **derived**: `SURFACE_SPECS` and `TILING_SPECS` (leaf data loaded from `data/catalog.json`) produce `MODE_LABELS`, `TILINGS`, `SURFACE_LABELS`, the geometry-first menu tables (`MENU_ROOT`/`MANIFOLD_*`/`FAMILY_*`/`SPHERE_MODES`/`OTHER_MODES`/`SHAPED_MODES`), `MODES_3D`, `mode_for`, `surface_of`, `view_hint`. |
-| `presets.py` | Difficulty presets and `build_board`. Flat regular, solid and Archimedean/Laves presets all load from `data/presets.json` (shared with the web port); the remaining one-off modes (aperiodic) are explicit. The Archimedean rows are authored in the compact **`ARCH_PRESETS`** table (tiling → surface → difficulty → args) that `scripts/export_data.py` expands into `data/presets.json`. |
+| `presets.py` | Difficulty presets and `build_board`. Flat regular, solid, Archimedean/Laves and aperiodic (penrose/hat) presets all load from `data/presets.json` (shared with the web port). The Archimedean rows are authored in the compact **`ARCH_PRESETS`** table (tiling → surface → difficulty → args) that `scripts/export_data.py` expands into `data/presets.json`. |
 
 `__init__.py` re-exports the whole public surface, so `from
 minesweeper.boards import ...` is unchanged by the split.
@@ -45,14 +45,14 @@ written twice:
   loads these via `boards/_data.py`; the *derivations* stay in code.
 - `data/presets.json` — the difficulty presets for the **ported** modes
   (the flat regular ones — square/triangle/trigrid/hex/hexhex — the ten
-  solids, the regular-tiling surface wraps, and every Archimedean/Laves
-  tiling × surface), as `{mode: {builder, args}}`. The Archimedean/Laves
-  rows carry the tiling key as their first arg. `presets.py` loads these
-  into `_PRESETS` via `_JSON_BUILDERS`; the still-unported presets
-  (aperiodic) stay as explicit `_PRESETS` entries until their milestone
-  ports them, at which point they move into the JSON. The Archimedean
-  rows are generated from the compact `ARCH_PRESETS` table by
-  `scripts/export_data.py`, so that table is their authoring source.
+  solids, the regular-tiling surface wraps, every Archimedean/Laves
+  tiling × surface, and the two aperiodic tilings — penrose/hat), as
+  `{mode: {builder, args}}`. The Archimedean/Laves rows carry the tiling
+  key as their first arg. `presets.py` loads every row into `_PRESETS`
+  via `_JSON_BUILDERS`; `_PRESETS` starts empty and holds only any
+  still-unported one-offs. The Archimedean rows are generated from the
+  compact `ARCH_PRESETS` table by `scripts/export_data.py`, so that table
+  is their authoring source.
 - `data/conformance.json` — board statistics (cell/mine/euler/boundary/…)
   per ported mode × difficulty, the TypeScript conformance oracle.
 
@@ -154,7 +154,13 @@ These are one-offs, not tiling×surface products.
 2. Add the mode to the right menu tuple (`SPHERE_MODES`, `OTHER_MODES`,
    `SHAPED_MODES`, or `APERIODIC_MODES`) and its label to `SOLO_LABELS` in
    `catalog.py`.
-3. Add a `_PRESETS` block in `presets.py` (explicit lambdas).
+3. Add the builder to `_JSON_BUILDERS` in `presets.py`, add a
+   `{mode: {builder, args: {difficulty: [...]}}}` row to
+   `data/presets.json` (positional args), and re-run
+   `scripts/export_data.py` + `export_conformance.py`. This is what both
+   front-ends read, so the mode is shared and the conformance oracle
+   covers it. (A Python-only one-off can still go in `_PRESETS` as an
+   explicit lambda, but the JSON path is preferred.)
 
 ## Recipe: add a surface (worked example — the Klein bottle)
 

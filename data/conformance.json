@@ -784,6 +784,64 @@
         "hasCellCycle": false
       }
     },
+    "penrose": {
+      "easy": {
+        "cellCount": 60,
+        "mineCount": 9,
+        "euler": 1,
+        "boundaryComponents": 1,
+        "edgeCount": 139,
+        "vertexCount": 80,
+        "hasCellCycle": false
+      },
+      "medium": {
+        "cellCount": 160,
+        "mineCount": 25,
+        "euler": 1,
+        "boundaryComponents": 1,
+        "edgeCount": 349,
+        "vertexCount": 190,
+        "hasCellCycle": false
+      },
+      "hard": {
+        "cellCount": 430,
+        "mineCount": 70,
+        "euler": 1,
+        "boundaryComponents": 1,
+        "edgeCount": 912,
+        "vertexCount": 483,
+        "hasCellCycle": false
+      }
+    },
+    "hat": {
+      "easy": {
+        "cellCount": 64,
+        "mineCount": 10,
+        "euler": -24,
+        "boundaryComponents": 25,
+        "edgeCount": 522,
+        "vertexCount": 434,
+        "hasCellCycle": false
+      },
+      "medium": {
+        "cellCount": 150,
+        "mineCount": 28,
+        "euler": -57,
+        "boundaryComponents": 56,
+        "edgeCount": 1177,
+        "vertexCount": 970,
+        "hasCellCycle": false
+      },
+      "hard": {
+        "cellCount": 430,
+        "mineCount": 65,
+        "euler": -193,
+        "boundaryComponents": 186,
+        "edgeCount": 3259,
+        "vertexCount": 2636,
+        "hasCellCycle": false
+      }
+    },
     "elongated": {
       "easy": {
         "cellCount": 97,

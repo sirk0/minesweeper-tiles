@@ -34,6 +34,9 @@ const MANIFOLD_LABELS = MENU.manifoldLabels as Record<string, string>;
 // flat boards that only exist on the plane (triangle-of-triangles, hexhex).
 const PICKER_REGULAR = ["square", "tri", "hex"];
 const FLAT_SHAPED = ["triangle", "hexhex"];
+// The aperiodic tilings exist on the plane only; the flat picker carries them
+// as one more family submenu after the uniform / dual ones (M5).
+const APERIODIC = MENU.aperiodic as string[];
 
 interface ModeEntry {
   mode: string;
@@ -83,6 +86,15 @@ function pickerFor(surfaceKey: string): Picker {
     const modes = tilingModes(keys, surfaceKey);
     if (modes.length > 0) {
       families.push({ key, label: FAMILY_LABELS[key] ?? key, modes });
+    }
+  }
+  if (surfaceKey === "flat") {
+    const modes = APERIODIC.filter((m) => MODES.includes(m)).map((mode) => ({
+      mode,
+      label: MODE_LABELS[mode] ?? mode,
+    }));
+    if (modes.length > 0) {
+      families.push({ key: "aperiodic", label: FAMILY_LABELS["aperiodic"] ?? "Aperiodic", modes });
     }
   }
   return { direct, families };

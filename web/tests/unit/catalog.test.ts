@@ -20,6 +20,7 @@ import { MODES } from "../../src/boards/presets";
 
 const PICKER_REGULAR = MENU.pickerRegular as string[];
 const FLAT_SHAPED = MENU.shapedModes as string[];
+const APERIODIC = MENU.aperiodic as string[];
 const MANIFOLD_ORDER = MENU.manifoldOrder as string[];
 
 describe("catalog families", () => {
@@ -59,7 +60,10 @@ describe("menu reachability", () => {
         const tiling = TILINGS_BY_KEY.get(key);
         if (tiling && tilingAllows(tiling, surface)) add(modeFor(key, surfaceKey));
       }
-      if (surfaceKey === "flat") for (const m of FLAT_SHAPED) add(m);
+      if (surfaceKey === "flat") {
+        for (const m of FLAT_SHAPED) add(m);
+        for (const m of APERIODIC) add(m); // the flat picker carries the aperiodic tilings
+      }
     }
     for (const m of SPHERE_MODES) add(m);
     for (const m of OTHER_MODES) add(m);

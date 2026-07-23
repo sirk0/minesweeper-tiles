@@ -3,6 +3,15 @@
 The in-progress TypeScript rewrite (Three.js / WebGL), living alongside the
 Python game per `docs/plans/typescript-rewrite-same-repo.md`.
 
+**M5 — Aperiodic tilings.** Ports `src/boards/aperiodic.ts`: the Penrose P3
+rhombi (exact ℤ[ζ5] vertex arithmetic, Robinson-triangle deflation) and the Hat
+monotile (H/T/P/F metatile substitution in floating point, each vertex snapped
+back to an exact Eisenstein integer id). Both grow generously and trim to the
+centremost cells by Chebyshev distance for a roughly square patch. Their
+difficulty presets move into the shared `data/presets.json` (so the conformance
+oracle covers them), and the flat tiling picker gains an **Aperiodic** family
+submenu (plane only). **All 105 modes.**
+
 **M3 — Surface wraps (regular tilings).** Wraps the square / triangle /
 hexagon tilings onto the four surfaces (`src/boards/surfaces.ts`): the closed
 torus, the open two-sided cylinder, and the non-orientable Möbius strip and
