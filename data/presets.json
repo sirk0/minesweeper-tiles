@@ -511,6 +511,52 @@
         ]
       }
     },
+    "penrose": {
+      "builder": "penrose_board",
+      "args": {
+        "easy": [
+          4,
+          9,
+          310,
+          60
+        ],
+        "medium": [
+          5,
+          25,
+          390,
+          160
+        ],
+        "hard": [
+          6,
+          70,
+          495,
+          430
+        ]
+      }
+    },
+    "hat": {
+      "builder": "hat_board",
+      "args": {
+        "easy": [
+          2,
+          10,
+          64,
+          12
+        ],
+        "medium": [
+          3,
+          28,
+          150,
+          9.5
+        ],
+        "hard": [
+          3,
+          65,
+          430,
+          7
+        ]
+      }
+    },
     "elongated": {
       "builder": "archimedean_board",
       "args": {

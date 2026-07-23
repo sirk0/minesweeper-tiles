@@ -23,6 +23,10 @@ const MODES = [
   "cylinder",
   "mobius",
   "klein",
+  // M5 aperiodic flat tilings: Penrose rhombi (thick/thin) and the Hat
+  // monotile (a non-convex 13-gon), both trimmed to a square patch.
+  "penrose",
+  "hat",
 ];
 
 test.describe("board gallery", () => {

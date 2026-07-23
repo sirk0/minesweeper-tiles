@@ -27,6 +27,17 @@ test.describe("M1 app", () => {
     await expect(page.locator(".hud-smiley")).toBeVisible();
   });
 
+  test("menu drills into the aperiodic family to launch Penrose", async ({ page }) => {
+    await page.locator('.difficulty-btn[data-key="easy"]').click();
+    await page.locator('.menu-entry[data-group="flat"]').click();
+    await page.locator('.menu-entry[data-submenu="Aperiodic"]').click();
+    await page.locator('.menu-entry[data-mode="penrose"]').click();
+    const state = await page.evaluate(() => window.__ms?.state());
+    expect(state?.screen).toBe("game");
+    expect(state?.mode).toBe("penrose");
+    expect(state?.cellCount).toBe(60); // easy Penrose keeps 60 rhombi
+  });
+
   test("deep link starts a specific board", async ({ page }) => {
     await page.goto("/?mode=hex&difficulty=easy&seed=7");
     await expect(page.locator("body[data-ready]")).toBeVisible();

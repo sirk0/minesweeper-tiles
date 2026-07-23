@@ -91,21 +91,14 @@ _JSON_BUILDERS = {
     "arch_cylinder_board": arch_cylinder_board,
     "arch_mobius_board": arch_mobius_board,
     "arch_klein_board": arch_klein_board,
+    # Aperiodic tilings take positional args: penrose_board(subdivisions,
+    # mine_count, scale, keep); hat_board(levels, mine_count, keep, scale).
+    "penrose_board": penrose_board,
+    "hat_board": hat_board,
 }
 
-# Explicit presets for the one-off boards (solids, aperiodic, surfaces).
-_PRESETS = {
-    "penrose": {
-        "easy": lambda: penrose_board(4, 9, scale=310, keep=60),
-        "medium": lambda: penrose_board(5, 25, scale=390, keep=160),
-        "hard": lambda: penrose_board(6, 70, scale=495, keep=430),
-    },
-    "hat": {
-        "easy": lambda: hat_board(2, 10, keep=64, scale=12),
-        "medium": lambda: hat_board(3, 28, keep=150, scale=9.5),
-        "hard": lambda: hat_board(3, 65, keep=430, scale=7),
-    },
-}
+# Explicit presets for the one-off boards not yet in the shared data/presets.json.
+_PRESETS: dict = {}
 
 
 # Archimedean presets: tiling -> surface -> difficulty -> builder args
