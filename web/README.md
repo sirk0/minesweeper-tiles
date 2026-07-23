@@ -3,6 +3,22 @@
 The in-progress TypeScript rewrite (Three.js / WebGL), living alongside the
 Python game per `docs/plans/typescript-rewrite-same-repo.md`.
 
+**M3 — Surface wraps (regular tilings).** Wraps the square / triangle /
+hexagon tilings onto the four surfaces (`src/boards/surfaces.ts`): the closed
+torus, the open two-sided cylinder, and the non-orientable Möbius strip and
+Klein bottle — twelve new modes. Two-sided surfaces draw each cell as a flat
+`DoubleSide` tile on the surface (no raised bevel, which would read as a recess
+from the inside), so a cell looks and plays the same from either face; grout
+under the tile gaps and depth-tested glyphs (occluded numbers hidden by nearer
+geometry — also fixing bleed-through on the closed frames) complete the look.
+The Klein bottle carries a `cellCycle` (a ring-translation graph
+automorphism); the session scrolls it as a **view-layer permutation** — a
+`remap` between geometric faces and the game cells painted on them — so cells
+hidden behind the neck rotate into view (mouse wheel / two-finger scroll /
+`[` `]` keys / the two header chevrons, back and forward) while the geometry
+and game state stay put. The Flat-manifolds menu drills surface → tiling →
+difficulty. 27 modes.
+
 **M2 — 3D renderer + solids.** Ports the ten closed 3D boards (sphere,
 snub dodecahedron, C80/C180 fullerenes, geodesic triangles, cube,
 tetrahedron, cube frame, tetrahedron frame, stepped bipyramid) and adds the
@@ -80,7 +96,8 @@ Practical knowledge for verifying changes by actually running the app
   seedable RNG.
 - `src/boards/` — `core.ts` (Board/Board3D, adjacency, topology, vector
   helpers), `tilings.ts` (the flat regular builders), `solids.ts` (the
-  closed 3D boards), `catalog.ts` / `presets.ts` (read `data/*.json`).
+  closed 3D boards), `surfaces.ts` (the torus/cylinder/Möbius/Klein wraps and
+  the Klein `cellCycle`), `catalog.ts` / `presets.ts` (read `data/*.json`).
 - `src/render/` — one Three.js pipeline: `renderer.ts` (scene, ortho +
   perspective cameras, trackball rotation, resize, picking),
   `boardMesh.ts` (shared cell-visual vocabulary), `polygonBoard.ts` /

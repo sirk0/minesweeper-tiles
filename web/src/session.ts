@@ -27,6 +27,17 @@ export class GameSession {
   private startedAt: number | null = null;
   private stoppedAt: number | null = null;
 
+  // View-layer scroll for the Klein bottle. `cycle` is the one-step ring
+  // translation (a graph automorphism); scrolling walks a permutation between
+  // geometric faces and the game cells painted on them, so cells hidden behind
+  // the self-intersection rotate into view without the geometry moving.
+  // `remap` sends each geometric face -> the game cell shown on it (identity
+  // until scrolled); `remapInv` is its inverse (game cell -> geometric face).
+  private readonly cycle: Map<CellId, CellId> | null;
+  private readonly cycleInv: Map<CellId, CellId> | null;
+  private remap = new Map<CellId, CellId>();
+  private remapInv = new Map<CellId, CellId>();
+
   constructor(
     mode: string,
     difficulty: string,
@@ -45,6 +56,12 @@ export class GameSession {
       ...(opts.minePositions ? { minePositions: opts.minePositions } : {}),
       ...(rng ? { rng } : {}),
     });
+    this.cycle = isBoard3D(this.board) ? this.board.cellCycle : null;
+    this.cycleInv = this.cycle ? invert(this.cycle) : null;
+    for (const cell of this.board.polygons.keys()) {
+      this.remap.set(cell, cell);
+      this.remapInv.set(cell, cell);
+    }
   }
 
   get status() {
@@ -53,6 +70,39 @@ export class GameSession {
 
   get is3d(): boolean {
     return isBoard3D(this.board);
+  }
+
+  /** Whether this board carries a ring translation the player can scroll along
+   * (the Klein bottle). Drives the HUD scroll arrows and wheel/gesture input. */
+  get hasCellCycle(): boolean {
+    return this.cycle != null;
+  }
+
+  /** The geometric face a game cell's contents are currently painted on
+   * (identity until the board is scrolled). The test seam maps a cell's screen
+   * position through this. */
+  geomFor(gameCell: CellId): CellId {
+    return this.remapInv.get(gameCell) ?? gameCell;
+  }
+
+  private toGame(geomCell: CellId): CellId {
+    return this.remap.get(geomCell) ?? geomCell;
+  }
+
+  /** Scroll the cell contents one step along the ring: `direction` > 0 forward
+   * (`cycle`), < 0 backward (`cycleInv`). No-op off a Klein board. Returns
+   * whether it scrolled. */
+  scroll(direction: number): boolean {
+    if (!this.cycle || !this.cycleInv) return false;
+    const cyc = direction > 0 ? this.cycle : this.cycleInv;
+    const next = new Map<CellId, CellId>();
+    for (const [geom, game] of this.remap) next.set(geom, cyc.get(game) ?? game);
+    this.remap = next;
+    this.remapInv = invert(next);
+    for (const geom of this.board.polygons.keys()) {
+      this.mesh.setVisual(geom, this.visualFor(this.toGame(geom)));
+    }
+    return true;
   }
 
   hud(): HudSnapshot {
@@ -72,21 +122,22 @@ export class GameSession {
   reveal(cell: CellId): void {
     if (this.status !== "playing") return;
     this.startTimer();
-    const changed = this.game.reveal(cell);
-    if (this.game.state === "lost") this.exploded = cell;
+    const gameCell = this.toGame(cell);
+    const changed = this.game.reveal(gameCell);
+    if (this.game.state === "lost") this.exploded = gameCell;
     this.apply(changed);
     this.checkStop();
   }
 
   flag(cell: CellId): void {
     this.startTimer();
-    this.apply(this.game.toggleFlag(cell));
+    this.apply(this.game.toggleFlag(this.toGame(cell)));
   }
 
   chord(cell: CellId): void {
     if (this.status !== "playing") return;
     this.startTimer();
-    const changed = this.game.chord(cell);
+    const changed = this.game.chord(this.toGame(cell));
     if (this.game.state === "lost") {
       // the mine that ended the chord is whichever revealed mine exists
       for (const c of changed) if (this.game.isMine(c)) this.exploded = c;
@@ -111,13 +162,15 @@ export class GameSession {
   }
 
   private apply(changed: CellId[]): void {
-    for (const cell of changed) this.mesh.setVisual(cell, this.visualFor(cell));
+    for (const cell of changed) {
+      this.mesh.setVisual(this.geomFor(cell), this.visualFor(cell));
+    }
   }
 
   private revealAllMines(): void {
     for (const cell of this.game.cells) {
       if (this.game.isMine(cell) && this.game.cellState(cell) !== "flagged") {
-        this.mesh.setVisual(cell, this.visualFor(cell));
+        this.mesh.setVisual(this.geomFor(cell), this.visualFor(cell));
       }
     }
   }
@@ -136,4 +189,10 @@ export class GameSession {
     }
     return { kind: "hidden" };
   }
+}
+
+function invert(map: Map<CellId, CellId>): Map<CellId, CellId> {
+  const out = new Map<CellId, CellId>();
+  for (const [k, v] of map) out.set(v, k);
+  return out;
 }

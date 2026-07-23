@@ -16,6 +16,13 @@ const MODES = [
   "cube",
   "tetraframe",
   "steppedbipyramid",
+  // M3 wraps: the closed donut, the open two-sided cylinder, and the
+  // non-orientable Möbius strip / Klein bottle (both drawn two-sided with the
+  // back dimmed), each at its SurfaceSpec starting tilt.
+  "torus",
+  "cylinder",
+  "mobius",
+  "klein",
 ];
 
 test.describe("board gallery", () => {
@@ -68,6 +75,31 @@ test.describe("board gallery", () => {
     });
     await page.waitForTimeout(150);
     await expect(page).toHaveScreenshot("cube-revealed.png");
+  });
+
+  test("klein cell contents shift under scroll (offset 0 vs scrolled)", async ({ page }) => {
+    // Reveal a spread of numbered cells on a dense-mine Klein board (each safe
+    // cell borders a mine, so nothing cascades), then compare the board before
+    // and after a scroll: the same numbers appear on different faces, while the
+    // geometry never moves. The timer is masked (revealing starts it).
+    await page.goto("/");
+    await expect(page.locator("body[data-ready]")).toBeVisible();
+    await page.evaluate(() => {
+      const ms = window.__ms!;
+      ms.startBoard("klein", "easy");
+      const cells = ms.cells();
+      const n = cells.length;
+      const safe = Array.from({ length: 8 }, (_, k) => cells[Math.floor((k * n) / 8)]!);
+      const safeSet = new Set(safe);
+      ms.startBoard("klein", "easy", { mines: cells.filter((c) => !safeSet.has(c)) });
+      for (const c of safe.slice(0, 6)) ms.reveal(c);
+    });
+    const timer = page.locator('.hud-counter[data-slot="timer"]');
+    await page.waitForTimeout(150);
+    await expect(page).toHaveScreenshot("klein-revealed.png", { mask: [timer] });
+    await page.evaluate(() => window.__ms!.scroll(1));
+    await page.waitForTimeout(150);
+    await expect(page).toHaveScreenshot("klein-scrolled.png", { mask: [timer] });
   });
 
   test("sphere glyphs stay on the visible hemisphere", async ({ page }) => {

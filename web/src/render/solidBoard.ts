@@ -31,16 +31,18 @@ import {
 import { makeGlyphAtlas, type GlyphAtlas } from "./glyphAtlas";
 
 // The 3D counterpart of PolygonBoard: a Board3D's outward-wound surface
-// polygons become one merged beveled geometry — each cell an inset top face
-// raised along its outward normal, ringed by bevel quads. Revealed cells
-// drop their plateau to a sunken face (the classic minesweeper raised/flat
-// distinction — colour alone is ambiguous under 3D lighting). Closed
-// surfaces cull back faces; open or non-orientable surfaces (M3's cylinder /
-// Möbius strip / Klein bottle) render DoubleSide with the back side dimmed
-// in the shader, staying opaque so the depth buffer resolves
-// self-intersections. Glyphs are billboards rebuilt from the current board
-// rotation (`orient`), so numbers stay screen-upright like the pygame
-// renderer, and only front-facing cells carry one.
+// polygons become one merged geometry. On a closed surface each cell is an
+// inset top face raised along its outward normal, ringed by bevel quads;
+// revealed cells drop their plateau to a sunken face (the classic minesweeper
+// raised/flat distinction — colour alone is ambiguous under 3D lighting), and
+// back faces are culled. On an open or non-orientable surface (M3's cylinder /
+// Möbius strip / Klein bottle) each cell is instead a flat DoubleSide tile on
+// the surface, lit and coloured identically from both faces, so it reads and
+// plays the same from inside or out; grout under the tile gaps keeps them from
+// becoming holes. Glyphs are billboards rebuilt from the current board rotation
+// (`orient`) so numbers stay screen-upright like the pygame renderer, and are
+// depth-tested so geometry in front of a cell hides its number (a nearer wall,
+// a nearer frame bar) instead of letting it bleed through.
 
 const SHRINK = 0.04;
 const BEVEL = 0.16;
@@ -51,7 +53,6 @@ const HEIGHT_FRAC = 0.1;
 // Revealed cells sink almost to the base layer (kept just above it so the
 // two never z-fight).
 const FLAT_FRAC = 0.02;
-const BACK_DIM = 0.82; // matches the pygame two-sided back-face dimming
 const BASE_COLOR = "#8e8e8e"; // grout surface showing through the tile gaps
 
 const _inv = /* @__PURE__ */ new Matrix4(); // scratch for the world→local map
@@ -80,6 +81,11 @@ interface CellGeom {
 
 export class SolidBoard extends Group implements BoardMesh {
   readonly view: BoardView;
+  // Open / non-orientable surfaces (cylinder, Möbius strip, Klein bottle) are
+  // drawn identically from both sides: flat tiles at the surface (no raised
+  // bevel, which would read as a recess from the inside), grout showing in the
+  // gaps from either face, and glyphs on whichever side faces the camera.
+  readonly twoSided: boolean;
   private readonly order: CellId[];
   private readonly cellIndex = new Map<CellId, number>();
   private readonly geom: CellGeom[] = [];
@@ -106,10 +112,14 @@ export class SolidBoard extends Group implements BoardMesh {
     this.states = this.order.map(() => ({ kind: "hidden" }));
     this.order.forEach((c, i) => this.cellIndex.set(c, i));
     this.view = { kind: "solid", radius: board.radius };
+    this.twoSided = board.twoSided;
 
     const basePositions: number[] = [];
     const faceCell: number[] = [];
     let vertexCount = 0;
+    // A closed cell is a raised beveled button (3n top-fan + 6n bevel-ring
+    // vertices = 3n triangles); a two-sided cell is a flat tile (n triangles).
+    const perCell = (n: number) => (this.twoSided ? 3 * n : 9 * n);
 
     this.order.forEach((cell, ci) => {
       const poly = board.polygons.get(cell)!;
@@ -125,15 +135,16 @@ export class SolidBoard extends Group implements BoardMesh {
         ) / n;
       this.geom.push({
         start: vertexCount,
-        count: 9 * n, // 3n top-fan + 6n bevel-ring vertices
+        count: perCell(n),
         poly,
         centroid,
         normal,
         radius,
         center: centroid,
       });
-      vertexCount += 9 * n;
-      for (let e = 0; e < n; e++) faceCell.push(ci, ci, ci); // 1 top + 2 bevel
+      vertexCount += perCell(n);
+      const triangles = this.twoSided ? n : 3 * n;
+      for (let t = 0; t < triangles; t++) faceCell.push(ci);
 
       // Opaque base layer under the whole (unshrunk) polygon: the tile gaps
       // and the silhouette show this grout surface instead of seeing through
@@ -159,43 +170,40 @@ export class SolidBoard extends Group implements BoardMesh {
       roughness: 0.65,
       metalness: 0,
       // Closed surfaces rely on back-face culling (winding is outward);
-      // open/non-orientable ones draw both sides, back dimmed via the shader
-      // patch below — opaque, so the depth buffer sorts self-intersections.
-      side: board.twoSided ? DoubleSide : FrontSide,
+      // open/non-orientable ones draw both faces of their flat tiles, lit and
+      // coloured identically (MeshStandardMaterial flips the normal for the
+      // back face), so a cell looks and plays the same from either side.
+      side: this.twoSided ? DoubleSide : FrontSide,
     });
-    if (board.twoSided) {
-      material.onBeforeCompile = (shader) => {
-        shader.fragmentShader = shader.fragmentShader.replace(
-          "#include <dithering_fragment>",
-          `#include <dithering_fragment>
-  if (!gl_FrontFacing) gl_FragColor.rgb *= ${BACK_DIM};`,
-        );
-      };
-    }
     const cells = new Mesh(geometry, material);
     cells.name = "cells";
     this.add(cells);
 
-    if (!board.twoSided) {
-      const baseGeometry = new BufferGeometry();
-      baseGeometry.setAttribute(
-        "position",
-        new BufferAttribute(new Float32Array(basePositions), 3),
-      );
-      baseGeometry.computeVertexNormals();
-      const base = new Mesh(
-        baseGeometry,
-        new MeshStandardMaterial({
-          color: BASE_COLOR,
-          roughness: 0.8,
-          metalness: 0,
-          flatShading: true,
-          side: FrontSide,
-        }),
-      );
-      base.name = "base";
-      this.add(base);
-    }
+    // Grout under the tile gaps on every board. On closed surfaces it sits
+    // below the raised cells; on two-sided surfaces the tiles are flat and
+    // coplanar with it, so the grout is pushed back in depth (polygonOffset)
+    // and shown from both faces — the gaps read as grout lines, never holes.
+    const baseGeometry = new BufferGeometry();
+    baseGeometry.setAttribute(
+      "position",
+      new BufferAttribute(new Float32Array(basePositions), 3),
+    );
+    baseGeometry.computeVertexNormals();
+    const base = new Mesh(
+      baseGeometry,
+      new MeshStandardMaterial({
+        color: BASE_COLOR,
+        roughness: 0.8,
+        metalness: 0,
+        flatShading: true,
+        side: this.twoSided ? DoubleSide : FrontSide,
+        polygonOffset: this.twoSided,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 4,
+      }),
+    );
+    base.name = "base";
+    this.add(base);
 
     const glyphMesh = new Mesh(
       this.glyphGeometry,
@@ -203,11 +211,15 @@ export class SolidBoard extends Group implements BoardMesh {
         map: this.atlas.texture,
         transparent: true,
         alphaTest: 0.4,
-        // Billboards for front-facing cells only, drawn over the board like
-        // the pygame renderer (no depth test — geometry can never clip a
-        // number).
+        // Billboards drawn over the board, depth-tested so geometry in front of
+        // a cell (a nearer wall of a two-sided surface, a nearer bar of a
+        // frame) hides its number instead of letting it bleed through; a slight
+        // polygon offset keeps a glyph from z-fighting its own tile.
         depthWrite: false,
-        depthTest: false,
+        depthTest: true,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -4,
       }),
     );
     glyphMesh.name = "glyphs";
@@ -243,7 +255,9 @@ export class SolidBoard extends Group implements BoardMesh {
     if (i == null) return;
     const wasFlat = isFlat(this.states[i]!);
     this.states[i] = visual;
-    if (isFlat(visual) !== wasFlat) this.writeGeometry(i);
+    // Two-sided tiles are flat and static (state shows in colour only); closed
+    // cells rise when hidden and sink when revealed, so re-extrude on that flip.
+    if (!this.twoSided && isFlat(visual) !== wasFlat) this.writeGeometry(i);
     this.writeColor(i);
     this.rebuildGlyphs();
   }
@@ -274,9 +288,11 @@ export class SolidBoard extends Group implements BoardMesh {
     this.rebuildGlyphs();
   }
 
-  /** (Re)write one cell's beveled geometry: raised for hidden/flagged cells,
-   * sunk nearly to the base layer once revealed. */
+  /** (Re)write one cell's geometry: a flat tile at the surface for two-sided
+   * boards, else a beveled button — raised for hidden/flagged cells, sunk
+   * nearly to the base layer once revealed. */
   private writeGeometry(i: number): void {
+    if (this.twoSided) return this.writeFlatTile(i);
     const g = this.geom[i]!;
     const { poly, centroid, normal } = g;
     const n = poly.length;
@@ -323,6 +339,28 @@ export class SolidBoard extends Group implements BoardMesh {
     this.normalAttr.needsUpdate = true;
   }
 
+  /** A flat, slightly-shrunk tile fanned from the cell centroid, sitting on the
+   * surface (no raise). It carries the single cell normal and is drawn
+   * two-sided, so it reads the same from inside or outside; the grout base
+   * behind it shows in the shrink gap as a border line. */
+  private writeFlatTile(i: number): void {
+    const g = this.geom[i]!;
+    const { poly, centroid, normal } = g;
+    const n = poly.length;
+    const face = poly.map((p) => lerp3(p, centroid, SHRINK));
+    g.center = centroid;
+    let v = g.start;
+    for (let e = 0; e < n; e++) {
+      for (const p of [centroid, face[e]!, face[(e + 1) % n]!]) {
+        this.positionAttr.setXYZ(v, p[0], p[1], p[2]);
+        this.normalAttr.setXYZ(v, normal[0], normal[1], normal[2]);
+        v++;
+      }
+    }
+    this.positionAttr.needsUpdate = true;
+    this.normalAttr.needsUpdate = true;
+  }
+
   private writeColor(i: number): void {
     const col = SOLID_COLORS[this.states[i]!.kind].clone();
     if (i === this.hovered && this.states[i]!.kind === "hidden") {
@@ -346,18 +384,16 @@ export class SolidBoard extends Group implements BoardMesh {
       if (!uv) continue;
       const g = this.geom[i]!;
       const c = g.center;
-      // Only cells whose top face the camera can actually see carry a glyph
-      // (the glyph mesh has no depth test, so a back cell's number would
-      // otherwise bleed through the board). The direction from the cell to
-      // the camera is computed per-cell, so the horizon is the true
-      // perspective silhouette — a constant view-forward would keep cells
-      // that have already curved onto the back near the rim.
       const toCam = normalize([cam[0] - c[0], cam[1] - c[1], cam[2] - c[2]]);
+      // On a closed surface only cells whose top face the camera can see carry
+      // a glyph, so the far hemisphere's numbers never billboard onto the front
+      // (the per-cell camera direction makes the horizon the true perspective
+      // silhouette). Two-sided tiles are visible from both faces, so they skip
+      // this cull; depth-testing then hides any number a nearer wall occludes.
       if (
-        toCam[0] * g.normal[0] +
-          toCam[1] * g.normal[1] +
-          toCam[2] * g.normal[2] <=
-        0.05
+        !this.twoSided &&
+        toCam[0] * g.normal[0] + toCam[1] * g.normal[1] + toCam[2] * g.normal[2] <=
+          0.05
       ) {
         continue;
       }
@@ -379,10 +415,20 @@ export class SolidBoard extends Group implements BoardMesh {
         projected.reduce((a, q) => a + q[1], 0) / projected.length;
       const s = polygonInradius(projected, [px, py]) * 0.9;
       if (!(s > 0)) continue;
+      // Lift the whole billboard toward the camera by its own half-size: a
+      // camera-facing quad centred on a tilted cell would otherwise dip behind
+      // that cell's face on its far half and be depth-clipped (numbers/flags/
+      // mines rendered "in half"). The lift (< a cell width) clears the cell's
+      // own face while staying far behind any genuinely nearer wall or frame
+      // bar, so occlusion still works.
+      const lift = s * 1.3;
+      const cx = c[0] + toCam[0] * lift;
+      const cy = c[1] + toCam[1] * lift;
+      const cz = c[2] + toCam[2] * lift;
       const at = (du: number, dv: number): Vec3 => [
-        c[0] + u[0] * (px + s * du) + v[0] * (py + s * dv),
-        c[1] + u[1] * (px + s * du) + v[1] * (py + s * dv),
-        c[2] + u[2] * (px + s * du) + v[2] * (py + s * dv),
+        cx + u[0] * (px + s * du) + v[0] * (py + s * dv),
+        cy + u[1] * (px + s * du) + v[1] * (py + s * dv),
+        cz + u[2] * (px + s * du) + v[2] * (py + s * dv),
       ];
       const bl = at(-1, -1);
       const br = at(1, -1);

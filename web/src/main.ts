@@ -1,6 +1,6 @@
 import { Vector3 } from "three";
 import "./ui/styles.css";
-import type { CellId } from "./boards/core";
+import { isBoard3D, type CellId } from "./boards/core";
 import { hasMode } from "./boards/presets";
 import { DIFFICULTIES } from "./boards/catalog";
 import { screens } from "./config/screens";
@@ -48,6 +48,7 @@ class App {
       onHover: (cell) => this.hover(cell),
       rotates: () => this.screen === "game" && (this.session?.is3d ?? false),
       onRotate: (dx, dy) => this.rotate(dx, dy),
+      onScroll: (direction) => this.scroll(direction),
     });
     this.renderer.start();
     window.setInterval(() => this.tickTimer(), 250);
@@ -103,6 +104,10 @@ class App {
       this.hud.setState({ flagMode: this.flagMode });
     } else if (action === "restart" && this.session) {
       this.startGame(this.session.mode, this.session.difficulty);
+    } else if (action === "klein-scroll-back") {
+      this.scroll(-1);
+    } else if (action === "klein-scroll-fwd") {
+      this.scroll(1);
     }
   }
 
@@ -139,14 +144,29 @@ class App {
     this.renderer.rotateBy(dxPx, dyPx);
   }
 
+  /** Walk the Klein cell cycle one step (view-layer permutation); no-op on
+   * boards without one. */
+  private scroll(direction: number): void {
+    if (this.screen !== "game") return;
+    if (this.session?.scroll(direction)) {
+      this.renderer.markDirty();
+    }
+  }
+
   private onKey(e: KeyboardEvent): void {
-    if (!this.session?.is3d || this.screen !== "game") return;
-    const step = KEY_ROTATE_STEP;
-    if (e.key === "ArrowLeft") this.rotate(-step, 0);
-    else if (e.key === "ArrowRight") this.rotate(step, 0);
-    else if (e.key === "ArrowUp") this.rotate(0, -step);
-    else if (e.key === "ArrowDown") this.rotate(0, step);
-    else return;
+    if (this.screen !== "game" || !this.session?.is3d) return;
+    // Bracket keys walk the Klein cell cycle (matching the wheel / scroll
+    // arrows); arrows rotate the board.
+    if (e.key === "[") this.scroll(-1);
+    else if (e.key === "]") this.scroll(1);
+    else {
+      const step = KEY_ROTATE_STEP;
+      if (e.key === "ArrowLeft") this.rotate(-step, 0);
+      else if (e.key === "ArrowRight") this.rotate(step, 0);
+      else if (e.key === "ArrowUp") this.rotate(0, -step);
+      else if (e.key === "ArrowDown") this.rotate(0, step);
+      else return;
+    }
     e.preventDefault();
   }
 
@@ -167,7 +187,7 @@ class App {
       elapsedSeconds: s.elapsedSeconds,
       status: s.status,
       flagMode: this.flagMode,
-      hasCellCycle: false,
+      hasCellCycle: this.session.hasCellCycle,
     });
   }
 
@@ -178,12 +198,17 @@ class App {
   private cellScreenXY(cell: CellId): { x: number; y: number } | null {
     if (!this.session) return null;
     const mesh = this.session.mesh;
-    const anchor = mesh.cellAnchor(cell);
+    // A game cell's contents are painted on its (possibly scrolled) geometric
+    // face; anchor there so the reported position follows the Klein scroll.
+    const anchor = mesh.cellAnchor(this.session.geomFor(cell));
     if (!anchor) return null;
     mesh.updateWorldMatrix(true, false);
     const world = new Vector3(...anchor.center).applyMatrix4(mesh.matrixWorld);
     const camera = this.renderer.camera;
-    if (this.session.is3d) {
+    const board = this.session.board;
+    // A closed solid hides a cell that faces away; a two-sided surface shows
+    // its cells from both faces, so it is never culled here.
+    if (this.session.is3d && !(isBoard3D(board) && board.twoSided)) {
       const normal = new Vector3(...anchor.normal).transformDirection(mesh.matrixWorld);
       const toCamera = camera.position.clone().sub(world);
       if (normal.dot(toCamera) <= 1e-6) return null; // back-facing
@@ -214,6 +239,7 @@ class App {
         this.afterMove();
       },
       rotate: (dxPx, dyPx) => this.rotate(dxPx, dyPx),
+      scroll: (direction) => this.scroll(direction),
       state: () => {
         const s = this.session;
         return {

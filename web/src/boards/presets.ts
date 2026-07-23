@@ -23,6 +23,20 @@ import {
   triangleBoard,
   triangleGridBoard,
 } from "./tilings";
+import {
+  cylinderBoard,
+  cylinderHexBoard,
+  cylinderTriangleBoard,
+  kleinBoard,
+  kleinHexBoard,
+  kleinTriangleBoard,
+  mobiusBoard,
+  mobiusHexBoard,
+  mobiusTriangleBoard,
+  torusBoard,
+  torusHexBoard,
+  torusTriangleBoard,
+} from "./surfaces";
 
 type Builder = (...args: number[]) => AnyBoard;
 
@@ -42,6 +56,18 @@ const BUILDERS: Record<string, Builder> = {
   tetrahedron_board: tetrahedronBoard,
   tetrahedron_frame_board: tetrahedronFrameBoard,
   stepped_bipyramid_board: steppedBipyramidBoard,
+  torus_board: torusBoard,
+  torus_triangle_board: torusTriangleBoard,
+  torus_hex_board: torusHexBoard,
+  mobius_board: mobiusBoard,
+  mobius_triangle_board: mobiusTriangleBoard,
+  mobius_hex_board: mobiusHexBoard,
+  klein_board: kleinBoard,
+  klein_triangle_board: kleinTriangleBoard,
+  klein_hex_board: kleinHexBoard,
+  cylinder_board: cylinderBoard,
+  cylinder_triangle_board: cylinderTriangleBoard,
+  cylinder_hex_board: cylinderHexBoard,
 };
 
 interface PresetSpec {

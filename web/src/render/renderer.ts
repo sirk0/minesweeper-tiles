@@ -12,6 +12,7 @@ import {
   WebGLRenderer,
 } from "three";
 import type { CellId } from "../boards/core";
+import { surfaceOf, viewHint } from "../boards/catalog";
 import type { BoardMesh } from "./boardMesh";
 
 // One rendering pipeline for both board families. Flat boards use the
@@ -193,8 +194,7 @@ export class BoardRenderer {
   }
 }
 
-/** The per-mode starting orientation (port of GameScreen3D._initial_rotation
- * for the solid modes; the surface tilt hints join in M3). */
+/** The per-mode starting orientation (port of GameScreen3D._initial_rotation). */
 export function initialOrientation(mode: string): Quaternion {
   const qx = (a: number) => new Quaternion().setFromAxisAngle(X_AXIS, a);
   const qy = (a: number) => new Quaternion().setFromAxisAngle(Y_AXIS, a);
@@ -206,5 +206,11 @@ export function initialOrientation(mode: string): Quaternion {
   // a tetrahedron viewed down a 2-fold axis looks like a flat square; turn
   // to a vertex-first 3/4 view so the frame's gaps read clearly
   if (mode === "tetraframe") return qx(-0.62).multiply(qy(0.45));
-  return new Quaternion();
+  // the Klein bottle reads best from a 3/4 turn: the neck diving through the
+  // body (the self-intersection) is then plainly visible
+  if (surfaceOf(mode)?.key === "klein") return qx(-0.4).multiply(qy(0.6));
+  // wrapped surfaces tilt by their SurfaceSpec hint (donut, cylinder, Möbius);
+  // everything else faces straight on
+  const tilt = viewHint(mode);
+  return tilt != null ? qx(tilt) : new Quaternion();
 }

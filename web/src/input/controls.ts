@@ -21,7 +21,14 @@ export interface ControlHandlers {
   rotates(): boolean;
   /** A drag step of (dx, dy) CSS pixels while rotating. */
   onRotate(dx: number, dy: number): void;
+  /** One scroll step along the board's ring (Klein bottle): +1 forward, -1
+   * back. Fired by the mouse wheel / two-finger trackpad scroll; a no-op off a
+   * scrollable board. */
+  onScroll(direction: number): void;
 }
+
+// Wheel/trackpad delta accumulated per ring step (a notch is ~100px).
+const WHEEL_STEP = 40;
 
 export function attachControls(
   canvas: HTMLCanvasElement,
@@ -117,12 +124,27 @@ export function attachControls(
 
   const onLeave = () => handlers.onHover(null);
 
+  let scrollAccum = 0;
+  const onWheel = (e: WheelEvent) => {
+    e.preventDefault(); // don't let the page scroll under the board
+    scrollAccum += e.deltaY;
+    while (scrollAccum >= WHEEL_STEP) {
+      scrollAccum -= WHEEL_STEP;
+      handlers.onScroll(1);
+    }
+    while (scrollAccum <= -WHEEL_STEP) {
+      scrollAccum += WHEEL_STEP;
+      handlers.onScroll(-1);
+    }
+  };
+
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onCancel);
   canvas.addEventListener("pointerleave", onLeave);
   canvas.addEventListener("contextmenu", onContextMenu);
+  canvas.addEventListener("wheel", onWheel, { passive: false });
 
   return () => {
     clearLong();
@@ -132,5 +154,6 @@ export function attachControls(
     canvas.removeEventListener("pointercancel", onCancel);
     canvas.removeEventListener("pointerleave", onLeave);
     canvas.removeEventListener("contextmenu", onContextMenu);
+    canvas.removeEventListener("wheel", onWheel);
   };
 }
