@@ -1,17 +1,17 @@
 """Difficulty presets and the build_board entry point.
 
-The regular tilings and one-off solids keep an explicit preset per
-mode. The Archimedean tilings are declared once in the ARCH_PRESETS
-table (tiling -> surface -> difficulty -> builder args) and their
-_PRESETS lambdas are generated from it -- adding an Archimedean
-tiling is one ARCH_PRESETS row. See AGENTS.md.
+The regular tilings, one-off solids and Archimedean/Laves tilings all
+build from data/presets.json (the shared source both front-ends read).
+The Archimedean presets are authored in the compact ARCH_PRESETS table
+below (tiling -> surface -> difficulty -> builder args); adding an
+Archimedean tiling is one ARCH_PRESETS row, expanded into presets.json
+by scripts/export_data.py. See AGENTS.md.
 """
 
 from __future__ import annotations
 
 from minesweeper.boards._data import load
 from minesweeper.boards.aperiodic import hat_board, penrose_board
-from minesweeper.boards.catalog import mode_for
 from minesweeper.boards.core import DIFFICULTIES, ROOT3, Board, Board3D
 from minesweeper.boards.solids import (
     c80_board,
@@ -84,6 +84,13 @@ _JSON_BUILDERS = {
     "cylinder_board": cylinder_board,
     "cylinder_triangle_board": cylinder_triangle_board,
     "cylinder_hex_board": cylinder_hex_board,
+    # Archimedean/Laves modes take the tiling key as their first arg (the
+    # tiling name), so their JSON preset args begin with a string.
+    "archimedean_board": archimedean_board,
+    "arch_torus_board": arch_torus_board,
+    "arch_cylinder_board": arch_cylinder_board,
+    "arch_mobius_board": arch_mobius_board,
+    "arch_klein_board": arch_klein_board,
 }
 
 # Explicit presets for the one-off boards (solids, aperiodic, surfaces).
@@ -221,30 +228,16 @@ ARCH_PRESETS = {
 }
 
 # Load the shared presets (data/presets.json) into _PRESETS. Each row is
-# {builder, args: {difficulty: [positional args]}}.
+# {builder, args: {difficulty: [positional args]}}. The Archimedean/Laves
+# modes live here too now (their args begin with the tiling key); the
+# ARCH_PRESETS table above is the compact authoring source that
+# scripts/export_data.py expands into data/presets.json.
 for _mode, _spec in load("presets")["presets"].items():
     _fn = _JSON_BUILDERS[_spec["builder"]]
     _PRESETS[_mode] = {
         _difficulty: (lambda fn=_fn, a=_args: fn(*a))
         for _difficulty, _args in _spec["args"].items()
     }
-
-
-_ARCH_BUILDERS = {
-    "flat": archimedean_board,
-    "torus": arch_torus_board,
-    "cylinder": arch_cylinder_board,
-    "mobius": arch_mobius_board,
-    "klein": arch_klein_board,
-}
-
-for _tiling, _surfaces in ARCH_PRESETS.items():
-    for _surface, _by_difficulty in _surfaces.items():
-        _builder = _ARCH_BUILDERS[_surface]
-        _PRESETS[mode_for(_tiling, _surface)] = {
-            _difficulty: (lambda b=_builder, t=_tiling, p=_params: b(t, *p))
-            for _difficulty, _params in _by_difficulty.items()
-        }
 
 
 def build_board(mode: str, difficulty: str) -> Board | Board3D:

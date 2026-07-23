@@ -17,6 +17,7 @@ import {
   tetrahedronFrameBoard,
 } from "./solids";
 import {
+  archimedeanBoard,
   hexBoard,
   hexhexBoard,
   squareBoard,
@@ -24,6 +25,10 @@ import {
   triangleGridBoard,
 } from "./tilings";
 import {
+  archCylinderBoard,
+  archKleinBoard,
+  archMobiusBoard,
+  archTorusBoard,
   cylinderBoard,
   cylinderHexBoard,
   cylinderTriangleBoard,
@@ -38,7 +43,11 @@ import {
   torusTriangleBoard,
 } from "./surfaces";
 
-type Builder = (...args: number[]) => AnyBoard;
+// The Archimedean/Laves builders take the tiling key as their first argument,
+// so a preset's args are a mix of that leading string and numbers. The dispatch
+// map is intentionally loose (each concrete builder has its own signature).
+type Arg = number | string;
+type Builder = (...args: any[]) => AnyBoard;
 
 const BUILDERS: Record<string, Builder> = {
   square_board: squareBoard,
@@ -68,11 +77,16 @@ const BUILDERS: Record<string, Builder> = {
   cylinder_board: cylinderBoard,
   cylinder_triangle_board: cylinderTriangleBoard,
   cylinder_hex_board: cylinderHexBoard,
+  archimedean_board: archimedeanBoard,
+  arch_torus_board: archTorusBoard,
+  arch_cylinder_board: archCylinderBoard,
+  arch_mobius_board: archMobiusBoard,
+  arch_klein_board: archKleinBoard,
 };
 
 interface PresetSpec {
   builder: string;
-  args: Record<string, number[]>;
+  args: Record<string, Arg[]>;
 }
 
 const PRESETS = presetsData.presets as Record<string, PresetSpec>;

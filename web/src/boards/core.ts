@@ -114,6 +114,48 @@ export function buildLattice(
   return { mode, polygons, adjacency, mineCount, width, height };
 }
 
+/**
+ * Assemble a flat board from cells keyed by float vertex ids and a `positions`
+ * map (port of core.py `_finalize_flat`): adjacency by shared exact vertex ids,
+ * vertices shifted so the board's bottom-left corner sits at the origin, then
+ * scaled uniformly. Shared by the Archimedean window (and, in M5, the aperiodic
+ * builders); the lattice builders use `buildLattice` instead.
+ */
+export function finalizeFlat(
+  mode: string,
+  cells: Map<CellId, string[]>,
+  positions: Map<string, Vertex>,
+  mineCount: number,
+  scale: number,
+): Board {
+  if (cells.size === 0) throw new Error("board has no cells");
+  const adjacency = sharedVertexAdjacency(cells);
+  let minX = Infinity;
+  let minY = Infinity;
+  for (const keys of cells.values()) {
+    for (const k of keys) {
+      const p = positions.get(k)!;
+      if (p[0] < minX) minX = p[0];
+      if (p[1] < minY) minY = p[1];
+    }
+  }
+  const polygons = new Map<CellId, Vertex[]>();
+  let width = 0;
+  let height = 0;
+  for (const [cell, keys] of cells) {
+    const poly = keys.map((k) => {
+      const p = positions.get(k)!;
+      return [(p[0] - minX) * scale, (p[1] - minY) * scale] as Vertex;
+    });
+    polygons.set(cell, poly);
+    for (const [x, y] of poly) {
+      if (x > width) width = x;
+      if (y > height) height = y;
+    }
+  }
+  return { mode, polygons, adjacency, mineCount, width, height };
+}
+
 // -- topology (surface invariants; shared with the conformance oracle) -------
 
 function edgesOf(board: AnyBoard): Map<string, number> {

@@ -26,8 +26,10 @@ VIRTUAL_ENV="$VENV" uv pip install -r requirements-test.txt
 
 # Install the TypeScript app's dependencies so `npm run test`/`typecheck`/
 # `build`/`e2e` work in cloud sessions (npm registry is reachable). Playwright
-# uses the preinstalled Chromium; point the config at it via
-# PLAYWRIGHT_CHROMIUM_EXECUTABLE when running e2e.
+# is pinned to the version whose bundled Chromium build matches the one
+# preinstalled in the image (/opt/pw-browsers/chromium-<build>), so `npm run
+# e2e` resolves it automatically; PLAYWRIGHT_CHROMIUM_EXECUTABLE is only a
+# fallback if the image ships a different build.
 if [ -f web/package-lock.json ] && command -v npm >/dev/null 2>&1; then
   (cd web && npm ci) || echo "session-start: web npm ci failed (non-fatal)" >&2
 fi

@@ -49,8 +49,17 @@ npm run e2e         # Playwright e2e + visual regression
 npm run e2e:update  # refresh visual baselines
 ```
 
-Cloud sessions: the preinstalled Chromium is used by pointing Playwright at it —
-`PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-<build>/chrome-linux/chrome npm run e2e`.
+Cloud sessions: `@playwright/test` is **pinned** (not caret-ranged) to the
+version whose bundled Chromium build matches the one preinstalled in the Claude
+cloud image (`/opt/pw-browsers/chromium-<build>`), so `npm run e2e` resolves the
+preinstalled browser and runs directly — no download, no env var. Keep the pin
+in step with the image when bumping Playwright: a caret range silently floats to
+a newer build than the image ships, and e2e then fails with "Executable doesn't
+exist". As a fallback for a mismatched image, point Playwright at whatever build
+is present with
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium-<build>/chrome-linux/chrome npm run e2e`
+(the config honours it). CI installs the pinned build itself, so it is
+self-consistent regardless of the image.
 
 ## Agent notes: driving the app headless
 

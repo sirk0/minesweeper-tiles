@@ -92,10 +92,43 @@ def build_catalog() -> dict:
     }
 
 
+# Archimedean/Laves surface -> builder name. The compact ARCH_PRESETS table
+# in presets.py is the authoring source; it is expanded into per-mode rows here.
+_ARCH_BUILDER_NAMES = {
+    "flat": "archimedean_board",
+    "torus": "arch_torus_board",
+    "cylinder": "arch_cylinder_board",
+    "mobius": "arch_mobius_board",
+    "klein": "arch_klein_board",
+}
+
+
 def build_presets() -> dict:
-    # presets.json is itself the source of truth (presets.py loads it); this
-    # normalises its formatting so the CI data-sync diff stays canonical.
-    return json.loads((DATA / "presets.json").read_text(encoding="utf-8"))
+    # presets.py loads presets.json, so the regular/solid rows are their own
+    # source of truth; the Archimedean/Laves rows are (re)generated from the
+    # ARCH_PRESETS table so the two representations cannot drift. This
+    # normalises the whole file so the CI data-sync diff stays canonical.
+    from minesweeper.boards.catalog import mode_for
+    from minesweeper.boards.presets import ARCH_PRESETS
+
+    committed = json.loads((DATA / "presets.json").read_text(encoding="utf-8"))
+    arch_builders = set(_ARCH_BUILDER_NAMES.values())
+    presets = {
+        mode: spec
+        for mode, spec in committed["presets"].items()
+        if spec["builder"] not in arch_builders
+    }
+    for tiling, surfaces in ARCH_PRESETS.items():
+        for surface, by_difficulty in surfaces.items():
+            presets[mode_for(tiling, surface)] = {
+                "builder": _ARCH_BUILDER_NAMES[surface],
+                "args": {
+                    difficulty: [tiling, *params]
+                    for difficulty, params in by_difficulty.items()
+                },
+            }
+    committed["presets"] = presets
+    return committed
 
 
 def main() -> int:
