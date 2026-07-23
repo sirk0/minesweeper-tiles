@@ -1,6 +1,7 @@
 import { buildBoard } from "./boards/presets";
 import { isBoard3D, type AnyBoard, type CellId } from "./boards/core";
 import { Game } from "./game";
+import { haptic } from "./haptics";
 import { mulberry32, type Rng } from "./rng";
 import type { BoardMesh, CellVisual } from "./render/boardMesh";
 import { PolygonBoard } from "./render/polygonBoard";
@@ -138,6 +139,7 @@ export class GameSession {
     // Pop only on placing a flag, not on clearing one.
     if (!wasFlagged && this.game.cellState(gameCell) === "flagged") {
       this.mesh.popFlag(this.geomFor(gameCell));
+      haptic("flag");
     }
   }
 
@@ -181,6 +183,7 @@ export class GameSession {
       if (this.game.state === "lost") {
         this.revealEndState();
         this.mesh.shake();
+        haptic("lose");
       }
     }
   }
