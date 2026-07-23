@@ -1,45 +1,110 @@
 import { screens } from "../config/screens";
 import {
+  DUAL_ARCH,
+  FAMILY_LABELS,
   MENU,
   MODE_LABELS,
   OTHER_MODES,
-  REGULAR_TILINGS,
   SPHERE_MODES,
   SURFACES,
+  TILINGS_BY_KEY,
+  UNIFORM_ARCH,
   modeFor,
-  surfaceOf,
   tilingAllows,
 } from "../boards/catalog";
 import { MODES } from "../boards/presets";
 
 // Geometry-first menu. The root lists the board groups; the flat boards and
 // solids drill straight to their modes, while "Flat manifolds" drills one level
-// deeper — surface (cylinder / Möbius / Klein / torus) then tiling (squares /
-// triangles / hexagons) — so no screen needs to scroll. Title, difficulty row
-// and theme come from the shared UI-screen config (data/ui/screens.json). The
-// uniform / dual / aperiodic tiling families join as M4 ports the templates.
+// deeper — surface (cylinder / Möbius / Klein / torus) then tiling. Both the
+// plane and every flat manifold open the same tiling picker: the regular
+// tilings directly, then the Uniform and Dual-uniform families as submenus
+// (M4). Title, difficulty row and theme come from the shared UI-screen config.
 
 export interface MenuSelection {
   mode: string;
   difficulty: string;
 }
 
-// Present the ported flat modes in a friendly order with their catalog labels.
-const FLAT_ORDER = ["square", "trigrid", "hex", "triangle", "hexhex"];
-
 const ROOT_LABELS = MENU.rootLabels as Record<string, string>;
 const MANIFOLD_ORDER = MENU.manifoldOrder as string[];
 const MANIFOLD_LABELS = MENU.manifoldLabels as Record<string, string>;
+
+// The regular tilings shown directly in the picker, then the one-off shaped
+// flat boards that only exist on the plane (triangle-of-triangles, hexhex).
+const PICKER_REGULAR = ["square", "tri", "hex"];
+const FLAT_SHAPED = ["triangle", "hexhex"];
 
 interface ModeEntry {
   mode: string;
   label: string;
 }
 
+interface Family {
+  key: string;
+  label: string;
+  modes: ModeEntry[];
+}
+
+/** The tiling picker for a surface: the regular tilings (plus the shaped boards
+ * on the plane) shown directly, then the uniform and dual families that have
+ * any built modes on that surface. */
+interface Picker {
+  direct: ModeEntry[];
+  families: Family[];
+}
+
+/** The built modes for a set of tiling keys on a surface, in the given order. */
+function tilingModes(keys: string[], surfaceKey: string): ModeEntry[] {
+  const surface = SURFACES.get(surfaceKey);
+  if (!surface) return [];
+  const out: ModeEntry[] = [];
+  for (const key of keys) {
+    const tiling = TILINGS_BY_KEY.get(key);
+    if (!tiling || !tilingAllows(tiling, surface)) continue;
+    const mode = modeFor(key, surfaceKey);
+    if (MODES.includes(mode)) out.push({ mode, label: tiling.label });
+  }
+  return out;
+}
+
+function pickerFor(surfaceKey: string): Picker {
+  const direct = tilingModes(PICKER_REGULAR, surfaceKey);
+  if (surfaceKey === "flat") {
+    for (const mode of FLAT_SHAPED) {
+      if (MODES.includes(mode)) direct.push({ mode, label: MODE_LABELS[mode] ?? mode });
+    }
+  }
+  const families: Family[] = [];
+  for (const [key, keys] of [
+    ["uniform", UNIFORM_ARCH],
+    ["dual", DUAL_ARCH],
+  ] as const) {
+    const modes = tilingModes(keys, surfaceKey);
+    if (modes.length > 0) {
+      families.push({ key, label: FAMILY_LABELS[key] ?? key, modes });
+    }
+  }
+  return { direct, families };
+}
+
 interface SurfaceEntry {
   key: string;
   label: string;
-  tilings: ModeEntry[];
+}
+
+interface PickerGroup {
+  key: string;
+  label: string;
+  kind: "picker";
+  surfaceKey: string;
+}
+
+interface ManifoldGroup {
+  key: string;
+  label: string;
+  kind: "manifolds";
+  surfaces: SurfaceEntry[];
 }
 
 interface ModeGroup {
@@ -49,20 +114,7 @@ interface ModeGroup {
   modes: string[];
 }
 
-interface SurfaceGroup {
-  key: string;
-  label: string;
-  kind: "surfaces";
-  surfaces: SurfaceEntry[];
-}
-
-type Group = ModeGroup | SurfaceGroup;
-
-/** A flat mode is one that does not wrap a 3D surface (the plane tilings and
- * the one-off shaped boards). */
-function isFlatMode(mode: string): boolean {
-  return !surfaceOf(mode)?.is3d;
-}
+type Group = PickerGroup | ManifoldGroup | ModeGroup;
 
 export class Menu {
   readonly root: HTMLElement;
@@ -72,21 +124,22 @@ export class Menu {
 
   constructor(private readonly onSelect: (sel: MenuSelection) => void) {
     const groups: Group[] = [
-      { key: "flat", label: "Flat boards", kind: "modes", modes: this.orderedFlatModes() },
+      { key: "flat", label: "Flat boards", kind: "picker", surfaceKey: "flat" },
       {
         key: "manifolds",
         label: ROOT_LABELS["manifolds"] ?? "Flat manifolds",
-        kind: "surfaces",
+        kind: "manifolds",
         surfaces: this.manifoldSurfaces(),
       },
       { key: "sphere", label: ROOT_LABELS["sphere"] ?? "Sphere", kind: "modes", modes: [...SPHERE_MODES] },
       { key: "other", label: ROOT_LABELS["other"] ?? "Other", kind: "modes", modes: [...OTHER_MODES] },
     ];
-    this.groups = groups.filter((g) =>
-      g.kind === "modes"
-        ? (g.modes = g.modes.filter((m) => MODES.includes(m))).length > 0
-        : g.surfaces.length > 0,
-    );
+    this.groups = groups.filter((g) => {
+      if (g.kind === "modes") return (g.modes = g.modes.filter((m) => MODES.includes(m))).length > 0;
+      if (g.kind === "manifolds") return g.surfaces.length > 0;
+      const picker = pickerFor(g.surfaceKey);
+      return picker.direct.length + picker.families.length > 0;
+    });
 
     this.root = document.createElement("section");
     this.root.className = "menu";
@@ -133,12 +186,16 @@ export class Menu {
   }
 
   private groupHint(group: Group): string {
-    return group.kind === "modes"
-      ? group.modes.map((m) => MODE_LABELS[m] ?? m).join(" · ")
-      : group.surfaces.map((s) => s.label).join(" · ");
+    if (group.kind === "modes") return group.modes.map((m) => MODE_LABELS[m] ?? m).join(" · ");
+    if (group.kind === "manifolds") return group.surfaces.map((s) => s.label).join(" · ");
+    return pickerFor(group.surfaceKey).direct.map((e) => e.label).join(" · ");
   }
 
   private showGroup(group: Group): void {
+    if (group.kind === "picker") {
+      this.showPicker(group.label, group.surfaceKey, () => this.showRoot());
+      return;
+    }
     const back = this.backRow(group.label, () => this.showRoot());
     const list = document.createElement("ul");
     list.className = "menu-list";
@@ -150,36 +207,46 @@ export class Menu {
     this.body.replaceChildren(back, list);
   }
 
-  private showSurface(group: SurfaceGroup, surface: SurfaceEntry): void {
-    const back = this.backRow(surface.label, () => this.showGroup(group));
+  /** The shared tiling picker for a surface (the plane or a flat manifold):
+   * regular tilings directly, then the uniform / dual families as submenus. */
+  private showPicker(label: string, surfaceKey: string, onBack: () => void): void {
+    const picker = pickerFor(surfaceKey);
+    const back = this.backRow(label, onBack);
     const list = document.createElement("ul");
     list.className = "menu-list";
-    for (const t of surface.tilings) list.append(this.entryRow(t.mode, t.label));
+    for (const entry of picker.direct) list.append(this.entryRow(entry.mode, entry.label));
+    for (const family of picker.families) {
+      list.append(
+        this.submenuRow(family.label, () =>
+          this.showFamily(family, () => this.showPicker(label, surfaceKey, onBack)),
+        ),
+      );
+    }
     this.body.replaceChildren(back, list);
   }
 
-  private orderedFlatModes(): string[] {
-    const known = FLAT_ORDER.filter((m) => MODES.includes(m) && isFlatMode(m));
-    const rest = MODES.filter((m) => !known.includes(m) && isFlatMode(m) && !SPHERE_MODES.includes(m) && !OTHER_MODES.includes(m));
-    return [...known, ...rest];
+  private showFamily(family: Family, onBack: () => void): void {
+    const back = this.backRow(family.label, onBack);
+    const list = document.createElement("ul");
+    list.className = "menu-list";
+    for (const entry of family.modes) list.append(this.entryRow(entry.mode, entry.label));
+    this.body.replaceChildren(back, list);
   }
 
-  /** The 3D wrappable surfaces, each with the regular tilings it allows that
-   * both front-ends build. Derived from the shared catalog (manifold order +
-   * regular tilings + chirality gating). */
+  private showSurface(group: ManifoldGroup, surface: SurfaceEntry): void {
+    this.showPicker(surface.label, surface.key, () => this.showGroup(group));
+  }
+
+  /** The 3D wrappable surfaces that have any built tiling, in the shared
+   * manifold order. */
   private manifoldSurfaces(): SurfaceEntry[] {
     const entries: SurfaceEntry[] = [];
     for (const key of MANIFOLD_ORDER) {
       const surface = SURFACES.get(key);
       if (!surface || !surface.is3d) continue; // the plane is the Flat group
-      const tilings: ModeEntry[] = [];
-      for (const tiling of REGULAR_TILINGS) {
-        if (!tilingAllows(tiling, surface)) continue;
-        const mode = modeFor(tiling.key, key);
-        if (MODES.includes(mode)) tilings.push({ mode, label: tiling.label });
-      }
-      if (tilings.length > 0) {
-        entries.push({ key, label: MANIFOLD_LABELS[key] ?? surface.label, tilings });
+      const picker = pickerFor(key);
+      if (picker.direct.length + picker.families.length > 0) {
+        entries.push({ key, label: MANIFOLD_LABELS[key] ?? surface.label });
       }
     }
     return entries;
@@ -197,7 +264,7 @@ export class Menu {
     return back;
   }
 
-  private surfaceRow(group: SurfaceGroup, surface: SurfaceEntry): HTMLElement {
+  private surfaceRow(group: ManifoldGroup, surface: SurfaceEntry): HTMLElement {
     const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.className = "menu-entry";
@@ -207,9 +274,26 @@ export class Menu {
     label.textContent = surface.label;
     const hint = document.createElement("span");
     hint.className = "menu-entry-hint";
-    hint.textContent = surface.tilings.map((t) => t.label).join(" · ");
+    hint.textContent = pickerFor(surface.key).direct.map((e) => e.label).join(" · ");
     btn.append(label, hint);
     btn.addEventListener("click", () => this.showSurface(group, surface));
+    li.append(btn);
+    return li;
+  }
+
+  private submenuRow(label: string, onClick: () => void): HTMLElement {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.className = "menu-entry";
+    btn.dataset.submenu = label;
+    const span = document.createElement("span");
+    span.className = "menu-entry-label";
+    span.textContent = label;
+    const hint = document.createElement("span");
+    hint.className = "menu-entry-hint";
+    hint.textContent = "›";
+    btn.append(span, hint);
+    btn.addEventListener("click", onClick);
     li.append(btn);
     return li;
   }

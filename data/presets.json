@@ -510,6 +510,1874 @@
           88
         ]
       }
+    },
+    "elongated": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "elongated",
+          7,
+          2,
+          14,
+          57
+        ],
+        "medium": [
+          "elongated",
+          10,
+          3,
+          30,
+          43
+        ],
+        "hard": [
+          "elongated",
+          14,
+          4,
+          67,
+          30
+        ]
+      }
+    },
+    "toruselongated": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "elongated",
+          12,
+          1,
+          9,
+          0.31
+        ],
+        "medium": [
+          "elongated",
+          14,
+          2,
+          26,
+          0.53
+        ],
+        "hard": [
+          "elongated",
+          20,
+          2,
+          48,
+          0.37
+        ]
+      }
+    },
+    "cylelongated": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "elongated",
+          10,
+          1.2679491924311228,
+          8,
+          -0.5
+        ],
+        "medium": [
+          "elongated",
+          12,
+          2.267949192431123,
+          24,
+          -0.5
+        ],
+        "hard": [
+          "elongated",
+          15,
+          3.267949192431123,
+          60,
+          -0.5
+        ]
+      }
+    },
+    "mobiuselongated": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "elongated",
+          12,
+          1,
+          9
+        ],
+        "medium": [
+          "elongated",
+          12,
+          2,
+          22
+        ],
+        "hard": [
+          "elongated",
+          18,
+          2,
+          43
+        ]
+      }
+    },
+    "kleinelongated": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "elongated",
+          12,
+          1,
+          9
+        ],
+        "medium": [
+          "elongated",
+          14,
+          2,
+          26
+        ],
+        "hard": [
+          "elongated",
+          20,
+          2,
+          48
+        ]
+      }
+    },
+    "snubsquare": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "snubsquare",
+          4,
+          4,
+          15,
+          54
+        ],
+        "medium": [
+          "snubsquare",
+          5,
+          5,
+          26,
+          45
+        ],
+        "hard": [
+          "snubsquare",
+          7,
+          7,
+          57,
+          33
+        ]
+      }
+    },
+    "torussnubsquare": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "snubsquare",
+          5,
+          2,
+          8,
+          0.4
+        ],
+        "medium": [
+          "snubsquare",
+          7,
+          3,
+          19,
+          0.43
+        ],
+        "hard": [
+          "snubsquare",
+          10,
+          4,
+          48,
+          0.4
+        ]
+      }
+    },
+    "cylsnubsquare": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "snubsquare",
+          5,
+          2,
+          8
+        ],
+        "medium": [
+          "snubsquare",
+          7,
+          3,
+          19
+        ],
+        "hard": [
+          "snubsquare",
+          9,
+          5,
+          57
+        ]
+      }
+    },
+    "mobiussnubsquare": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "snubsquare",
+          13,
+          2,
+          10
+        ],
+        "medium": [
+          "snubsquare",
+          15,
+          3,
+          20
+        ],
+        "hard": [
+          "snubsquare",
+          17,
+          4,
+          41
+        ]
+      }
+    },
+    "kleinsnubsquare": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "snubsquare",
+          5,
+          2,
+          8
+        ],
+        "medium": [
+          "snubsquare",
+          7,
+          3,
+          19
+        ],
+        "hard": [
+          "snubsquare",
+          9,
+          4,
+          44
+        ]
+      }
+    },
+    "kagome": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "kagome",
+          5,
+          3,
+          14,
+          40
+        ],
+        "medium": [
+          "kagome",
+          7,
+          4,
+          30,
+          30
+        ],
+        "hard": [
+          "kagome",
+          9,
+          6,
+          65,
+          22
+        ]
+      }
+    },
+    "toruskagome": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "kagome",
+          8,
+          2,
+          12,
+          0.43
+        ],
+        "medium": [
+          "kagome",
+          10,
+          2,
+          18,
+          0.35
+        ],
+        "hard": [
+          "kagome",
+          12,
+          3,
+          43,
+          0.43
+        ]
+      }
+    },
+    "cylkagome": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "kagome",
+          6,
+          2,
+          9,
+          0.8660254037844386
+        ],
+        "medium": [
+          "kagome",
+          9,
+          3,
+          24,
+          0.8660254037844386
+        ],
+        "hard": [
+          "kagome",
+          11,
+          4,
+          55,
+          0.8660254037844386
+        ]
+      }
+    },
+    "mobiuskagome": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "kagome",
+          12,
+          1,
+          9
+        ],
+        "medium": [
+          "kagome",
+          12,
+          2,
+          22
+        ],
+        "hard": [
+          "kagome",
+          18,
+          2,
+          43
+        ]
+      }
+    },
+    "kleinkagome": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "kagome",
+          8,
+          2,
+          12
+        ],
+        "medium": [
+          "kagome",
+          10,
+          2,
+          18
+        ],
+        "hard": [
+          "kagome",
+          12,
+          3,
+          43
+        ]
+      }
+    },
+    "snubhex": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "snubhex",
+          3,
+          2,
+          16,
+          44
+        ],
+        "medium": [
+          "snubhex",
+          4,
+          2,
+          24,
+          39
+        ],
+        "hard": [
+          "snubhex",
+          5,
+          3,
+          50,
+          32
+        ]
+      }
+    },
+    "torussnubhex": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "snubhex",
+          4,
+          1,
+          9,
+          0.43
+        ],
+        "medium": [
+          "snubhex",
+          6,
+          1,
+          16,
+          0.29
+        ],
+        "hard": [
+          "snubhex",
+          7,
+          2,
+          50,
+          0.49
+        ]
+      }
+    },
+    "cylsnubhex": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "snubhex",
+          4,
+          1,
+          9,
+          1.14564392373896
+        ],
+        "medium": [
+          "snubhex",
+          5,
+          2,
+          27,
+          1.14564392373896
+        ],
+        "hard": [
+          "snubhex",
+          7,
+          2,
+          53,
+          1.14564392373896
+        ]
+      }
+    },
+    "truncsquare": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "truncsquare",
+          6,
+          6,
+          12,
+          29
+        ],
+        "medium": [
+          "truncsquare",
+          9,
+          9,
+          29,
+          21
+        ],
+        "hard": [
+          "truncsquare",
+          13,
+          13,
+          68,
+          15
+        ]
+      }
+    },
+    "torustruncsquare": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "truncsquare",
+          9,
+          4,
+          9,
+          0.44
+        ],
+        "medium": [
+          "truncsquare",
+          12,
+          6,
+          22,
+          0.5
+        ],
+        "hard": [
+          "truncsquare",
+          16,
+          7,
+          45,
+          0.44
+        ]
+      }
+    },
+    "cyltruncsquare": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "truncsquare",
+          9,
+          3,
+          7
+        ],
+        "medium": [
+          "truncsquare",
+          12,
+          5,
+          18
+        ],
+        "hard": [
+          "truncsquare",
+          16,
+          7,
+          45
+        ]
+      }
+    },
+    "mobiustruncsquare": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "truncsquare",
+          12,
+          3,
+          9
+        ],
+        "medium": [
+          "truncsquare",
+          16,
+          4,
+          19
+        ],
+        "hard": [
+          "truncsquare",
+          22,
+          5,
+          44
+        ]
+      }
+    },
+    "kleintruncsquare": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "truncsquare",
+          9,
+          4,
+          9
+        ],
+        "medium": [
+          "truncsquare",
+          12,
+          6,
+          22
+        ],
+        "hard": [
+          "truncsquare",
+          16,
+          7,
+          45
+        ]
+      }
+    },
+    "trunchex": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "trunchex",
+          6,
+          3,
+          16,
+          19
+        ],
+        "medium": [
+          "trunchex",
+          8,
+          4,
+          33,
+          14
+        ],
+        "hard": [
+          "trunchex",
+          10,
+          6,
+          70,
+          11
+        ]
+      }
+    },
+    "torustrunchex": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "trunchex",
+          7,
+          2,
+          10,
+          0.49
+        ],
+        "medium": [
+          "trunchex",
+          10,
+          2,
+          18,
+          0.35
+        ],
+        "hard": [
+          "trunchex",
+          12,
+          3,
+          43,
+          0.43
+        ]
+      }
+    },
+    "cyltrunchex": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "trunchex",
+          6,
+          2,
+          9,
+          1.3660254037844386
+        ],
+        "medium": [
+          "trunchex",
+          8,
+          3,
+          22,
+          1.3660254037844386
+        ],
+        "hard": [
+          "trunchex",
+          10,
+          4,
+          48,
+          1.3660254037844386
+        ]
+      }
+    },
+    "mobiustrunchex": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "trunchex",
+          9,
+          1,
+          7
+        ],
+        "medium": [
+          "trunchex",
+          10,
+          2,
+          18
+        ],
+        "hard": [
+          "trunchex",
+          12,
+          3,
+          43
+        ]
+      }
+    },
+    "kleintrunchex": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "trunchex",
+          7,
+          2,
+          10
+        ],
+        "medium": [
+          "trunchex",
+          10,
+          2,
+          18
+        ],
+        "hard": [
+          "trunchex",
+          12,
+          3,
+          43
+        ]
+      }
+    },
+    "rhombitrihex": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "rhombitrihex",
+          4,
+          2,
+          15,
+          38
+        ],
+        "medium": [
+          "rhombitrihex",
+          5,
+          3,
+          30,
+          32
+        ],
+        "hard": [
+          "rhombitrihex",
+          7,
+          4,
+          65,
+          23
+        ]
+      }
+    },
+    "torusrhombitrihex": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "rhombitrihex",
+          5,
+          2,
+          17,
+          0.4
+        ],
+        "medium": [
+          "rhombitrihex",
+          7,
+          2,
+          26,
+          0.4
+        ],
+        "hard": [
+          "rhombitrihex",
+          8,
+          3,
+          45,
+          0.43
+        ]
+      }
+    },
+    "cylrhombitrihex": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "rhombitrihex",
+          4,
+          2,
+          14
+        ],
+        "medium": [
+          "rhombitrihex",
+          5,
+          3,
+          28
+        ],
+        "hard": [
+          "rhombitrihex",
+          7,
+          3,
+          40
+        ]
+      }
+    },
+    "mobiusrhombitrihex": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "rhombitrihex",
+          4,
+          2,
+          14
+        ],
+        "medium": [
+          "rhombitrihex",
+          6,
+          2,
+          22
+        ],
+        "hard": [
+          "rhombitrihex",
+          8,
+          3,
+          45
+        ]
+      }
+    },
+    "kleinrhombitrihex": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "rhombitrihex",
+          5,
+          2,
+          17
+        ],
+        "medium": [
+          "rhombitrihex",
+          7,
+          2,
+          26
+        ],
+        "hard": [
+          "rhombitrihex",
+          8,
+          3,
+          45
+        ]
+      }
+    },
+    "trunctrihex": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "trunctrihex",
+          4,
+          2,
+          15,
+          21
+        ],
+        "medium": [
+          "trunctrihex",
+          5,
+          3,
+          30,
+          18
+        ],
+        "hard": [
+          "trunctrihex",
+          7,
+          4,
+          65,
+          13
+        ]
+      }
+    },
+    "torustrunctrihex": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "trunctrihex",
+          5,
+          2,
+          17,
+          0.4
+        ],
+        "medium": [
+          "trunctrihex",
+          7,
+          2,
+          26,
+          0.4
+        ],
+        "hard": [
+          "trunctrihex",
+          8,
+          3,
+          45,
+          0.43
+        ]
+      }
+    },
+    "cyltrunctrihex": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "trunctrihex",
+          4,
+          2,
+          14
+        ],
+        "medium": [
+          "trunctrihex",
+          5,
+          3,
+          28
+        ],
+        "hard": [
+          "trunctrihex",
+          7,
+          3,
+          40
+        ]
+      }
+    },
+    "mobiustrunctrihex": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "trunctrihex",
+          4,
+          2,
+          14
+        ],
+        "medium": [
+          "trunctrihex",
+          6,
+          2,
+          22
+        ],
+        "hard": [
+          "trunctrihex",
+          8,
+          3,
+          45
+        ]
+      }
+    },
+    "kleintrunctrihex": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "trunctrihex",
+          5,
+          2,
+          17
+        ],
+        "medium": [
+          "trunctrihex",
+          7,
+          2,
+          26
+        ],
+        "hard": [
+          "trunctrihex",
+          8,
+          3,
+          45
+        ]
+      }
+    },
+    "prismaticpent": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "prismaticpent",
+          7,
+          2,
+          9,
+          57
+        ],
+        "medium": [
+          "prismaticpent",
+          10,
+          3,
+          20,
+          43
+        ],
+        "hard": [
+          "prismaticpent",
+          14,
+          4,
+          43,
+          30
+        ]
+      }
+    },
+    "torusprismaticpent": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "prismaticpent",
+          12,
+          1,
+          6,
+          0.31
+        ],
+        "medium": [
+          "prismaticpent",
+          14,
+          2,
+          17,
+          0.53
+        ],
+        "hard": [
+          "prismaticpent",
+          20,
+          2,
+          32,
+          0.37
+        ]
+      }
+    },
+    "cylprismaticpent": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "prismaticpent",
+          10,
+          1.2679491924311228,
+          5,
+          -0.5
+        ],
+        "medium": [
+          "prismaticpent",
+          12,
+          2.267949192431123,
+          15,
+          -0.5
+        ],
+        "hard": [
+          "prismaticpent",
+          15,
+          3.267949192431123,
+          38,
+          -0.5
+        ]
+      }
+    },
+    "mobiusprismaticpent": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "prismaticpent",
+          12,
+          1,
+          6
+        ],
+        "medium": [
+          "prismaticpent",
+          12,
+          2,
+          15
+        ],
+        "hard": [
+          "prismaticpent",
+          18,
+          2,
+          29
+        ]
+      }
+    },
+    "kleinprismaticpent": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "prismaticpent",
+          12,
+          1,
+          6
+        ],
+        "medium": [
+          "prismaticpent",
+          14,
+          2,
+          17
+        ],
+        "hard": [
+          "prismaticpent",
+          20,
+          2,
+          32
+        ]
+      }
+    },
+    "cairo": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "cairo",
+          4,
+          4,
+          9,
+          54
+        ],
+        "medium": [
+          "cairo",
+          5,
+          5,
+          16,
+          45
+        ],
+        "hard": [
+          "cairo",
+          7,
+          7,
+          36,
+          33
+        ]
+      }
+    },
+    "toruscairo": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "cairo",
+          5,
+          2,
+          5,
+          0.4
+        ],
+        "medium": [
+          "cairo",
+          7,
+          3,
+          13,
+          0.43
+        ],
+        "hard": [
+          "cairo",
+          10,
+          4,
+          32,
+          0.4
+        ]
+      }
+    },
+    "cylcairo": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "cairo",
+          5,
+          2,
+          5
+        ],
+        "medium": [
+          "cairo",
+          7,
+          3,
+          13
+        ],
+        "hard": [
+          "cairo",
+          9,
+          5,
+          38
+        ]
+      }
+    },
+    "mobiuscairo": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "cairo",
+          13,
+          2,
+          7
+        ],
+        "medium": [
+          "cairo",
+          15,
+          3,
+          13
+        ],
+        "hard": [
+          "cairo",
+          17,
+          4,
+          27
+        ]
+      }
+    },
+    "kleincairo": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "cairo",
+          5,
+          2,
+          5
+        ],
+        "medium": [
+          "cairo",
+          7,
+          3,
+          13
+        ],
+        "hard": [
+          "cairo",
+          9,
+          4,
+          32
+        ]
+      }
+    },
+    "rhombille": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "rhombille",
+          5,
+          3,
+          13,
+          40
+        ],
+        "medium": [
+          "rhombille",
+          7,
+          4,
+          28,
+          30
+        ],
+        "hard": [
+          "rhombille",
+          9,
+          6,
+          61,
+          22
+        ]
+      }
+    },
+    "torusrhombille": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "rhombille",
+          8,
+          2,
+          12,
+          0.43
+        ],
+        "medium": [
+          "rhombille",
+          10,
+          2,
+          18,
+          0.35
+        ],
+        "hard": [
+          "rhombille",
+          12,
+          3,
+          43,
+          0.43
+        ]
+      }
+    },
+    "cylrhombille": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "rhombille",
+          6,
+          2,
+          9,
+          0.8660254037844386
+        ],
+        "medium": [
+          "rhombille",
+          9,
+          3,
+          24,
+          0.8660254037844386
+        ],
+        "hard": [
+          "rhombille",
+          11,
+          4,
+          55,
+          0.8660254037844386
+        ]
+      }
+    },
+    "mobiusrhombille": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "rhombille",
+          12,
+          1,
+          9
+        ],
+        "medium": [
+          "rhombille",
+          12,
+          2,
+          22
+        ],
+        "hard": [
+          "rhombille",
+          18,
+          2,
+          43
+        ]
+      }
+    },
+    "kleinrhombille": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "rhombille",
+          8,
+          2,
+          12
+        ],
+        "medium": [
+          "rhombille",
+          10,
+          2,
+          18
+        ],
+        "hard": [
+          "rhombille",
+          12,
+          3,
+          43
+        ]
+      }
+    },
+    "floret": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "floret",
+          3,
+          2,
+          10,
+          44
+        ],
+        "medium": [
+          "floret",
+          4,
+          2,
+          15,
+          39
+        ],
+        "hard": [
+          "floret",
+          5,
+          3,
+          33,
+          32
+        ]
+      }
+    },
+    "torusfloret": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "floret",
+          4,
+          1,
+          6,
+          0.43
+        ],
+        "medium": [
+          "floret",
+          6,
+          1,
+          11,
+          0.29
+        ],
+        "hard": [
+          "floret",
+          7,
+          2,
+          33,
+          0.49
+        ]
+      }
+    },
+    "cylfloret": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "floret",
+          4,
+          1,
+          6,
+          1.14564392373896
+        ],
+        "medium": [
+          "floret",
+          5,
+          2,
+          18,
+          1.14564392373896
+        ],
+        "hard": [
+          "floret",
+          7,
+          2,
+          35,
+          1.14564392373896
+        ]
+      }
+    },
+    "tetrakis": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "tetrakis",
+          6,
+          6,
+          20,
+          29
+        ],
+        "medium": [
+          "tetrakis",
+          9,
+          9,
+          52,
+          21
+        ],
+        "hard": [
+          "tetrakis",
+          13,
+          13,
+          126,
+          15
+        ]
+      }
+    },
+    "torustetrakis": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "tetrakis",
+          9,
+          4,
+          18,
+          0.44
+        ],
+        "medium": [
+          "tetrakis",
+          12,
+          6,
+          44,
+          0.5
+        ],
+        "hard": [
+          "tetrakis",
+          16,
+          7,
+          90,
+          0.44
+        ]
+      }
+    },
+    "cyltetrakis": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "tetrakis",
+          9,
+          3,
+          14
+        ],
+        "medium": [
+          "tetrakis",
+          12,
+          5,
+          36
+        ],
+        "hard": [
+          "tetrakis",
+          16,
+          7,
+          90
+        ]
+      }
+    },
+    "mobiustetrakis": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "tetrakis",
+          12,
+          3,
+          18
+        ],
+        "medium": [
+          "tetrakis",
+          16,
+          4,
+          38
+        ],
+        "hard": [
+          "tetrakis",
+          22,
+          5,
+          88
+        ]
+      }
+    },
+    "kleintetrakis": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "tetrakis",
+          9,
+          4,
+          18
+        ],
+        "medium": [
+          "tetrakis",
+          12,
+          6,
+          44
+        ],
+        "hard": [
+          "tetrakis",
+          16,
+          7,
+          90
+        ]
+      }
+    },
+    "triakis": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "triakis",
+          6,
+          3,
+          30,
+          19
+        ],
+        "medium": [
+          "triakis",
+          8,
+          4,
+          62,
+          14
+        ],
+        "hard": [
+          "triakis",
+          10,
+          6,
+          134,
+          11
+        ]
+      }
+    },
+    "torustriakis": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "triakis",
+          7,
+          2,
+          20,
+          0.49
+        ],
+        "medium": [
+          "triakis",
+          10,
+          2,
+          36,
+          0.35
+        ],
+        "hard": [
+          "triakis",
+          12,
+          3,
+          86,
+          0.43
+        ]
+      }
+    },
+    "cyltriakis": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "triakis",
+          6,
+          2,
+          18,
+          1.3660254037844386
+        ],
+        "medium": [
+          "triakis",
+          8,
+          3,
+          44,
+          1.3660254037844386
+        ],
+        "hard": [
+          "triakis",
+          10,
+          4,
+          96,
+          1.3660254037844386
+        ]
+      }
+    },
+    "mobiustriakis": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "triakis",
+          9,
+          1,
+          14
+        ],
+        "medium": [
+          "triakis",
+          10,
+          2,
+          36
+        ],
+        "hard": [
+          "triakis",
+          12,
+          3,
+          86
+        ]
+      }
+    },
+    "kleintriakis": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "triakis",
+          7,
+          2,
+          20
+        ],
+        "medium": [
+          "triakis",
+          10,
+          2,
+          36
+        ],
+        "hard": [
+          "triakis",
+          12,
+          3,
+          86
+        ]
+      }
+    },
+    "deltoidal": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "deltoidal",
+          4,
+          2,
+          13,
+          38
+        ],
+        "medium": [
+          "deltoidal",
+          5,
+          3,
+          30,
+          32
+        ],
+        "hard": [
+          "deltoidal",
+          7,
+          4,
+          62,
+          23
+        ]
+      }
+    },
+    "torusdeltoidal": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "deltoidal",
+          5,
+          2,
+          17,
+          0.4
+        ],
+        "medium": [
+          "deltoidal",
+          7,
+          2,
+          26,
+          0.4
+        ],
+        "hard": [
+          "deltoidal",
+          8,
+          3,
+          45,
+          0.43
+        ]
+      }
+    },
+    "cyldeltoidal": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "deltoidal",
+          4,
+          2,
+          14
+        ],
+        "medium": [
+          "deltoidal",
+          5,
+          3,
+          28
+        ],
+        "hard": [
+          "deltoidal",
+          7,
+          3,
+          40
+        ]
+      }
+    },
+    "mobiusdeltoidal": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "deltoidal",
+          4,
+          2,
+          14
+        ],
+        "medium": [
+          "deltoidal",
+          6,
+          2,
+          22
+        ],
+        "hard": [
+          "deltoidal",
+          8,
+          3,
+          45
+        ]
+      }
+    },
+    "kleindeltoidal": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "deltoidal",
+          5,
+          2,
+          17
+        ],
+        "medium": [
+          "deltoidal",
+          7,
+          2,
+          26
+        ],
+        "hard": [
+          "deltoidal",
+          8,
+          3,
+          45
+        ]
+      }
+    },
+    "kisrhombille": {
+      "builder": "archimedean_board",
+      "args": {
+        "easy": [
+          "kisrhombille",
+          4,
+          2,
+          27,
+          21
+        ],
+        "medium": [
+          "kisrhombille",
+          5,
+          3,
+          60,
+          18
+        ],
+        "hard": [
+          "kisrhombille",
+          7,
+          4,
+          125,
+          13
+        ]
+      }
+    },
+    "toruskisrhombille": {
+      "builder": "arch_torus_board",
+      "args": {
+        "easy": [
+          "kisrhombille",
+          5,
+          2,
+          34,
+          0.4
+        ],
+        "medium": [
+          "kisrhombille",
+          7,
+          2,
+          52,
+          0.4
+        ],
+        "hard": [
+          "kisrhombille",
+          8,
+          3,
+          90,
+          0.43
+        ]
+      }
+    },
+    "cylkisrhombille": {
+      "builder": "arch_cylinder_board",
+      "args": {
+        "easy": [
+          "kisrhombille",
+          4,
+          2,
+          28
+        ],
+        "medium": [
+          "kisrhombille",
+          5,
+          3,
+          56
+        ],
+        "hard": [
+          "kisrhombille",
+          7,
+          3,
+          80
+        ]
+      }
+    },
+    "mobiuskisrhombille": {
+      "builder": "arch_mobius_board",
+      "args": {
+        "easy": [
+          "kisrhombille",
+          4,
+          2,
+          28
+        ],
+        "medium": [
+          "kisrhombille",
+          6,
+          2,
+          44
+        ],
+        "hard": [
+          "kisrhombille",
+          8,
+          3,
+          90
+        ]
+      }
+    },
+    "kleinkisrhombille": {
+      "builder": "arch_klein_board",
+      "args": {
+        "easy": [
+          "kisrhombille",
+          5,
+          2,
+          34
+        ],
+        "medium": [
+          "kisrhombille",
+          7,
+          2,
+          52
+        ],
+        "hard": [
+          "kisrhombille",
+          8,
+          3,
+          90
+        ]
+      }
     }
   }
 }

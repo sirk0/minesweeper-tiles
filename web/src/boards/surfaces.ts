@@ -22,6 +22,9 @@ import {
   type CellId,
   type Vec3,
 } from "./core";
+import { archTemplate } from "./tilings";
+
+const mod = (a: number, b: number): number => ((a % b) + b) % b;
 
 const TWO_PI = 2 * Math.PI;
 const ROOT3 = Math.sqrt(3);
@@ -674,5 +677,292 @@ export function cylinderHexBoard(ring: number, rows: number, mineCount: number):
   return assemble("cylhex", cells, positions, mineCount, {
     twoSided: true,
     radius: Math.hypot(1, height / 2),
+  });
+}
+
+// -- Archimedean tilings wrapped onto the same surfaces ----------------------
+//
+// Port of the arch_* wrap builders in surfaces.py. Each takes an nx x ny grid
+// of the tiling's fundamental-domain copies (an `archTemplate`) and glues the
+// seams with the same modular arithmetic the regular wraps use, mapping each
+// canonical (domain-column, domain-row, tag) vertex key onto the surface.
+
+/** An Archimedean tiling wrapped around a donut: `nx` domain copies around the
+ * ring, `ny` around the tube. */
+export function archTorusBoard(
+  tiling: string,
+  nx: number,
+  ny: number,
+  mineCount: number,
+  tubeRadius = 0.45,
+): Board3D {
+  const t = archTemplate(tiling);
+  const W = t.width;
+  const H = t.height;
+  const ring = nx * W;
+  const tube = ny * H;
+  const cells = new Map<CellId, string[]>();
+  const positions = new Map<string, Vec3>();
+  for (let m = 0; m < nx; m++) {
+    for (let n = 0; n < ny; n++) {
+      for (const { name, refs } of t.cells) {
+        const keys = refs.map((r) => {
+          const M = mod(m + r.dm, nx);
+          const N = mod(n + r.dn, ny);
+          const ks = `${M},${N},${r.tag}`;
+          if (!positions.has(ks)) {
+            const v = t.verts.get(r.tag)!;
+            positions.set(
+              ks,
+              torusPoint(TWO_PI * (M * W + v[0]) / ring, TWO_PI * (N * H + v[1]) / tube, tubeRadius),
+            );
+          }
+          return ks;
+        });
+        if (new Set(keys).size < keys.length) {
+          throw new Error(`${nx}x${ny} is too small for ${tiling}`);
+        }
+        cells.set(cid(m, n, name), keys);
+      }
+    }
+  }
+  return assemble("torus" + tiling, cells, positions, mineCount, {
+    twoSided: false,
+    radius: 1 + tubeRadius,
+  });
+}
+
+/** An Archimedean tiling around the side of a cylinder: `ring` domain copies
+ * around, `rows` (may be fractional) up the axis, open ends. `cut` shifts where
+ * the strip starts within the repeating rows. */
+export function archCylinderBoard(
+  tiling: string,
+  ring: number,
+  rows: number,
+  mineCount: number,
+  cut = 0,
+): Board3D {
+  const t = archTemplate(tiling);
+  const W = t.width;
+  const H = t.height;
+  const unit = TWO_PI / (ring * W); // arc length of one edge unit
+  const middle = (rows * H) / 2 + cut;
+  const centroids = new Map<string, number>();
+  for (const { name, refs } of t.cells) {
+    let s = 0;
+    for (const r of refs) s += r.dn * H + t.verts.get(r.tag)![1];
+    centroids.set(name, s / refs.length);
+  }
+  const cells = new Map<CellId, string[]>();
+  const positions = new Map<string, Vec3>();
+  const nMax = Math.ceil(rows) + 1;
+  for (let m = 0; m < ring; m++) {
+    for (let n = 0; n < nMax; n++) {
+      for (const { name, refs } of t.cells) {
+        const c = centroids.get(name)! + n * H;
+        if (!(cut - 1e-9 <= c && c < rows * H + cut - 1e-9)) continue;
+        const keys = refs.map((r) => {
+          const M = mod(m + r.dm, ring);
+          const N = n + r.dn;
+          const ks = `${M},${N},${r.tag}`;
+          if (!positions.has(ks)) {
+            const v = t.verts.get(r.tag)!;
+            positions.set(ks, cylinderPoint((M * W + v[0]) * unit, (N * H + v[1] - middle) * unit));
+          }
+          return ks;
+        });
+        if (new Set(keys).size < keys.length) {
+          throw new Error(`ring ${ring} is too small for ${tiling}`);
+        }
+        cells.set(cid(m, n, name), keys);
+      }
+    }
+  }
+  return assemble("cyl" + tiling, cells, positions, mineCount, {
+    twoSided: true,
+    radius: maxRadius,
+  });
+}
+
+/** An Archimedean tiling on a Möbius strip: `ring` domain copies around, `rows`
+ * across; after a full loop the strip glues to its start flipped through
+ * `template.mirror`. Chiral tilings are refused; p4g (glide-only) counts
+ * half-domains, so `ring` must be odd there. */
+export function archMobiusBoard(
+  tiling: string,
+  ring: number,
+  rows: number,
+  mineCount: number,
+): Board3D {
+  const t = archTemplate(tiling);
+  const mirror = t.mirror;
+  if (mirror === null) throw new Error(`${tiling} is chiral and cannot wrap a Möbius strip`);
+  let halves: number;
+  if (t.glide) {
+    if (ring % 2 === 0) throw new Error("ring counts half-domains and must be odd");
+    halves = ring;
+  } else {
+    halves = 2 * ring;
+  }
+  const W = t.width;
+  const H = t.height;
+  const q = Math.floor(halves / 2);
+  const odd = halves % 2;
+  const length = (halves * W) / 2;
+  const strip = rows * H;
+  const halfWidth = Math.min(0.7, (Math.PI * strip) / length / 2);
+
+  const flipped = (mi: number, ni: number, tag: string): [number, number, string] => {
+    const im = mirror.get(tag)!;
+    return [mi + im.dm - odd, rows - 1 - ni + im.dn, im.tag];
+  };
+  const canonical = (mi: number, ni: number, tag: string): [number, number, string] => {
+    while (2 * mi + (2 * t.verts.get(tag)![0]) / W >= halves - 1e-5) {
+      [mi, ni, tag] = flipped(mi - q, ni, tag);
+    }
+    while (2 * mi + (2 * t.verts.get(tag)![0]) / W < -1e-5) {
+      [mi, ni, tag] = flipped(mi + q + odd, ni, tag);
+    }
+    return [mi, ni, tag];
+  };
+  const point = (mi: number, ni: number, tag: string): Vec3 => {
+    const v = t.verts.get(tag)!;
+    const u = TWO_PI * (mi * W + v[0]) / length;
+    const vv = halfWidth * ((2 * (ni * H + v[1])) / strip - 1);
+    return mobiusPoint(u, vv);
+  };
+
+  const centroids = new Map<string, number>();
+  for (const { name, refs } of t.cells) {
+    let s = 0;
+    for (const r of refs) s += r.dm * W + t.verts.get(r.tag)![0];
+    centroids.set(name, s / refs.length);
+  }
+  const cells = new Map<CellId, string[]>();
+  const positions = new Map<string, Vec3>();
+  for (let m = 0; m < q + 1; m++) {
+    for (let n = 0; n < rows; n++) {
+      for (const { name, refs } of t.cells) {
+        const c = centroids.get(name)! + m * W;
+        if (!(-1e-9 <= c && c < length - 1e-9)) continue;
+        const keys = refs.map((r) => {
+          const [mi, ni, tag] = canonical(m + r.dm, n + r.dn, r.tag);
+          const ks = `${mi},${ni},${tag}`;
+          if (!positions.has(ks)) positions.set(ks, point(mi, ni, tag));
+          return ks;
+        });
+        if (new Set(keys).size < keys.length) {
+          throw new Error(`ring ${ring} is too small for ${tiling}`);
+        }
+        cells.set(cid(m, n, name), keys);
+      }
+    }
+  }
+  return assemble("mobius" + tiling, cells, positions, mineCount, {
+    twoSided: true,
+    radius: maxRadius,
+  });
+}
+
+/** An Archimedean tiling wrapped onto the Klein bottle: `nx` domain copies
+ * around the ring, `ny` around the tube. The tube wraps straight; the ring seam
+ * glues the tube flipped through `template.mirror`, so the surface is closed yet
+ * non-orientable. Carries a `cellCycle` — one domain forward along the ring. */
+export function archKleinBoard(
+  tiling: string,
+  nx: number,
+  ny: number,
+  mineCount: number,
+  tubeScale = 1,
+): Board3D {
+  const t = archTemplate(tiling);
+  const mirror = t.mirror;
+  if (mirror === null) throw new Error(`${tiling} is chiral and cannot wrap a Klein bottle`);
+  const W = t.width;
+  const H = t.height;
+  let halves: number;
+  if (t.glide) {
+    if (nx % 2 === 0) throw new Error("nx counts half-domains and must be odd");
+    halves = nx;
+  } else {
+    halves = 2 * nx;
+  }
+  const q = Math.floor(halves / 2);
+  const odd = halves % 2;
+  const length = (halves * W) / 2; // ring circumference in edge units
+  const tubeTotal = ny * H; // tube circumference in edge units
+
+  const flipped = (mi: number, ni: number, tag: string): [number, number, string] => {
+    const im = mirror.get(tag)!;
+    return [mi + im.dm - odd, mod(-1 - ni + im.dn, ny), im.tag];
+  };
+  const canonical = (mi: number, ni: number, tag: string): [number, number, string] => {
+    while (2 * mi + (2 * t.verts.get(tag)![0]) / W >= halves - 1e-5) {
+      [mi, ni, tag] = flipped(mi - q, ni, tag);
+    }
+    while (2 * mi + (2 * t.verts.get(tag)![0]) / W < -1e-5) {
+      [mi, ni, tag] = flipped(mi + q + odd, ni, tag);
+    }
+    return [mi, mod(ni, ny), tag];
+  };
+  const point = (mi: number, ni: number, tag: string): Vec3 => {
+    const v = t.verts.get(tag)!;
+    const u = TWO_PI * (mi * W + v[0]) / length;
+    // +π/2 aligns the immersion's seam reflection (v -> π - v) with the tiling's
+    // tube mirror (y -> tubeTotal - y) that flipped() applies
+    const vv = TWO_PI * (ni * H + v[1]) / tubeTotal + Math.PI / 2;
+    return kleinPoint(u, vv, tubeScale);
+  };
+
+  const centroidsX = new Map<string, number>();
+  for (const { name, refs } of t.cells) {
+    let s = 0;
+    for (const r of refs) s += r.dm * W + t.verts.get(r.tag)![0];
+    centroidsX.set(name, s / refs.length);
+  }
+  const cells = new Map<CellId, string[]>();
+  const positions = new Map<string, Vec3>();
+  const cellCanon = new Map<CellId, [number, number, string][]>();
+  for (let m = 0; m < q + 1; m++) {
+    for (let n = 0; n < ny; n++) {
+      for (const { name, refs } of t.cells) {
+        const c = centroidsX.get(name)! + m * W;
+        if (!(-1e-9 <= c && c < length - 1e-9)) continue;
+        const canon: [number, number, string][] = [];
+        const keys = refs.map((r) => {
+          const cc = canonical(m + r.dm, n + r.dn, r.tag);
+          canon.push(cc);
+          const ks = `${cc[0]},${cc[1]},${cc[2]}`;
+          if (!positions.has(ks)) positions.set(ks, point(cc[0], cc[1], cc[2]));
+          return ks;
+        });
+        if (new Set(keys).size < keys.length) {
+          throw new Error(`${nx}x${ny} is too small for ${tiling}`);
+        }
+        cells.set(cid(m, n, name), keys);
+        cellCanon.set(cid(m, n, name), canon);
+      }
+    }
+  }
+  kleinRecentre(positions);
+
+  // one domain forward along the ring, matched by vertex set: a graph
+  // automorphism (the seam flip carries cells to their mirror partners)
+  const byVertexSet = new Map<string, CellId>();
+  for (const [cell, keys] of cells) byVertexSet.set(vertexSetKey(keys), cell);
+  const cellCycle = new Map<CellId, CellId>();
+  for (const [cell, canon] of cellCanon) {
+    const shifted = canon.map((v) => {
+      const cc = canonical(v[0] + 1, v[1], v[2]);
+      return `${cc[0]},${cc[1]},${cc[2]}`;
+    });
+    const target = byVertexSet.get(vertexSetKey(shifted));
+    if (target === undefined) throw new Error(`klein cell cycle incomplete for ${tiling}`);
+    cellCycle.set(cell, target);
+  }
+  return assemble("klein" + tiling, cells, positions, mineCount, {
+    twoSided: true,
+    radius: maxRadius,
+    cellCycle,
   });
 }
