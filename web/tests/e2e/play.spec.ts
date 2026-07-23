@@ -34,6 +34,20 @@ test.describe("M1 play", () => {
     await expect(page.locator(".hud-smiley")).toHaveText("😵");
   });
 
+  test("lose: a flag on a safe cell is crossed out (renders without error)", async ({ page }) => {
+    // One mine; flag a safe cell (a misplaced flag), then step on the mine.
+    // On loss the safe flag is repainted as a crossed-out "wrongFlag" glyph.
+    await page.evaluate(() =>
+      window.__ms?.startBoard("square", "easy", { mines: ["4,4"] }),
+    );
+    await page.evaluate(() => window.__ms?.flag("0,0")); // safe cell -> wrong flag
+    const xy = await page.evaluate(() => window.__ms?.cellScreenXY("4,4"));
+    await page.mouse.click(xy!.x, xy!.y); // reveal the mine -> lost
+    const state = await page.evaluate(() => window.__ms?.state());
+    expect(state?.status).toBe("lost");
+    await expect(page.locator(".hud-smiley")).toHaveText("😵");
+  });
+
   test("flag counter and restart", async ({ page }) => {
     await page.evaluate(() =>
       window.__ms?.startBoard("square", "medium", { seed: 3 }),
