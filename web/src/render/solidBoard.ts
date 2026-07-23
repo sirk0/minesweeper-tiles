@@ -384,21 +384,18 @@ export class SolidBoard extends Group implements BoardMesh {
       if (!uv) continue;
       const g = this.geom[i]!;
       const c = g.center;
+      const toCam = normalize([cam[0] - c[0], cam[1] - c[1], cam[2] - c[2]]);
       // On a closed surface only cells whose top face the camera can see carry
       // a glyph, so the far hemisphere's numbers never billboard onto the front
       // (the per-cell camera direction makes the horizon the true perspective
       // silhouette). Two-sided tiles are visible from both faces, so they skip
       // this cull; depth-testing then hides any number a nearer wall occludes.
-      if (!this.twoSided) {
-        const toCam = normalize([cam[0] - c[0], cam[1] - c[1], cam[2] - c[2]]);
-        if (
-          toCam[0] * g.normal[0] +
-            toCam[1] * g.normal[1] +
-            toCam[2] * g.normal[2] <=
+      if (
+        !this.twoSided &&
+        toCam[0] * g.normal[0] + toCam[1] * g.normal[1] + toCam[2] * g.normal[2] <=
           0.05
-        ) {
-          continue;
-        }
+      ) {
+        continue;
       }
       // Fit the glyph inside the cell as the viewer sees it: project the
       // cell polygon into the billboard plane and size/centre the quad by
@@ -418,10 +415,20 @@ export class SolidBoard extends Group implements BoardMesh {
         projected.reduce((a, q) => a + q[1], 0) / projected.length;
       const s = polygonInradius(projected, [px, py]) * 0.9;
       if (!(s > 0)) continue;
+      // Lift the whole billboard toward the camera by its own half-size: a
+      // camera-facing quad centred on a tilted cell would otherwise dip behind
+      // that cell's face on its far half and be depth-clipped (numbers/flags/
+      // mines rendered "in half"). The lift (< a cell width) clears the cell's
+      // own face while staying far behind any genuinely nearer wall or frame
+      // bar, so occlusion still works.
+      const lift = s * 1.3;
+      const cx = c[0] + toCam[0] * lift;
+      const cy = c[1] + toCam[1] * lift;
+      const cz = c[2] + toCam[2] * lift;
       const at = (du: number, dv: number): Vec3 => [
-        c[0] + u[0] * (px + s * du) + v[0] * (py + s * dv),
-        c[1] + u[1] * (px + s * du) + v[1] * (py + s * dv),
-        c[2] + u[2] * (px + s * du) + v[2] * (py + s * dv),
+        cx + u[0] * (px + s * du) + v[0] * (py + s * dv),
+        cy + u[1] * (px + s * du) + v[1] * (py + s * dv),
+        cz + u[2] * (px + s * du) + v[2] * (py + s * dv),
       ];
       const bl = at(-1, -1);
       const br = at(1, -1);
