@@ -6,6 +6,7 @@ import { DIFFICULTIES } from "./boards/catalog";
 import { screens } from "./config/screens";
 import { GameSession } from "./session";
 import { attachControls } from "./input/controls";
+import { preventDoubleTapZoom } from "./input/preventZoom";
 import {
   BoardRenderer,
   initialOrientation,
@@ -45,6 +46,7 @@ class App {
 
     window.addEventListener("resize", () => this.renderer.resize());
     window.addEventListener("keydown", (e) => this.onKey(e));
+    preventDoubleTapZoom();
     attachControls(canvas, {
       pick: (ndc) => this.renderer.pick(ndc),
       onTap: (cell) => this.onTap(cell),

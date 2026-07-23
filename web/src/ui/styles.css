@@ -78,6 +78,8 @@ body {
 /* Raised classic bevel: light top/left, dark bottom/right. */
 .hud-btn,
 .hud-smiley {
+  /* No double-tap-to-zoom when the smiley / header buttons are tapped fast. */
+  touch-action: manipulation;
   font: inherit;
   color: var(--text);
   background: var(--panel);
@@ -187,6 +189,7 @@ body {
 .menu-entry {
   width: 100%;
   text-align: left;
+  touch-action: manipulation;
   font: inherit;
   color: var(--text);
   background: var(--panel);
@@ -224,6 +227,7 @@ body {
 
 .difficulty-btn {
   flex: 1;
+  touch-action: manipulation;
   font: inherit;
   color: var(--text);
   background: var(--panel);
