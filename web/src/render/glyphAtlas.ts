@@ -6,15 +6,17 @@ import { CanvasTexture, LinearFilter, SRGBColorSpace, Texture } from "three";
 // changes so glyphs stay crisp.
 
 // A digit 1..12 (shared-vertex adjacency on triangles/hexagons can exceed 8),
-// a flag or a mine. 0 means empty.
-export type Glyph = number | "flag" | "mine";
+// a flag, a mine, or a crossed-out flag (a misplaced flag revealed on loss).
+// 0 means empty.
+export type Glyph = number | "flag" | "mine" | "wrongFlag";
 
 // Slot order in the atlas grid. Index 0 (empty) is intentionally blank.
+// 16 slots fill the 4x4 grid exactly.
 const SLOTS: Glyph[] = [
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, "flag", "mine",
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, "flag", "mine", "wrongFlag",
 ];
 const COLS = 4;
-const ROWS = 4; // 4x4 = 16 slots, 15 used
+const ROWS = 4; // 4x4 = 16 slots, all used
 
 // Classic minesweeper digit colours; 9+ reuse a neutral dark tone.
 const DIGIT_COLORS: Record<number, string> = {
@@ -59,6 +61,9 @@ export function makeGlyphAtlas(cellPx = 128): GlyphAtlas {
       ctx.fillText(String(glyph), cx, cy + cellPx * 0.03);
     } else if (glyph === "flag") {
       drawFlag(ctx, cx, cy, cellPx);
+    } else if (glyph === "wrongFlag") {
+      drawFlag(ctx, cx, cy, cellPx);
+      drawCross(ctx, cx, cy, cellPx);
     } else {
       drawMine(ctx, cx, cy, cellPx);
     }
@@ -111,6 +116,26 @@ function drawFlag(
   ctx.lineTo(poleX, cy);
   ctx.closePath();
   ctx.fill();
+}
+
+/** A dark X across the cell — drawn over a flag to mark it as misplaced when
+ * the board is revealed on loss (matches gui.py's `draw_flag(wrong=True)`). */
+function drawCross(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+): void {
+  const r = s * 0.36;
+  ctx.strokeStyle = "#222428"; // MINE_COLOR
+  ctx.lineWidth = s * 0.08;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy - r);
+  ctx.lineTo(cx + r, cy + r);
+  ctx.moveTo(cx - r, cy + r);
+  ctx.lineTo(cx + r, cy - r);
+  ctx.stroke();
 }
 
 function drawMine(
