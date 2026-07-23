@@ -29,6 +29,7 @@ import {
   type CellVisual,
 } from "./boardMesh";
 import { makeGlyphAtlas, type GlyphAtlas } from "./glyphAtlas";
+import { CellAnimations, rippleEntries } from "./animations";
 
 // The 3D counterpart of PolygonBoard: a Board3D's outward-wound surface
 // polygons become one merged geometry. On a closed surface each cell is an
@@ -98,6 +99,8 @@ export class SolidBoard extends Group implements BoardMesh {
   private readonly atlas: GlyphAtlas;
   private readonly states: CellVisual[];
   private hovered = -1;
+  private readonly anim = new CellAnimations();
+  private meanRadius = 1;
   // Billboard basis in board-local coordinates: screen-right and screen-up,
   // updated from the current rotation. `cameraLocal` is the camera position
   // mapped into the same board-local frame, so a cell's visibility can be
@@ -231,6 +234,8 @@ export class SolidBoard extends Group implements BoardMesh {
       this.writeGeometry(i);
       this.writeColor(i);
     }
+    this.meanRadius =
+      this.geom.reduce((s, g) => s + g.radius, 0) / (this.geom.length || 1);
     geometry.computeBoundingSphere();
     this.rebuildGlyphs();
   }
@@ -367,6 +372,8 @@ export class SolidBoard extends Group implements BoardMesh {
     if (i === this.hovered && this.states[i]!.kind === "hidden") {
       col.offsetHSL(0, 0, 0.08);
     }
+    const light = this.anim.lightness(i, performance.now());
+    if (light) col.offsetHSL(0, 0, light);
     const g = this.geom[i]!;
     for (let v = 0; v < g.count; v++) {
       this.colorAttr.setXYZ(g.start + v, col.r, col.g, col.b);
@@ -377,6 +384,7 @@ export class SolidBoard extends Group implements BoardMesh {
   private rebuildGlyphs(): void {
     const pos: number[] = [];
     const uvs: number[] = [];
+    const now = performance.now();
     const { viewRight: u, viewUp: v, cameraLocal: cam } = this;
     for (let i = 0; i < this.order.length; i++) {
       const glyph = glyphFor(this.states[i]!);
@@ -414,7 +422,8 @@ export class SolidBoard extends Group implements BoardMesh {
         projected.reduce((a, q) => a + q[0], 0) / projected.length;
       const py =
         projected.reduce((a, q) => a + q[1], 0) / projected.length;
-      const s = polygonInradius(projected, [px, py]) * 0.9;
+      const s =
+        polygonInradius(projected, [px, py]) * 0.9 * this.anim.popScale(i, now);
       if (!(s > 0)) continue;
       // Lift the whole billboard toward the camera by its own half-size: a
       // camera-facing quad centred on a tilted cell would otherwise dip behind
@@ -454,6 +463,50 @@ export class SolidBoard extends Group implements BoardMesh {
       new BufferAttribute(new Float32Array(uvs), 2),
     );
     this.glyphGeometry.computeBoundingSphere();
+  }
+
+  // -- animations ------------------------------------------------------------
+
+  setAnimationsEnabled(on: boolean): void {
+    this.anim.enabled = on;
+    if (!on) {
+      this.anim.reset();
+      this.position.set(0, 0, 0);
+      for (let i = 0; i < this.order.length; i++) this.writeColor(i);
+      this.rebuildGlyphs();
+    }
+  }
+
+  pulseReveal(cells: CellId[], origin: CellId | null): void {
+    if (!this.anim.enabled) return;
+    const oi = origin != null ? this.cellIndex.get(origin) : undefined;
+    const oc = oi != null ? this.geom[oi]!.center : null;
+    const list: { index: number; center: readonly number[] }[] = [];
+    for (const cell of cells) {
+      const i = this.cellIndex.get(cell);
+      if (i != null) list.push({ index: i, center: this.geom[i]!.center });
+    }
+    this.anim.startReveals(rippleEntries(list, oc, this.meanRadius), performance.now());
+  }
+
+  popFlag(cell: CellId): void {
+    const i = this.cellIndex.get(cell);
+    if (i != null) this.anim.startPop(i, performance.now());
+  }
+
+  shake(): void {
+    // The group is scaled to the unit sphere, so a fixed world offset reads as
+    // the same fraction of the framed board on every solid.
+    this.anim.startShake(0.05, performance.now());
+  }
+
+  tickAnimations(now: number): boolean {
+    if (!this.anim.pending()) return false;
+    const step = this.anim.step(now);
+    for (const i of step.recolor) this.writeColor(i);
+    if (step.glyphsDirty) this.rebuildGlyphs();
+    this.position.set(step.offset[0], step.offset[1], 0);
+    return step.active;
   }
 }
 

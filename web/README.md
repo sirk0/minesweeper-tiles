@@ -3,6 +3,26 @@
 The in-progress TypeScript rewrite (Three.js / WebGL), living alongside the
 Python game per `docs/plans/typescript-rewrite-same-repo.md`.
 
+**M6 — Polish.** Board animations (`src/render/animations.ts`), driven by a
+single `CellAnimations` clock the renderer ticks each frame only while
+something is in flight (the loop stays idle otherwise): a **reveal ripple**
+(each freshly opened cell flashes brighter than its settled tone, staggered by
+its distance from the click so a wave sweeps outward across a flood fill), a
+**flag pop** (a placed flag's glyph springs in with a small ease-out-back
+overshoot), and a **lose shake** (the whole board jitters and settles when a
+mine detonates). Both meshes own their buffers, so the clock only reports what
+to redraw (recolour these cells / rebuild glyphs / offset the board). Animations
+honour `prefers-reduced-motion` out of the gate and can be toggled at runtime
+through the `window.__ms.animations(false)` test seam; the Playwright suite runs
+under emulated reduced-motion, so every visual baseline captures the settled
+frame and gameplay assertions stay timing independent. iOS install polish:
+`viewport-fit=cover` with safe-area insets on the header and menu,
+`touch-action: none` + `-webkit-touch-callout: none` on the canvas, apple- and
+standard `mobile-web-app-capable` metas, and the maskable/apple-touch icons the
+PWA manifest already ships. A zero-dependency bundle gate (`npm run size`,
+enforced in CI) keeps the shipped JS + CSS under the **250 KB gzip** budget
+(currently ~145 KB). **All 105 modes, polished.**
+
 **M5 — Aperiodic tilings.** Ports `src/boards/aperiodic.ts`: the Penrose P3
 rhombi (exact ℤ[ζ5] vertex arithmetic, Robinson-triangle deflation) and the Hat
 monotile (H/T/P/F metatile substitution in floating point, each vertex snapped
@@ -54,6 +74,7 @@ npm run dev         # Vite dev server
 npm run typecheck   # tsc --noEmit (strict)
 npm run test        # vitest unit tests
 npm run build       # tsc + vite build (production bundle + PWA)
+npm run size        # gzip bundle audit — fails over the 250 KB budget
 npm run e2e         # Playwright e2e + visual regression
 npm run e2e:update  # refresh visual baselines
 ```
@@ -104,6 +125,13 @@ Practical knowledge for verifying changes by actually running the app
   CI. `vite preview` serves `dist/` from disk, so an `npm run build` is
   enough to refresh it — but stale servers are a classic source of
   "my change has no effect".
+- **Animations are off in the e2e suite** (`contextOptions.reducedMotion:
+  "reduce"` in `playwright.config.ts`), so screenshots catch the settled
+  frame. To eyeball an animation in an ad-hoc capture, launch Chromium
+  *without* reduced-motion, call `window.__ms.animations(true)`, drive a
+  move, then screenshot on a short `waitForTimeout` mid-flight — the reveal
+  ripple/flag pop/lose shake all settle back to the static baseline within
+  ~0.5 s.
 - The Python game is the behavior reference; run it headless per the
   "Screenshots" section in the repo-root CLAUDE.md when unsure how
   something is supposed to look or feel.
@@ -121,7 +149,8 @@ Practical knowledge for verifying changes by actually running the app
   `boardMesh.ts` (shared cell-visual vocabulary), `polygonBoard.ts` /
   `solidBoard.ts` (merged beveled cell geometry — flat plane vs. solid
   surface — per-cell colours, hover, glyph quads), `glyphAtlas.ts`
-  (canvas-baked digit/flag/mine texture).
+  (canvas-baked digit/flag/mine texture), `animations.ts` (the shared
+  reveal-ripple / flag-pop / lose-shake clock).
 - `src/session.ts` — `GameSession`: Game ↔ mesh ↔ HUD.
 - `src/input/controls.ts` — pointer/touch state machine (tap, long-press,
   right-click, drag-rotate on 3D boards).

@@ -21,6 +21,11 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}/`,
     trace: "on-first-retry",
+    // Board animations honour prefers-reduced-motion, so emulating it disables
+    // reveal ripples / flag pops / lose shakes across the whole suite —
+    // screenshots capture the settled frame and gameplay assertions stay timing
+    // independent. Individual specs can still flip them via window.__ms.animations.
+    contextOptions: { reducedMotion: "reduce" },
   },
   projects: [
     {

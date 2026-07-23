@@ -177,9 +177,13 @@ export class BoardRenderer {
   }
 
   private renderOnce = (): void => {
-    if (this.dirty) {
+    // Advance any in-flight board animation (reveal ripple, flag pop, lose
+    // shake); while one is running keep the loop dirty so it renders every
+    // frame, then fall idle again when it settles.
+    const animating = this.board?.tickAnimations(performance.now()) ?? false;
+    if (this.dirty || animating) {
       this.renderer.render(this.scene, this.camera);
-      this.dirty = false;
+      this.dirty = animating;
     }
     this.frameHandle = requestAnimationFrame(this.renderOnce);
   };

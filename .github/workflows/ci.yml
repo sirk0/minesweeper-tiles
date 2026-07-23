@@ -77,6 +77,8 @@ jobs:
         run: npm run test
       - name: Build
         run: npm run build
+      - name: Bundle size (< 250 KB gz)
+        run: npm run size
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: E2E + visual tests

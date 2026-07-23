@@ -126,24 +126,45 @@ export class GameSession {
     const changed = this.game.reveal(gameCell);
     if (this.game.state === "lost") this.exploded = gameCell;
     this.apply(changed);
+    this.rippleReveal(changed, gameCell);
     this.checkStop();
   }
 
   flag(cell: CellId): void {
     this.startTimer();
-    this.apply(this.game.toggleFlag(this.toGame(cell)));
+    const gameCell = this.toGame(cell);
+    const wasFlagged = this.game.cellState(gameCell) === "flagged";
+    this.apply(this.game.toggleFlag(gameCell));
+    // Pop only on placing a flag, not on clearing one.
+    if (!wasFlagged && this.game.cellState(gameCell) === "flagged") {
+      this.mesh.popFlag(this.geomFor(gameCell));
+    }
   }
 
   chord(cell: CellId): void {
     if (this.status !== "playing") return;
     this.startTimer();
-    const changed = this.game.chord(this.toGame(cell));
+    const chorded = this.toGame(cell);
+    const changed = this.game.chord(chorded);
     if (this.game.state === "lost") {
       // the mine that ended the chord is whichever revealed mine exists
       for (const c of changed) if (this.game.isMine(c)) this.exploded = c;
     }
     this.apply(changed);
+    this.rippleReveal(changed, chorded);
     this.checkStop();
+  }
+
+  /** Flash the cells a reveal/chord just opened, rippling out from the click. */
+  private rippleReveal(changed: CellId[], origin: CellId): void {
+    const opened = changed.filter(
+      (c) => this.game.cellState(c) === "revealed" && !this.game.isMine(c),
+    );
+    if (opened.length === 0) return;
+    this.mesh.pulseReveal(
+      opened.map((c) => this.geomFor(c)),
+      this.geomFor(origin),
+    );
   }
 
   hover(cell: CellId | null): void {
@@ -157,7 +178,10 @@ export class GameSession {
   private checkStop(): void {
     if (this.game.state !== "playing" && this.stoppedAt == null) {
       this.stoppedAt = performance.now();
-      if (this.game.state === "lost") this.revealEndState();
+      if (this.game.state === "lost") {
+        this.revealEndState();
+        this.mesh.shake();
+      }
     }
   }
 

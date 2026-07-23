@@ -35,6 +35,9 @@ export interface MsHook {
   /** Walk the Klein cell cycle one step (+1 forward, -1 back); no-op on boards
    * without one. */
   scroll(direction: number): void;
+  /** Enable or disable board animations (reveal ripple, flag pop, lose shake).
+   * e2e tests disable them so a screenshot captures the settled frame. */
+  animations(enabled: boolean): void;
 }
 
 declare global {

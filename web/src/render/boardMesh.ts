@@ -100,4 +100,18 @@ export interface BoardMesh extends Group {
    * content (billboarded glyphs, per-cell glyph culling on closed surfaces)
    * can follow; meshes without any may omit it. */
   orient?(rotation: Quaternion, cameraWorldPos: Vector3): void;
+
+  // -- animations (see render/animations.ts) ---------------------------------
+  /** Enable or disable this board's animations (reduced-motion / test seam).
+   * Disabling drops any in-flight animation and renders the settled state. */
+  setAnimationsEnabled(on: boolean): void;
+  /** Flash the freshly revealed cells, rippling outward from `origin`. */
+  pulseReveal(cells: CellId[], origin: CellId | null): void;
+  /** Spring a placed flag's glyph in with a small overshoot. */
+  popFlag(cell: CellId): void;
+  /** Jitter the whole board and settle it (a detonated mine). */
+  shake(): void;
+  /** Advance animations to `now`; returns whether another frame is needed. The
+   * renderer calls this every frame and keeps rendering while it is true. */
+  tickAnimations(now: number): boolean;
 }

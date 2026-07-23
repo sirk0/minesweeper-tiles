@@ -18,6 +18,7 @@ import {
   type CellVisual,
 } from "./boardMesh";
 import { makeGlyphAtlas, type GlyphAtlas } from "./glyphAtlas";
+import { CellAnimations, rippleEntries } from "./animations";
 
 // Renders an arbitrary flat polygon board (square / triangle / hex / ...) as
 // one merged beveled geometry: each convex cell becomes a raised top face
@@ -49,6 +50,8 @@ export class PolygonBoard extends Group implements BoardMesh {
   private readonly atlas: GlyphAtlas;
   private readonly states: CellVisual[];
   private hovered = -1;
+  private readonly anim = new CellAnimations();
+  private meanRadius = 1;
 
   constructor(board: Board) {
     super();
@@ -148,6 +151,9 @@ export class PolygonBoard extends Group implements BoardMesh {
     glyphMesh.renderOrder = 1;
     this.add(glyphMesh);
 
+    this.meanRadius =
+      this.geom.reduce((s, g) => s + g.radius, 0) / (this.geom.length || 1);
+
     for (let i = 0; i < this.order.length; i++) this.writeColor(i);
     this.rebuildGlyphs();
   }
@@ -190,6 +196,8 @@ export class PolygonBoard extends Group implements BoardMesh {
     if (i === this.hovered && this.states[i]!.kind === "hidden") {
       col.offsetHSL(0, 0, 0.08);
     }
+    const light = this.anim.lightness(i, performance.now());
+    if (light) col.offsetHSL(0, 0, light);
     const g = this.geom[i]!;
     for (let v = 0; v < g.count; v++) {
       this.colorAttr.setXYZ(g.start + v, col.r, col.g, col.b);
@@ -208,8 +216,9 @@ export class PolygonBoard extends Group implements BoardMesh {
       const g = this.geom[i]!;
       const [cxp, cyp] = g.center;
       // Sized by the inradius so the glyph stays inside the cell even on
-      // pointy cells (triangles) where the mean vertex distance overshoots.
-      const s = g.inradius * 0.9;
+      // pointy cells (triangles) where the mean vertex distance overshoots;
+      // a flag pop scales this briefly for the spring-in.
+      const s = g.inradius * 0.9 * this.anim.popScale(i, performance.now());
       const z = g.radius * HEIGHT_FRAC + 0.01;
       const [u0, v0, u1, v1] = uv;
       pos.push(
@@ -221,6 +230,48 @@ export class PolygonBoard extends Group implements BoardMesh {
     this.glyphGeometry.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
     this.glyphGeometry.setAttribute("uv", new BufferAttribute(new Float32Array(uvs), 2));
     this.glyphGeometry.computeBoundingSphere();
+  }
+
+  // -- animations ------------------------------------------------------------
+
+  setAnimationsEnabled(on: boolean): void {
+    this.anim.enabled = on;
+    if (!on) {
+      this.anim.reset();
+      this.position.set(0, 0, 0);
+      for (let i = 0; i < this.order.length; i++) this.writeColor(i);
+      this.rebuildGlyphs();
+    }
+  }
+
+  pulseReveal(cells: CellId[], origin: CellId | null): void {
+    if (!this.anim.enabled) return;
+    const oi = origin != null ? this.cellIndex.get(origin) : undefined;
+    const oc = oi != null ? this.geom[oi]!.center : null;
+    const list: { index: number; center: readonly number[] }[] = [];
+    for (const cell of cells) {
+      const i = this.cellIndex.get(cell);
+      if (i != null) list.push({ index: i, center: this.geom[i]!.center });
+    }
+    this.anim.startReveals(rippleEntries(list, oc, this.meanRadius), performance.now());
+  }
+
+  popFlag(cell: CellId): void {
+    const i = this.cellIndex.get(cell);
+    if (i != null) this.anim.startPop(i, performance.now());
+  }
+
+  shake(): void {
+    this.anim.startShake(this.view.kind === "flat" ? this.view.width * 0.02 : 0, performance.now());
+  }
+
+  tickAnimations(now: number): boolean {
+    if (!this.anim.pending()) return false;
+    const step = this.anim.step(now);
+    for (const i of step.recolor) this.writeColor(i);
+    if (step.glyphsDirty) this.rebuildGlyphs();
+    this.position.set(step.offset[0], step.offset[1], 0);
+    return step.active;
   }
 }
 

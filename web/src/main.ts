@@ -27,6 +27,11 @@ class App {
   private screen: "menu" | "game" = "menu";
   private flagMode = false;
   private hovered: CellId | null = null;
+  // Board animations honour the OS reduced-motion setting out of the gate; the
+  // `window.__ms.animations(false)` test seam overrides it for deterministic e2e.
+  private animationsEnabled = !(
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false
+  );
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -81,6 +86,7 @@ class App {
       ...(opts.mines ? { minePositions: opts.mines } : {}),
     });
     this.renderer.setBoard(this.session.mesh);
+    this.session.mesh.setAnimationsEnabled(this.animationsEnabled);
     if (this.session.is3d) this.renderer.setOrientation(initialOrientation(mode));
     this.screen = "game";
     this.menu.hide();
@@ -240,6 +246,10 @@ class App {
       },
       rotate: (dxPx, dyPx) => this.rotate(dxPx, dyPx),
       scroll: (direction) => this.scroll(direction),
+      animations: (enabled) => {
+        this.animationsEnabled = enabled;
+        this.session?.mesh.setAnimationsEnabled(enabled);
+      },
       state: () => {
         const s = this.session;
         return {
