@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots",
+    "size": "node scripts/check-bundle-size.mjs",
     "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
