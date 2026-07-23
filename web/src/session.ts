@@ -157,7 +157,7 @@ export class GameSession {
   private checkStop(): void {
     if (this.game.state !== "playing" && this.stoppedAt == null) {
       this.stoppedAt = performance.now();
-      if (this.game.state === "lost") this.revealAllMines();
+      if (this.game.state === "lost") this.revealEndState();
     }
   }
 
@@ -167,9 +167,13 @@ export class GameSession {
     }
   }
 
-  private revealAllMines(): void {
+  /** On loss, reveal every unflagged mine and cross out every flag that was on
+   * a safe cell (a misplaced flag). Correctly flagged mines keep their flag. */
+  private revealEndState(): void {
     for (const cell of this.game.cells) {
-      if (this.game.isMine(cell) && this.game.cellState(cell) !== "flagged") {
+      const flagged = this.game.cellState(cell) === "flagged";
+      const mine = this.game.isMine(cell);
+      if ((mine && !flagged) || (!mine && flagged)) {
         this.mesh.setVisual(this.geomFor(cell), this.visualFor(cell));
       }
     }
@@ -177,7 +181,12 @@ export class GameSession {
 
   private visualFor(cell: CellId): CellVisual {
     const state = this.game.cellState(cell);
-    if (state === "flagged") return { kind: "flagged" };
+    if (state === "flagged") {
+      if (this.game.state === "lost" && !this.game.isMine(cell)) {
+        return { kind: "wrongFlag" };
+      }
+      return { kind: "flagged" };
+    }
     if (state === "revealed") {
       if (this.game.isMine(cell)) {
         return cell === this.exploded ? { kind: "exploded" } : { kind: "mine" };

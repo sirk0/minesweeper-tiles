@@ -10,6 +10,7 @@ import type { Glyph } from "./glyphAtlas";
 export type CellVisual =
   | { kind: "hidden" }
   | { kind: "flagged" }
+  | { kind: "wrongFlag" } // a flag on a safe cell, revealed on loss (crossed out)
   | { kind: "revealed"; mines: number }
   | { kind: "mine" }
   | { kind: "exploded" };
@@ -29,6 +30,7 @@ export function baseColorFor(visual: CellVisual): Color {
     case "hidden":
       return COLORS.hidden;
     case "flagged":
+    case "wrongFlag":
       return COLORS.flagged;
     case "revealed":
       return COLORS.revealed;
@@ -41,6 +43,7 @@ export function baseColorFor(visual: CellVisual): Color {
 
 export function glyphFor(visual: CellVisual): Glyph | null {
   if (visual.kind === "flagged") return "flag";
+  if (visual.kind === "wrongFlag") return "wrongFlag";
   if (visual.kind === "mine" || visual.kind === "exploded") return "mine";
   if (visual.kind === "revealed" && visual.mines > 0) {
     return Math.min(visual.mines, 12) as Glyph;

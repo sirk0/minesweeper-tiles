@@ -64,6 +64,7 @@ const _inv = /* @__PURE__ */ new Matrix4(); // scratch for the world→local map
 const SOLID_COLORS: Record<CellVisual["kind"], Color> = {
   hidden: new Color("#b4b4b4"),
   flagged: new Color("#b4b4b4"),
+  wrongFlag: new Color("#b4b4b4"),
   revealed: new Color("#efefef"),
   mine: new Color("#efefef"),
   exploded: COLORS.exploded,
