@@ -1,7 +1,7 @@
 {
   "name": "minesweeper-tiles-web",
   "private": true,
-  "version": "0.2.10",
+  "version": "0.2.11",
   "type": "module",
   "description": "TypeScript + Three.js rewrite of the Minesweeper Tiles game (M0 scaffold).",
   "scripts": {
