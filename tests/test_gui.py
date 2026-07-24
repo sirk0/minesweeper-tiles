@@ -708,6 +708,32 @@ class TestMenu:
             menu.draw(surface, fonts)
 
 
+class TestThemes:
+    def test_every_theme_draws_menu_and_game(self, fonts):
+        try:
+            for name in gui_mod.THEMES:
+                gui_mod.set_theme(name)
+                menu = MenuScreen()
+                surface = pygame.Surface(menu.size, pygame.SRCALPHA)
+                menu.draw(surface, fonts)
+                screen = make_screen("hexhex", "easy")
+                board = pygame.Surface(screen.size, pygame.SRCALPHA)
+                screen.draw(board, fonts)
+        finally:
+            gui_mod.set_theme("flat")
+
+    def test_set_theme_updates_palette_globals(self):
+        try:
+            gui_mod.set_theme("paper")
+            assert gui_mod.BG == gui_mod.THEMES["paper"]["bg"]
+            assert gui_mod._BUTTON_STYLE == "paper"
+            gui_mod.set_theme("classic")
+            assert gui_mod._BUTTON_STYLE == "classic"
+            assert gui_mod._ACCENT is None
+        finally:
+            gui_mod.set_theme("flat")
+
+
 class TestIcon:
     def test_app_icon_is_high_resolution(self):
         icon = make_icon()
