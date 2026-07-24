@@ -110,3 +110,6 @@ export const MODE_LABELS: Record<string, string> = (() => {
 // Menu groupings for the 3D one-off boards (M2: Sphere and Other).
 export const SPHERE_MODES = MENU.sphereModes as string[];
 export const OTHER_MODES = MENU.otherModes as string[];
+// The shaped flat boards (triangle of triangles, hexagon of hexagons). Python
+// lists them at the end of the Other page (catalog.py OTHER_MODES + SHAPED_MODES).
+export const SHAPED_MODES = MENU.shapedModes as string[];

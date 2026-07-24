@@ -1,3 +1,23 @@
+/* The fonts the pygame game ships (minesweeper/assets/fonts), bundled under
+   web/public/fonts so the app is self-contained offline. Rubik is the UI /
+   board face; the single Bold weight is declared across the 400–700 range so
+   every UI weight renders in Rubik, matching the pygame single-face look.
+   DSEG7 Classic drives the LED-style mine / timer counters. */
+@font-face {
+  font-family: "Rubik";
+  src: url("/fonts/Rubik-Bold.ttf") format("truetype");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "DSEG7 Classic";
+  src: url("/fonts/DSEG7Classic-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Classic minesweeper gray. Raised chrome uses the bevel border colours. */
   --bg: #c0c0c0;
@@ -19,7 +39,7 @@ body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Rubik", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overscroll-behavior: none;
 }
 
@@ -139,10 +159,13 @@ body {
 }
 
 .menu {
-  margin: auto;
+  /* Fill the viewport height so the title pins to the top, the difficulty row
+     to the bottom, and the mode list centres in the space between (matching the
+     pygame MenuScreen). Centred horizontally at a comfortable column width. */
+  flex: 1;
+  min-height: 0;
   width: min(520px, 92vw);
-  max-height: 100dvh;
-  overflow-y: auto;
+  margin-inline: auto;
   /* Keep the title and the bottom difficulty row clear of the notch and the
      home indicator when installed full-screen on iOS. */
   padding: max(24px, env(safe-area-inset-top)) 24px
@@ -153,9 +176,17 @@ body {
 }
 
 .menu-body {
+  /* Takes the space between the fixed title and difficulty row; its list is
+     vertically centred by auto margins, but scrolls when it overflows. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+}
+
+.menu-body > .menu-list {
+  margin-block: auto;
 }
 
 .menu-back .menu-entry-label {
@@ -216,6 +247,22 @@ body {
   font-size: 13px;
 }
 
+/* Submenu rows (Uniform / Dual-uniform / Aperiodic) lay the label and the ›
+   chevron out on a single row, chevron pinned to the right edge. */
+.menu-entry.menu-submenu {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.menu-entry-chevron {
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  flex: none;
+}
+
 .menu-difficulty {
   display: flex;
   gap: 8px;
@@ -241,4 +288,53 @@ body {
     var(--bevel-dark);
   background: #b0b0b0;
   font-weight: 700;
+}
+
+/* --- Narrow screens (phones) --- */
+/* On a narrow iPhone the header carries back + flag, mine/smiley/timer, and —
+   on a Klein bottle — two scroll chevrons. At the default sizes that overflows
+   the viewport and pushes the chevrons off-screen, so shrink the chrome to fit:
+   tighter gaps/padding, a slimmer counter, and clusters allowed to shrink. */
+@media (max-width: 480px) {
+  .hud {
+    gap: 6px;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+      8px max(8px, env(safe-area-inset-left));
+  }
+
+  .hud-cluster {
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .hud-center {
+    gap: 8px;
+  }
+
+  .hud-btn,
+  .hud-smiley {
+    min-height: 34px;
+    padding: 4px 7px;
+  }
+
+  .hud-icon-btn {
+    padding: 4px 6px;
+  }
+
+  .hud-icon-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .hud-smiley {
+    font-size: 18px;
+    padding: 3px 6px;
+  }
+
+  .hud-counter {
+    min-width: 44px;
+    letter-spacing: 1px;
+    padding: 4px 6px;
+    font-size: 15px;
+  }
 }

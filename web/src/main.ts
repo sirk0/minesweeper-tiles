@@ -43,7 +43,7 @@ class App {
     ui.append(this.hud.root, this.menu.root);
     this.hud.root.hidden = true;
 
-    window.addEventListener("resize", () => this.renderer.resize());
+    window.addEventListener("resize", () => this.onResize());
     window.addEventListener("keydown", (e) => this.onKey(e));
     attachControls(canvas, {
       pick: (ndc) => this.renderer.pick(ndc),
@@ -94,13 +94,25 @@ class App {
     this.hovered = null;
     this.flagMode = false;
     this.syncHud();
-    this.renderer.resize();
+    this.onResize();
   }
 
   private showMenu(): void {
     this.screen = "menu";
     this.hud.root.hidden = true;
     this.menu.show();
+    this.onResize();
+  }
+
+  /** Re-frame the board on viewport changes, reserving the current header
+   * height at the top so the board sits below it (0 in the menu). */
+  private onResize(): void {
+    const inset =
+      this.screen === "game" && !this.hud.root.hidden
+        ? this.hud.root.getBoundingClientRect().height
+        : 0;
+    this.renderer.setTopInset(inset);
+    this.renderer.resize();
   }
 
   private onAction(action: string): void {
@@ -269,4 +281,25 @@ class App {
 
 const canvas = document.getElementById("board") as HTMLCanvasElement;
 const ui = document.getElementById("ui") as HTMLElement;
-new App(canvas, ui);
+
+// Preload the bundled fonts (Rubik for UI + board digits, DSEG7 for counters)
+// before constructing the app, so the glyph atlas bakes with Rubik ready
+// instead of silently falling back to sans-serif. Bounded so a slow/failed
+// font load never blocks boot.
+async function boot(): Promise<void> {
+  if (document.fonts?.load) {
+    try {
+      await Promise.race([
+        Promise.all([
+          document.fonts.load('700 16px "Rubik"'),
+          document.fonts.load('700 16px "DSEG7 Classic"'),
+        ]),
+        new Promise((resolve) => setTimeout(resolve, 1500)),
+      ]);
+    } catch {
+      /* fall back to system fonts */
+    }
+  }
+  new App(canvas, ui);
+}
+void boot();

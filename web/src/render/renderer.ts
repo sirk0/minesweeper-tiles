@@ -42,6 +42,9 @@ export class BoardRenderer {
   private board: BoardMesh | null = null;
   private frameHandle = 0;
   private dirty = true;
+  /** CSS px of chrome reserved at the top (the HUD header); flat boards are
+   * framed in the space below it rather than centred in the whole viewport. */
+  private topInset = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.renderer = new WebGLRenderer({
@@ -124,6 +127,13 @@ export class BoardRenderer {
     this.dirty = true;
   }
 
+  /** Reserve `px` CSS pixels at the top of the viewport for the header. Call
+   * before `resize()` (which reads it to frame the board below the header). */
+  setTopInset(px: number): void {
+    this.topInset = Math.max(0, px);
+    this.dirty = true;
+  }
+
   resize(): void {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
@@ -131,20 +141,26 @@ export class BoardRenderer {
     this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
 
+    // Header height reserved at the top; the board is framed in the region
+    // below it (top of viewport = pixel `top`, height `usableH`).
+    const top = Math.max(0, Math.min(this.topInset, h - 1));
+    const usableH = Math.max(1, h - top);
+
     const view = this.board?.view;
     if (view?.kind === "flat") {
       const margin = 1.06;
       const halfW = (view.width * margin) / 2;
       const halfH = (view.height * margin) / 2;
-      const aspect = w / h;
-      let x = halfW;
-      let y = halfH;
-      if (halfW / halfH > aspect) y = halfW / aspect;
-      else x = halfH * aspect;
-      this.orthoCamera.left = -x;
-      this.orthoCamera.right = x;
-      this.orthoCamera.top = y;
-      this.orthoCamera.bottom = -y;
+      // World units per CSS pixel that fits the board in the region both ways.
+      const wpp = Math.max((2 * halfW) / w, (2 * halfH) / usableH);
+      // Keep the frustum full-canvas (so mouse→NDC picking stays consistent),
+      // but bias it vertically so the board is top-aligned just below the
+      // header: its top edge sits at pixel `top`, spare space falls to the
+      // bottom. Horizontally centred.
+      this.orthoCamera.left = (-wpp * w) / 2;
+      this.orthoCamera.right = (wpp * w) / 2;
+      this.orthoCamera.top = halfH + wpp * top;
+      this.orthoCamera.bottom = this.orthoCamera.top - wpp * h;
       this.orthoCamera.updateProjectionMatrix();
     } else if (view?.kind === "solid") {
       const aspect = w / h;
