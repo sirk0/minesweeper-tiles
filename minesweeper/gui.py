@@ -156,6 +156,179 @@ LIGHT = (0.37, 0.46, 0.81)  # normalized light direction for 3D shading
 TILE_LIGHT_DIR = (-0.55, -0.83)  # screen-space light for the tile bevels
 
 
+# -- UI theme ------------------------------------------------------------------
+#
+# The chrome (menu screen, difficulty buttons, header controls) is themeable.
+# ``set_theme`` reassigns the palette module globals below and a few style
+# knobs; every draw site reads those globals each frame, so switching a theme
+# re-skins the whole UI at runtime. The board tiles keep the classic beveled
+# look regardless of theme. Sizes here are given in screen units and scaled by
+# ``S`` when applied. Each theme is a plain dict so the screenshot harness and
+# tests can enumerate them by name.
+THEMES: dict[str, dict] = {
+    # the original Windows-95 gray look, kept for comparison
+    "classic": {
+        "label": "Classic",
+        "style": "classic",
+        "radius": 0,
+        "bg": (192, 192, 192),
+        "text": (38, 40, 44),
+        "muted": (108, 112, 120),
+        "button": (202, 202, 202),
+        "button_hover": (216, 216, 216),
+        "button_armed": (236, 150, 144),
+        "selected": (170, 182, 202),
+        "accent": None,
+        "border": None,
+        "panel": (24, 24, 26),
+        "counter_fg": (255, 70, 60),
+    },
+    # 1. Flat Material -- white cards, indigo accent, soft drop shadows
+    "flat": {
+        "label": "Flat Material",
+        "style": "flat",
+        "radius": 12,
+        "bg": (244, 245, 248),
+        "text": (31, 36, 48),
+        "muted": (110, 116, 130),
+        "button": (255, 255, 255),
+        "button_hover": (243, 244, 250),
+        "button_armed": (255, 224, 224),
+        "selected": (226, 229, 253),
+        "accent": (99, 102, 241),
+        "on_accent": (255, 255, 255),
+        "border": (228, 231, 238),
+        "panel": (32, 35, 52),
+        "counter_fg": (255, 92, 92),
+        "shadow": {"offset": (0, 3 * S), "color": (28, 32, 52),
+                   "max_alpha": 40, "spread": 4 * S},
+    },
+    # 2. Soft Neumorphism -- one tone, dual soft shadows, tactile
+    "neumorph": {
+        "label": "Soft Neumorphism",
+        "style": "neumorph",
+        "radius": 16,
+        "bg": (228, 231, 240),
+        "text": (74, 84, 104),
+        "muted": (142, 150, 168),
+        "button": (228, 231, 240),
+        "button_hover": (233, 236, 245),
+        "button_armed": (233, 205, 208),
+        "selected": (221, 225, 246),
+        "accent": (99, 110, 214),
+        "on_accent": (255, 255, 255),
+        "border": None,
+        "panel": (56, 61, 82),
+        "counter_fg": (150, 160, 245),
+        "neu": ((255, 255, 255), (176, 183, 201), round(4 * S)),
+    },
+    # 3. Minimal iOS / Cupertino -- pill buttons, system blue, airy
+    "ios": {
+        "label": "Minimal iOS",
+        "style": "pill",
+        "pill": True,
+        "radius": 14,
+        "bg": (242, 242, 247),
+        "text": (28, 28, 30),
+        "muted": (142, 142, 147),
+        "button": (255, 255, 255),
+        "button_hover": (247, 247, 250),
+        "button_armed": (255, 224, 224),
+        "selected": (221, 234, 255),
+        "accent": (10, 132, 255),
+        "on_accent": (255, 255, 255),
+        "border": (223, 224, 229),
+        "panel": (28, 28, 30),
+        "counter_fg": (255, 92, 92),
+        "shadow": {"offset": (0, 2 * S), "color": (60, 62, 74),
+                   "max_alpha": 26, "spread": 3 * S},
+    },
+    # 4. Glassmorphism -- pastel gradient, translucent frosted buttons
+    "glass": {
+        "label": "Glassmorphism",
+        "style": "glass",
+        "radius": 16,
+        "bg": (221, 230, 255),
+        "bg2": (243, 231, 255),
+        "text": (42, 47, 69),
+        "muted": (96, 102, 128),
+        "button": (255, 255, 255),
+        "button_hover": (255, 255, 255),
+        "button_armed": (255, 176, 176),
+        "selected": (170, 178, 255),
+        "accent": (108, 99, 255),
+        "on_accent": (255, 255, 255),
+        "border": None,
+        "panel": (46, 48, 82),
+        "counter_fg": (255, 104, 138),
+    },
+    # 5. Warm Paper / Editorial -- warm off-white, cream cards, terracotta
+    "paper": {
+        "label": "Warm Paper",
+        "style": "paper",
+        "radius": 10,
+        "bg": (250, 247, 242),
+        "text": (43, 38, 34),
+        "muted": (140, 129, 116),
+        "button": (255, 253, 249),
+        "button_hover": (248, 244, 237),
+        "button_armed": (240, 208, 194),
+        "selected": (244, 223, 210),
+        "accent": (201, 111, 74),
+        "on_accent": (255, 255, 255),
+        "border": (236, 230, 220),
+        "panel": (58, 50, 44),
+        "counter_fg": (233, 143, 96),
+        "shadow": {"offset": (0, 2 * S), "color": (120, 100, 80),
+                   "max_alpha": 30, "spread": 3 * S},
+    },
+}
+
+# style knobs written by ``set_theme`` and read by the draw helpers
+_THEME = "classic"
+_BUTTON_STYLE = "classic"
+_RADIUS = 0
+_PILL = False
+_SHADOW: dict | None = None
+_BORDER: tuple | None = None
+_ACCENT: tuple | None = None
+_ON_ACCENT: tuple = (255, 255, 255)
+_NEU: tuple | None = None
+_BG2: tuple | None = None
+
+
+def set_theme(name: str) -> None:
+    """Switch the active UI theme, re-skinning menus and buttons."""
+    global BG, TEXT, MUTED, BUTTON, BUTTON_HOVER, BUTTON_ARMED, SELECTED
+    global PANEL, COUNTER_FG
+    global _THEME, _BUTTON_STYLE, _RADIUS, _PILL, _SHADOW, _BORDER
+    global _ACCENT, _ON_ACCENT, _NEU, _BG2
+    t = THEMES[name]
+    _THEME = name
+    BG = t["bg"]
+    _BG2 = t.get("bg2")
+    TEXT = t["text"]
+    MUTED = t["muted"]
+    BUTTON = t["button"]
+    BUTTON_HOVER = t["button_hover"]
+    BUTTON_ARMED = t["button_armed"]
+    SELECTED = t["selected"]
+    PANEL = t["panel"]
+    COUNTER_FG = t["counter_fg"]
+    _BUTTON_STYLE = t["style"]
+    _RADIUS = round(t.get("radius", 0) * S)
+    _PILL = t.get("pill", False)
+    _SHADOW = t.get("shadow")
+    _BORDER = t.get("border")
+    _ACCENT = t.get("accent")
+    _ON_ACCENT = t.get("on_accent", (255, 255, 255))
+    _NEU = t.get("neu")
+
+
+# apply the default modern look at import; the game reads the theme lazily
+set_theme("flat")
+
+
 # Factor that turns a window/display mouse coordinate into a canvas
 # coordinate. SDL reports mouse positions in the resolution the display was
 # opened at, which is not a fixed multiple of the canvas: a high-DPI desktop
@@ -530,9 +703,8 @@ def make_icon(size: int = 512, *, bleed: bool = False) -> pygame.Surface:
     return icon
 
 
-def bevel_rect(
-    surface, rect, fill, *, pressed: bool = False, border: int = 2 * S
-) -> None:
+def _bevel(surface, rect, fill, *, pressed: bool = False, border: int = 2 * S) -> None:
+    """The classic Windows-95 3D beveled rectangle."""
     pygame.draw.rect(surface, fill, rect)
     top_left, bottom_right = (
         (BEVEL_DARK, BEVEL_LIGHT) if pressed else (BEVEL_LIGHT, BEVEL_DARK)
@@ -541,6 +713,115 @@ def bevel_rect(
     pygame.draw.line(surface, top_left, rect.topleft, rect.bottomleft, border)
     pygame.draw.line(surface, bottom_right, rect.bottomleft, rect.bottomright, border)
     pygame.draw.line(surface, bottom_right, rect.topright, rect.bottomright, border)
+
+
+def _soft_shadow(
+    surface, rect, radius, *, offset=(0, 3 * S), color=(20, 22, 32),
+    max_alpha: int = 40, layers: int = 5, spread=3 * S,
+) -> None:
+    """A feathered rounded drop shadow, drawn on a small local overlay."""
+    ox, oy = round(offset[0]), round(offset[1])
+    spread = round(spread)
+    pad = spread + max(abs(ox), abs(oy)) + 1
+    overlay = pygame.Surface(
+        (rect.width + 2 * pad, rect.height + 2 * pad), pygame.SRCALPHA
+    )
+    local = pygame.Rect(pad + ox, pad + oy, rect.width, rect.height)
+    for i in range(layers, 0, -1):
+        grow = round(spread * i / layers)
+        alpha = round(max_alpha / layers * (layers - i + 1))
+        pygame.draw.rect(
+            overlay, (*color, alpha), local.inflate(grow * 2, grow * 2),
+            border_radius=radius + grow,
+        )
+    surface.blit(overlay, (rect.left - pad, rect.top - pad))
+
+
+def draw_background(surface, rect=None) -> None:
+    """Fill the screen background: a flat wash, or a vertical gradient when
+    the active theme sets a second colour (glassmorphism)."""
+    if _BG2 is None:
+        surface.fill(BG)
+        return
+    width, height = surface.get_size()
+    steps = 64
+    for i in range(steps):
+        t = i / (steps - 1)
+        color = tuple(round(a + (b - a) * t) for a, b in zip(BG, _BG2))
+        band = pygame.Rect(0, height * i // steps, width, height // steps + 2)
+        surface.fill(color, band)
+
+
+def _round_button(surface, rect, fill, *, selected: bool, radius: int) -> None:
+    """A flat rounded button (Material / iOS / paper themes)."""
+    if _PILL:
+        radius = rect.height // 2
+    if _SHADOW is not None:
+        _soft_shadow(surface, rect, radius, **_SHADOW)
+    pygame.draw.rect(surface, fill, rect, border_radius=radius)
+    if selected and _ACCENT is not None:
+        pygame.draw.rect(surface, _ACCENT, rect, max(2, round(2 * S)),
+                         border_radius=radius)
+    elif _BORDER is not None:
+        pygame.draw.rect(surface, _BORDER, rect, max(1, round(S)),
+                         border_radius=radius)
+
+
+def _glass_button(surface, rect, fill, *, selected: bool, radius: int) -> None:
+    """A translucent frosted button with a top gloss and hairline edge."""
+    _soft_shadow(surface, rect, radius, offset=(0, 4 * S), color=(70, 74, 110),
+                 max_alpha=44, spread=5 * S)
+    panel = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    local = panel.get_rect()
+    pygame.draw.rect(panel, (*fill, 150), local, border_radius=radius)
+    gloss = pygame.Rect(0, 0, rect.width, rect.height // 2)
+    pygame.draw.rect(panel, (255, 255, 255, 55), gloss, border_radius=radius)
+    edge = (*_ACCENT, 210) if (selected and _ACCENT) else (255, 255, 255, 190)
+    pygame.draw.rect(panel, edge, local, max(1, round(1.5 * S)), border_radius=radius)
+    surface.blit(panel, rect.topleft)
+
+
+def _neumorph_button(
+    surface, rect, fill, *, pressed: bool, selected: bool, radius: int
+) -> None:
+    """A soft extruded (or, when active, inset) button in one tone."""
+    light, dark, dist = _NEU
+    if pressed or selected:
+        base = SELECTED if selected else scale_color(fill, 0.96)
+        pygame.draw.rect(surface, base, rect, border_radius=radius)
+        pygame.draw.rect(surface, scale_color(dark, 1.0), rect.inflate(-round(2 * S),
+                         -round(2 * S)), max(1, round(S)), border_radius=radius)
+        if selected and _ACCENT is not None:
+            pygame.draw.rect(surface, _ACCENT, rect, max(2, round(2 * S)),
+                             border_radius=radius)
+    else:
+        _soft_shadow(surface, rect, radius, offset=(dist, dist), color=dark,
+                     max_alpha=95, spread=dist + 2 * S)
+        _soft_shadow(surface, rect, radius, offset=(-dist, -dist), color=light,
+                     max_alpha=160, spread=dist + 2 * S)
+        pygame.draw.rect(surface, fill, rect, border_radius=radius)
+
+
+def draw_button(
+    surface, rect, fill, *, pressed: bool = False, selected: bool = False,
+    border: int = 2 * S,
+) -> None:
+    """Draw a themed button/panel. Dispatches on the active theme's style;
+    ``selected`` gives the accent treatment, ``pressed`` the classic sink."""
+    if _BUTTON_STYLE == "classic":
+        _bevel(surface, rect, fill, pressed=pressed, border=border)
+    elif _BUTTON_STYLE == "glass":
+        _glass_button(surface, rect, fill, selected=selected, radius=_RADIUS)
+    elif _BUTTON_STYLE == "neumorph":
+        _neumorph_button(surface, rect, fill, pressed=pressed, selected=selected,
+                         radius=_RADIUS)
+    else:  # flat / pill / paper
+        _round_button(surface, rect, fill, selected=selected, radius=_RADIUS)
+
+
+# call sites drew classic bevels via ``bevel_rect``; keep the name as the
+# themed entry point so the header/menu need no signature changes
+bevel_rect = draw_button
 
 
 # -- menu icons ---------------------------------------------------------------
@@ -1330,7 +1611,7 @@ class BaseGameScreen:
     # -- drawing ----------------------------------------------------------
 
     def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
-        surface.fill(BG)
+        draw_background(surface)
         self.draw_header(surface, fonts)
         self.draw_board(surface, fonts)
 
@@ -1944,7 +2225,7 @@ class MenuScreen:
         return None
 
     def draw(self, surface: pygame.Surface, fonts: FontCache) -> None:
-        surface.fill(BG)
+        draw_background(surface)
         mouse = canvas_mouse()
         layout = self.layout()
 
@@ -1994,8 +2275,11 @@ class MenuScreen:
             fill = SELECTED if selected else (
                 BUTTON_HOVER if rect.collidepoint(mouse) else BUTTON
             )
-            bevel_rect(surface, rect, fill, pressed=selected)
-            label = fonts.get(15 * S).render(difficulty_key.capitalize(), True, TEXT)
+            draw_button(surface, rect, fill, pressed=selected, selected=selected)
+            label_color = _ACCENT if (selected and _ACCENT is not None) else TEXT
+            label = fonts.get(15 * S).render(
+                difficulty_key.capitalize(), True, label_color
+            )
             surface.blit(label, label.get_rect(center=rect.center))
 
 
@@ -2345,7 +2629,15 @@ def main(argv: list[str] | None = None) -> int:
         default="easy",
         help="board preset (default: easy)",
     )
+    parser.add_argument(
+        "--theme",
+        choices=sorted(THEMES),
+        default=os.environ.get("MINESWEEPER_THEME", _THEME),
+        help=f"UI theme for menus and buttons (default: {_THEME})",
+    )
     args = parser.parse_args(argv)
+    if args.theme in THEMES:
+        set_theme(args.theme)
     App(args.mode, args.difficulty).run()
     return 0
 

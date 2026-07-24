@@ -68,7 +68,13 @@ tetrahedron, donut, Möbius strip, cylinder, Klein bottle). Python 3.13
 ```sh
 .venv/bin/python -m minesweeper                 # menu
 .venv/bin/python -m minesweeper --mode hexhex   # skip menu; see MODE_LABELS
+.venv/bin/python -m minesweeper --theme neumorph # UI theme; see THEMES in gui.py
 ```
+
+The chrome (menu screen + buttons + header controls, not the board tiles)
+is themeable: `THEMES`/`set_theme` in `gui.py` hold the light presets
+(`flat` is the default; also `neumorph`, `ios`, `glass`, `paper`, and the
+retro `classic`). Pick one with `--theme` or `MINESWEEPER_THEME`.
 
 The venv already has everything; recreate with `make venv`.
 Dependency groups in pyproject.toml: `web` (pygbag), `test` (pytest,
