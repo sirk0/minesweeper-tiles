@@ -121,10 +121,21 @@ FLAG_COLOR = (216, 32, 32)
 MINE_COLOR = (34, 36, 40)
 FACE_YELLOW = (255, 202, 76)
 
-# shiny steel blue used by the menu icons and the app icon
-ICON_BLUE = (74, 120, 202)
-ICON_BLUE_LIGHT = (128, 166, 230)
-ICON_BLUE_DARK = (42, 76, 142)
+# flat modern indigo used by the menu icons: a mid tone plus a lighter and a
+# darker shade, kept well separated so the isometric 3D solids (cube,
+# tetrahedron, sphere faces) still read their three faces. The darkest also
+# doubles as the shape outline.
+ICON_BLUE = (99, 102, 241)        # indigo-500, the mid tone
+ICON_BLUE_LIGHT = (159, 166, 252)  # light face / accent shapes
+ICON_BLUE_DARK = (67, 56, 202)     # dark face on the 3D solids + detail lines
+ICON_OUTLINE = (79, 82, 194)       # soft same-hue hairline round the shapes
+
+# flat teal used by the app / web icon (favicon, iOS home-screen, macOS dock):
+# a top-to-bottom gradient plate behind a white hexagon and a dark mine.
+ICON_TEAL_TOP = (20, 199, 150)
+ICON_TEAL_BOTTOM = (5, 140, 110)
+ICON_HEX = (255, 255, 255)
+ICON_MINE = (11, 60, 47)  # dark teal, reads on the white hexagon
 
 NUMBER_COLORS = {
     1: (28, 60, 220),
@@ -630,76 +641,69 @@ def smiley_sprite(radius: int, state: GameState) -> pygame.Surface:
     return _smiley_cache[key]
 
 
-def _gloss(surface, rect: pygame.Rect, alpha: int = 55, radius: int = 0) -> None:
-    """Blend a soft white highlight over the top part of ``rect``."""
-    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-    top = pygame.Rect(rect.left, rect.top, rect.width, rect.height // 2)
-    pygame.draw.rect(overlay, (255, 255, 255, alpha), top, border_radius=radius)
-    surface.blit(overlay, (0, 0))
-
-
 def make_icon(size: int = 512, *, bleed: bool = False) -> pygame.Surface:
-    """App icon: a mine in a hexagon on a macOS-style rounded square.
+    """App icon: a mine in a hexagon on a flat teal rounded square.
 
-    With ``bleed`` the steel plate fills the whole canvas with square
-    corners, for the iOS home-screen icon: iOS paints any transparency
-    black and applies its own rounded-square mask, so a full-bleed plate
-    comes out matching the macOS dock icon instead of floating on black.
+    A vibrant teal-to-green gradient plate carries a clean white hexagon
+    and a flat dark mine -- flat and modern, no bevels or gloss.
+
+    With ``bleed`` the plate fills the whole canvas with square corners,
+    for the iOS home-screen icon: iOS paints any transparency black and
+    applies its own rounded-square mask, so a full-bleed plate comes out
+    matching the macOS dock icon instead of floating on black.
     """
     icon = pygame.Surface((size, size), pygame.SRCALPHA)
     margin = 0 if bleed else int(size * 0.05)
     plate = pygame.Rect(margin, margin, size - 2 * margin, size - 2 * margin)
     corner = 0 if bleed else int(size * 0.225)
 
-    # base plate with a subtle vertical gradient
-    steps = 48
-    for i in range(steps):
-        t = i / (steps - 1)
-        color = tuple(int(a + (b - a) * t) for a, b in zip((238, 240, 244), (198, 202, 210)))
-        band = pygame.Rect(
-            plate.left,
-            plate.top + plate.height * i // steps,
-            plate.width,
-            plate.height // steps + 2,
+    # teal gradient plate, clipped to the rounded rectangle
+    grad = pygame.Surface(icon.get_size(), pygame.SRCALPHA)
+    for y in range(plate.height):
+        t = y / max(1, plate.height - 1)
+        color = tuple(
+            int(a + (b - a) * t) for a, b in zip(ICON_TEAL_TOP, ICON_TEAL_BOTTOM)
         )
-        strip = pygame.Surface(icon.get_size(), pygame.SRCALPHA)
-        pygame.draw.rect(strip, (*color, 255), band)
-        mask = pygame.Surface(icon.get_size(), pygame.SRCALPHA)
-        pygame.draw.rect(mask, (255, 255, 255, 255), plate, border_radius=corner)
-        strip.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-        icon.blit(strip, (0, 0))
-    pygame.draw.rect(icon, (150, 154, 162), plate, 2, border_radius=corner)
+        pygame.draw.line(
+            grad, (*color, 255),
+            (plate.left, plate.top + y), (plate.right, plate.top + y),
+        )
+    # a very light top sheen that fades out (no hard edge) keeps the flat
+    # plate from looking dead; built on its own overlay so the blit blends
+    sheen = pygame.Surface(icon.get_size(), pygame.SRCALPHA)
+    sheen_h = int(plate.height * 0.55)
+    for y in range(sheen_h):
+        alpha = int(30 * (1 - y / sheen_h))
+        if alpha <= 0:
+            continue
+        pygame.draw.line(
+            sheen, (255, 255, 255, alpha),
+            (plate.left, plate.top + y), (plate.right, plate.top + y),
+        )
+    grad.blit(sheen, (0, 0))
+    mask = pygame.Surface(icon.get_size(), pygame.SRCALPHA)
+    pygame.draw.rect(mask, (255, 255, 255, 255), plate, border_radius=corner)
+    grad.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    icon.blit(grad, (0, 0))
 
-    # steel-blue hexagon
+    # flat white hexagon (pointy-top)
     cx = cy = size // 2
-    r = size * 0.335
+    r = size * 0.35
     hexagon = [
         (cx + r * math.cos(math.radians(60 * k - 90)),
          cy + r * math.sin(math.radians(60 * k - 90)))
         for k in range(6)
     ]
-    fill_polygon(icon, hexagon, ICON_BLUE)
-    inset = shrink_polygon(hexagon, 0.94)
-    for i in range(6):
-        a, b = inset[i], inset[(i + 1) % 6]
-        mx, my = (a[0] + b[0]) / 2 - cx, (a[1] + b[1]) / 2 - cy
-        length = math.hypot(mx, my) or 1.0
-        facing = (mx * TILE_LIGHT_DIR[0] + my * TILE_LIGHT_DIR[1]) / length
-        bevel = ICON_BLUE_LIGHT if facing > 0 else ICON_BLUE_DARK
-        pygame.draw.line(icon, bevel, a, b, max(3, size // 56))
+    fill_polygon(icon, hexagon, ICON_HEX)
 
-    # the mine
-    body = int(size * 0.13)
-    spike = size * 0.21
+    # flat mine
+    body = int(size * 0.115)
+    spike = size * 0.185
     for dx, dy in ((1, 0), (0, 1), (0.7, 0.7), (0.7, -0.7)):
         start = (cx - dx * spike, cy - dy * spike)
         end = (cx + dx * spike, cy + dy * spike)
-        pygame.draw.line(icon, MINE_COLOR, start, end, max(3, size // 36))
-    fill_circle(icon, cx, cy, body, MINE_COLOR)
-    glint = max(2, body // 3)
-    fill_circle(icon, cx - body // 3, cy - body // 3, glint, (255, 255, 255))
-
-    _gloss(icon, plate, alpha=36, radius=corner)
+        pygame.draw.line(icon, ICON_MINE, start, end, max(3, size // 30))
+    fill_circle(icon, cx, cy, body, ICON_MINE)
     return icon
 
 
@@ -878,20 +882,55 @@ def _tube_polygon(centerline, radius):
     return left + right[::-1]
 
 
-def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_BLUE_DARK, width=5):
+def _round_corners(points, radius, steps: int = 5):
+    """Return ``points`` with each corner replaced by a short rounded arc.
+
+    Softens the sharp geometric glyphs into a modern flat look. Each corner
+    becomes a small quadratic curve tucked ``radius`` back along both edges
+    (capped at half the shorter edge so short edges never overshoot)."""
+    pts = [(float(x), float(y)) for x, y in points]
+    n = len(pts)
+    out = []
+    for i in range(n):
+        prev, cur, nxt = pts[(i - 1) % n], pts[i], pts[(i + 1) % n]
+
+        def toward(nb):
+            vx, vy = nb[0] - cur[0], nb[1] - cur[1]
+            dist = math.hypot(vx, vy) or 1.0
+            r = min(radius, dist / 2)
+            return (cur[0] + vx / dist * r, cur[1] + vy / dist * r)
+
+        a, b = toward(prev), toward(nxt)
+        for k in range(steps + 1):
+            t = k / steps
+            mt = 1 - t
+            out.append((
+                mt * mt * a[0] + 2 * mt * t * cur[0] + t * t * b[0],
+                mt * mt * a[1] + 2 * mt * t * cur[1] + t * t * b[1],
+            ))
+    return out
+
+
+# corner radius for the menu glyphs, in the supersampled render space
+_ICON_CORNER = ICON_SIZE * 4 * 0.03
+
+
+def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_OUTLINE, width=4):
+    points = _round_corners(points, _ICON_CORNER)
     fill_polygon(surface, points, fill)
     pts = [(int(x), int(y)) for x, y in points]
-    pygame.draw.lines(surface, outline, True, pts, width)
+    pygame.draw.lines(surface, outline, True, pts, max(2, width - 1))
     outline_polygon(surface, pts, outline)
 
 
 def _icon_gloss(surface, bbox: pygame.Rect, alpha: int = 70) -> None:
-    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-    highlight = pygame.Rect(
-        bbox.left, bbox.top, bbox.width, int(bbox.height * 0.45)
-    )
-    pygame.draw.ellipse(overlay, (255, 255, 255, alpha), highlight)
-    surface.blit(overlay, (0, 0))
+    """No-op: the menu icons are flat now.
+
+    The icons used to carry a glossy elliptical highlight, the main
+    skeuomorphic tell in the old look. The flat modern design draws none,
+    but every icon still calls this at the end, so it is kept as a no-op to
+    leave those call sites untouched.
+    """
 
 
 def _icon_badge(s, cx, cy, r, shape: str) -> None:

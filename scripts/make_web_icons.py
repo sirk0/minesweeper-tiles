@@ -1,7 +1,7 @@
 """Render the app icons for the web build and wire them into index.html.
 
 Writes the browser tab favicon plus an iOS "Add to Home Screen" icon (the
-same mine-in-hexagon plate as the macOS dock) and adds the
+same flat teal mine-in-hexagon plate as the macOS dock) and adds the
 `apple-touch-icon` <link> pygbag's template omits, so an iPhone
 home-screen shortcut shows the app icon instead of a screenshot of the
 page.
@@ -41,7 +41,7 @@ def main() -> int:
     out = Path(sys.argv[1])
     pygame.init()
     pygame.display.set_mode((1, 1))
-    # Browser tab favicon: the dock icon as-is (rounded plate on a
+    # Browser tab favicon: the dock icon as-is (rounded teal plate on a
     # transparent margin), which browsers render at small sizes fine.
     pygame.image.save(make_icon(256), str(out / "favicon.png"))
     # iOS masks the home-screen icon into its own rounded square and paints
