@@ -10,6 +10,15 @@ describe("UI screen config", () => {
     expect(screens.theme.background).toMatch(/^#/);
   });
 
+  it("uses the modern iOS palette by default (not the classic gray)", () => {
+    // Matches the pygame `ios` theme, the default on both front-ends: an airy
+    // light field and the system-blue accent rather than #c0c0c0 / navy.
+    expect(screens.theme.background.toLowerCase()).toBe("#f2f2f7");
+    expect(screens.theme.panel.toLowerCase()).toBe("#ffffff");
+    expect(screens.theme.accent.toLowerCase()).toBe("#0a84ff");
+    expect(screens.theme.background.toLowerCase()).not.toBe("#c0c0c0");
+  });
+
   it("has difficulties and a valid default", () => {
     expect(screens.difficulties.length).toBeGreaterThan(0);
     expect(() => difficulty(screens.defaultDifficulty)).not.toThrow();
