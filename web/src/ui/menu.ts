@@ -67,6 +67,17 @@ function pickerModes(picker: Picker): string[] {
   ];
 }
 
+/** The one-line description of a surface's picker: the regular tilings shown
+ * directly, then each family (uniform / dual / aperiodic) available on it — so
+ * the hint reflects everything reachable, not just the three basic tilings. */
+function pickerHint(surfaceKey: string): string {
+  const picker = pickerFor(surfaceKey);
+  return [
+    ...picker.direct.map((e) => e.label),
+    ...picker.families.map((f) => f.label),
+  ].join(" · ");
+}
+
 /** The built modes for a set of tiling keys on a surface, in the given order. */
 function tilingModes(keys: string[], surfaceKey: string): ModeEntry[] {
   const surface = SURFACES.get(surfaceKey);
@@ -218,7 +229,7 @@ export class Menu {
   private groupHint(group: Group): string {
     if (group.kind === "modes") return group.modes.map((m) => MODE_LABELS[m] ?? m).join(" · ");
     if (group.kind === "manifolds") return group.surfaces.map((s) => s.label).join(" · ");
-    return pickerFor(group.surfaceKey).direct.map((e) => e.label).join(" · ");
+    return pickerHint(group.surfaceKey);
   }
 
   private showGroup(group: Group): void {
@@ -308,7 +319,7 @@ export class Menu {
     label.textContent = surface.label;
     const hint = document.createElement("span");
     hint.className = "menu-entry-hint";
-    hint.textContent = pickerFor(surface.key).direct.map((e) => e.label).join(" · ");
+    hint.textContent = pickerHint(surface.key);
     btn.append(label, hint);
     btn.addEventListener("click", () => this.showSurface(group, surface));
     li.append(btn);
