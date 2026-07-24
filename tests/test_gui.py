@@ -739,7 +739,7 @@ class TestIcon:
         icon = make_icon()
         assert icon.get_size() == (512, 512)
         # opaque in the middle (the mine), transparent at the corners
-        # (macOS-style rounded plate with a margin)
+        # (rounded teal plate with a margin)
         assert icon.get_at((256, 256))[3] == 255
         assert icon.get_at((2, 2))[3] == 0
 
