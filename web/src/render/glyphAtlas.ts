@@ -57,7 +57,8 @@ export function makeGlyphAtlas(cellPx = 128): GlyphAtlas {
     if (typeof glyph === "number") {
       ctx.fillStyle = DIGIT_COLORS[glyph] ?? "#202020";
       const scale = glyph >= 10 ? 0.5 : 0.7; // two digits fit narrower
-      ctx.font = `bold ${Math.round(cellPx * scale)}px sans-serif`;
+      // Rubik (the pygame board font); falls back to sans-serif until loaded.
+      ctx.font = `bold ${Math.round(cellPx * scale)}px "Rubik", sans-serif`;
       ctx.fillText(String(glyph), cx, cy + cellPx * 0.03);
     } else if (glyph === "flag") {
       drawFlag(ctx, cx, cy, cellPx);
