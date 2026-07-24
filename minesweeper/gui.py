@@ -326,7 +326,7 @@ def set_theme(name: str) -> None:
 
 
 # apply the default modern look at import; the game reads the theme lazily
-set_theme("flat")
+set_theme("ios")
 
 
 # Factor that turns a window/display mouse coordinate into a canvas

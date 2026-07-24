@@ -720,7 +720,7 @@ class TestThemes:
                 board = pygame.Surface(screen.size, pygame.SRCALPHA)
                 screen.draw(board, fonts)
         finally:
-            gui_mod.set_theme("flat")
+            gui_mod.set_theme("ios")
 
     def test_set_theme_updates_palette_globals(self):
         try:
@@ -731,7 +731,7 @@ class TestThemes:
             assert gui_mod._BUTTON_STYLE == "classic"
             assert gui_mod._ACCENT is None
         finally:
-            gui_mod.set_theme("flat")
+            gui_mod.set_theme("ios")
 
 
 class TestIcon:
