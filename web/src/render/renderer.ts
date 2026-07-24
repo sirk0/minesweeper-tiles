@@ -53,8 +53,9 @@ export class BoardRenderer {
       alpha: false,
       powerPreference: "high-performance",
     });
-    // Classic minesweeper silver-gray field (no dark background).
-    this.renderer.setClearColor(new Color("#c0c0c0"), 1);
+    // Airy iOS-theme field behind the board (matches CSS --bg and the pygame
+    // `ios` background; the board tiles keep their own classic bevel colours).
+    this.renderer.setClearColor(new Color("#f2f2f7"), 1);
 
     this.scene = new Scene();
     // The flat board lives in pixel units (hundreds wide) with per-cell bevel

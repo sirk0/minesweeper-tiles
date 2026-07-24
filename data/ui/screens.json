@@ -2,12 +2,12 @@
   "_comment": "Declarative UI-screen configuration shared across implementations. This describes screen chrome (headers, menus, difficulty rows) so the pygame (Python) and Three.js (TypeScript) front-ends can be kept in sync from one source instead of hand-matching layouts. Board geometry lives elsewhere (see docs/plans/typescript-rewrite-same-repo.md); this file is UI only. Schema: web/src/config/screens.ts.",
   "version": 1,
   "theme": {
-    "background": "#c0c0c0",
-    "panel": "#c0c0c0",
-    "accent": "#000080",
-    "text": "#000000",
-    "muted": "#3a3a3a",
-    "danger": "#c00000"
+    "background": "#f2f2f7",
+    "panel": "#ffffff",
+    "accent": "#0a84ff",
+    "text": "#1c1c1e",
+    "muted": "#8e8e93",
+    "danger": "#ff5c5c"
   },
   "difficulties": [
     { "key": "easy", "label": "Easy" },

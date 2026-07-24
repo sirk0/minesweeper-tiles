@@ -720,7 +720,7 @@ class TestThemes:
                 board = pygame.Surface(screen.size, pygame.SRCALPHA)
                 screen.draw(board, fonts)
         finally:
-            gui_mod.set_theme("flat")
+            gui_mod.set_theme("ios")
 
     def test_set_theme_updates_palette_globals(self):
         try:
@@ -731,7 +731,32 @@ class TestThemes:
             assert gui_mod._BUTTON_STYLE == "classic"
             assert gui_mod._ACCENT is None
         finally:
-            gui_mod.set_theme("flat")
+            gui_mod.set_theme("ios")
+
+    def test_default_theme_is_modern_ios(self):
+        # Importing the module applies the modern iOS theme as the default,
+        # so a plain launch (no --theme flag, no MINESWEEPER_THEME) starts in
+        # it. Reload in a controlled block to assert the import-time state.
+        import importlib
+        try:
+            importlib.reload(gui_mod)
+            ios = gui_mod.THEMES["ios"]
+            assert gui_mod._THEME == "ios"
+            assert gui_mod.BG == ios["bg"]
+            assert gui_mod._BUTTON_STYLE == ios["style"]
+            assert gui_mod._PILL is True
+        finally:
+            gui_mod.set_theme("ios")
+
+    def test_menu_draws_ios_pill_buttons_by_default(self, fonts):
+        # A freshly built menu on the default theme paints the airy iOS
+        # background rather than the classic gray plate.
+        gui_mod.set_theme("ios")
+        menu = MenuScreen()
+        surface = pygame.Surface(menu.size)
+        menu.draw(surface, fonts)
+        assert gui_mod._PILL is True
+        assert surface.get_at((2, 2))[:3] == gui_mod.THEMES["ios"]["bg"]
 
 
 class TestIcon:
