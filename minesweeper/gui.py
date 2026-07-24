@@ -126,8 +126,9 @@ FACE_YELLOW = (255, 202, 76)
 # tetrahedron, sphere faces) still read their three faces. The darkest also
 # doubles as the shape outline.
 ICON_BLUE = (99, 102, 241)        # indigo-500, the mid tone
-ICON_BLUE_LIGHT = (150, 158, 252)  # light face / accent shapes
-ICON_BLUE_DARK = (67, 56, 202)     # dark face + shape outline
+ICON_BLUE_LIGHT = (159, 166, 252)  # light face / accent shapes
+ICON_BLUE_DARK = (67, 56, 202)     # dark face on the 3D solids + detail lines
+ICON_OUTLINE = (79, 82, 194)       # soft same-hue hairline round the shapes
 
 # flat teal used by the app / web icon (favicon, iOS home-screen, macOS dock):
 # a top-to-bottom gradient plate behind a white hexagon and a dark mine.
@@ -881,10 +882,44 @@ def _tube_polygon(centerline, radius):
     return left + right[::-1]
 
 
-def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_BLUE_DARK, width=5):
+def _round_corners(points, radius, steps: int = 5):
+    """Return ``points`` with each corner replaced by a short rounded arc.
+
+    Softens the sharp geometric glyphs into a modern flat look. Each corner
+    becomes a small quadratic curve tucked ``radius`` back along both edges
+    (capped at half the shorter edge so short edges never overshoot)."""
+    pts = [(float(x), float(y)) for x, y in points]
+    n = len(pts)
+    out = []
+    for i in range(n):
+        prev, cur, nxt = pts[(i - 1) % n], pts[i], pts[(i + 1) % n]
+
+        def toward(nb):
+            vx, vy = nb[0] - cur[0], nb[1] - cur[1]
+            dist = math.hypot(vx, vy) or 1.0
+            r = min(radius, dist / 2)
+            return (cur[0] + vx / dist * r, cur[1] + vy / dist * r)
+
+        a, b = toward(prev), toward(nxt)
+        for k in range(steps + 1):
+            t = k / steps
+            mt = 1 - t
+            out.append((
+                mt * mt * a[0] + 2 * mt * t * cur[0] + t * t * b[0],
+                mt * mt * a[1] + 2 * mt * t * cur[1] + t * t * b[1],
+            ))
+    return out
+
+
+# corner radius for the menu glyphs, in the supersampled render space
+_ICON_CORNER = ICON_SIZE * 4 * 0.03
+
+
+def _icon_shape(surface, points, fill=ICON_BLUE, outline=ICON_OUTLINE, width=4):
+    points = _round_corners(points, _ICON_CORNER)
     fill_polygon(surface, points, fill)
     pts = [(int(x), int(y)) for x, y in points]
-    pygame.draw.lines(surface, outline, True, pts, width)
+    pygame.draw.lines(surface, outline, True, pts, max(2, width - 1))
     outline_polygon(surface, pts, outline)
 
 
